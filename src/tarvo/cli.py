@@ -41,23 +41,36 @@ def localizar_arquivos(entrada: Path, padroes: dict[str, str]) -> dict[str, Path
 
 
 def cmd_fechar(args: argparse.Namespace) -> int:
+    # import tardio: fechamento importa este módulo
+    from tarvo.fechamento import ErroFechamento, fechar
+    from tarvo.saida import ErroSaida
+
     entrada = Path(args.entrada)
     if not entrada.is_dir():
         print(f"Diretório de entrada não encontrado: {entrada}", file=sys.stderr)
         return 2
-    padroes = carregar_padroes(Path(args.config))
     try:
-        encontrados = localizar_arquivos(entrada, padroes)
+        resultado = fechar(entrada, Path(args.saida), args.competencia, config=Path(args.config))
     except ErroEntrada as e:
         print(f"Erro ao localizar arquivos de entrada:\n{e}", file=sys.stderr)
+        return 2
+    except (ErroSaida, ErroFechamento) as e:
+        print(f"Erro na saída:\n{e}", file=sys.stderr)
+        return 1
+    except ValueError as e:
+        print(f"Erro: {e}", file=sys.stderr)
         return 2
 
     print(f"Competência: {args.competencia}")
     print(f"Entrada: {entrada}")
     print(f"Saída: {args.saida}")
-    print(f"Arquivos encontrados ({len(encontrados)}):")
-    for tipo, caminho in encontrados.items():
+    print(f"Arquivos encontrados ({len(resultado.arquivos_entrada)}):")
+    for tipo, caminho in resultado.arquivos_entrada.items():
         print(f"  {tipo}: {caminho.name}")
+    print(f"Itens de saída: {resultado.itens}")
+    print(f"Arquivos gravados ({len(resultado.arquivos_saida)}), validados sem problemas:")
+    for nome in resultado.arquivos_saida:
+        print(f"  {nome}")
     return 0
 
 
