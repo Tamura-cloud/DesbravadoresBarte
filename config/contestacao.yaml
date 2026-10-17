@@ -1,0 +1,25 @@
+# R29: rascunhos de e-mail de contestação, um por contraparte (Orbe e Ponte). A Helena revisa e envia.
+
+# Pasta de saída dos rascunhos, irmã da pasta de saída do fechamento (saida/ fica só com os 6 CSVs).
+pasta: contestacoes
+
+cabecalho: "[RASCUNHO — Helena revisa antes de enviar]"
+
+# Nunca um e-mail inventado: a Helena preenche ao enviar.
+destinatarios:
+  orbe: "<e-mail da Orbe>"
+  ponte: "<e-mail da Ponte>"
+nomes:
+  orbe: "Orbe"
+  ponte: "Ponte Câmbio S.A."
+
+# Aviso da condição à contraparte, por CNPJ de lojista (resposta da Helena às 9h53). O CNPJ que não
+# estiver aqui sai com "sem_registro". {inicio} = data de início da condição, lida da planilha ou da config.
+avisos:
+  "22224579000109": avisada_depois   # Bridge
+  "00520815000100": nao_avisada      # Casa do Estudante
+  "17217888000111": nao_avisada      # Mundo Aberto
+textos_aviso:
+  nao_avisada: "O Comercial não avisou a {contraparte} desta condição."
+  avisada_depois: "A {contraparte} só foi avisada desta condição alguns dias depois do início da vigência ({inicio})."
+  sem_registro: "Não há registro de que a {contraparte} tenha sido avisada desta condição."

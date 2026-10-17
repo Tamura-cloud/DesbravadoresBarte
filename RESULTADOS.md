@@ -3,10 +3,10 @@
 | | |
 |---|---|
 | Data | 2026-10-17 |
-| Commit do código | branch `regras-helena-2`, commit das R25 a R30 (sobre `292a3eb`, o da R23). Em relação a `292a3eb`, os 6 CSVs têm as mesmas linhas e os mesmos totais; comissões, divergências, notas, lançamentos e rastro estão idênticos byte a byte. Só mudaram 4 textos de motivo em pendencias.csv (ver abaixo) |
+| Commit do código | branch `regras-helena-2`, sobre `b01ff9d` (R25 a R30). Em relação a `b01ff9d`, os 6 CSVs de `saida/` estão idênticos byte a byte; a novidade é a pasta `contestacoes/` (R29), ao lado de `saida/` |
 | Fechamento | `python -m tarvo fechar --competencia 2026-09 --entrada dados/2026-09 --saida saida/` (IA conforme `config/ia.yaml`; em setembro todo lançamento casa uma regra, então a IA não é chamada nenhuma vez, P14) |
 | Resumo | `python -m tarvo resumo --saida saida` |
-| pytest | **323 passed** (`python -m pytest -q`, 14,9 s) |
+| pytest | **336 passed** (`python -m pytest -q`, 15,9 s) |
 | `validar_saida(saida/)` | `[]`, **sem problemas** |
 | Rastro | 488 de 488 itens com soma do rastro por id_saida = valor reportado |
 
@@ -25,6 +25,17 @@ Auditoria das regras novas contra este fechamento:
 | R28 | campo "Aprovado por" em R01 a R30; P01 a P23 aguardando aprovação | registrado no HIPOTESES.md |
 | R29 | o fechamento não gera o rascunho de e-mail por contraparte | **CONFLITO, não corrigido** (ver HIPOTESES.md, seção 4) |
 | R30 | 57 linhas no rastro da PEN-SEMCONTRATO-1076801732, primeira transação em 2026-09-10 | OK; texto corrigido |
+
+**R29 — rascunhos de contestação (`contestacoes/`, ao lado de `saida/`).** O `fechar` grava 4 arquivos a partir dos itens já calculados; `saida/` continua com os 6 CSVs. Todo total do texto é a soma do CSV ao lado (`test_contestacao.py`):
+
+| arquivo | conteúdo | linhas | total | Esperado | teste de origem | |
+|---|---|---:|---:|---|---|:-:|
+| orbe_operacoes.csv | DIV-CHK: Casa 118, Rota 87, Bridge 5 | 210 | 16.973,65 | 210 · 16.973,65 (= divergências de CHECKOUT, seção 4); estornos 5 · -107,53 | `test_contestacao.py::test_orbe_totais_do_texto_saem_do_csv`, `::test_orbe_estornos_ficam_no_total_e_sao_explicados` | ✓ |
+| ponte_operacoes.csv · SPREAD_ACIMA_CONTRATADO | DIV-REM: Mundo Aberto | 23 | 1.418,85 | 23 · 1.418,85 (= PEN-CONTEST-REM) | `test_contestacao.py::test_ponte_csv_bate_com_divergencias_e_pendencias` | ✓ |
+| ponte_operacoes.csv · SPREAD_NEGATIVO | PEN-NEG-REM (R23) | 4 | -3.565,98 | 4 · -3.565,98 | idem | ✓ |
+| ponte_operacoes.csv · OPERACAO_DUPLICADA | PEN-DUP-REM-PC-0926-0162 | 1 | 821,88 | 1 · 821,88 | idem | ✓ |
+
+Os textos orbe.md e ponte.md levam o cabeçalho de rascunho, os destinatários `<e-mail da Orbe>` e `<e-mail da Ponte>`, as condições vigentes de cada lojista com a data de início (planilha ou condição especial) e o aviso (config/contestacao.yaml): Casa e Mundo Aberto não foram avisadas; a Bridge foi avisada alguns dias depois de 15/09.
 
 A mudança anterior (R23, 9h48: spread negativo só como contestação, fora das divergências) está no commit `292a3eb`.
 
