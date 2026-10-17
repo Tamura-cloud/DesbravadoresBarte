@@ -104,7 +104,7 @@ def test_favorecido_da_lista_e_repasse_com_o_cnpj_da_lista(cfg):
 def test_favorecido_fora_da_lista_fica_sem_regra_humano_com_pendencia(cfg, descricao):
     l = _um(AURORA, cfg, descricao, "-10.00", ref="L7")
     assert l.regra is None
-    item = item_lancamento(l, cfg, set())
+    item = item_lancamento(l, cfg)
     assert (item.campos["metodo"], item.campos["confianca"], item.campos["conta_codigo"]) == ("HUMANO", D("0.00"), "A_CLASSIFICAR")
     [pen] = pendencias_lancamentos([l], cfg)
     assert (pen.id_saida, pen.campos["tipo"], pen.valor_reportado) == ("PEN-SEMREGRA-L7", "LANCAMENTO_SEM_REGRA", D("-10.00"))
@@ -118,7 +118,7 @@ def test_sentido_errado_nao_casa(cfg):
 
 def test_lancamento_classificado_rastro_e_a_propria_linha(cfg):
     l = _um(MERIDIANO, cfg, "IOF S/ OPERACAO CREDITO", "-48.21", ref="MRDX1", arquivo="mer.ofx")
-    item = item_lancamento(l, cfg, set())
+    item = item_lancamento(l, cfg)
     assert item.id_saida == "LAN-MER-MRDX1"
     assert item.campos == {"banco": "MERIDIANO", "ref_origem": "MRDX1", "data": date(2031, 3, 10),
                            "descricao": "IOF S/ OPERACAO CREDITO", "conta_codigo": "4.3.01", "metodo": "REGRA",
@@ -130,7 +130,7 @@ def test_textos_sem_ponto_e_virgula(cfg):
     # a descrição é só exibição: a regra casa pelo texto original, a saída troca ";" por " - "
     l = _um(AURORA, cfg, "PIX ENVIADO FORNECEDOR; QUALQUER", "-10.00", ref="L8")
     devol = _um(AURORA, cfg, "DEVOLUCAO PIX - MUNDO ABERTO INTERC", "12.00", ref="L9")
-    item = item_lancamento(l, cfg, set())
+    item = item_lancamento(l, cfg)
     assert item.campos["descricao"] == "PIX ENVIADO FORNECEDOR - QUALQUER"
     textos = [v for i in [item, *pendencias_lancamentos([l, devol], cfg)] for v in i.campos.values()
               if isinstance(v, str)]
@@ -175,21 +175,45 @@ def test_ted_liquidacao_por_data_de_contratacao(cfg):
     assert {o.ref_origem for o in pen.origens} == {"T2", "OP-3"}
 
 
-def test_pix_sem_remessa_e_diferenca_no_nivel_do_cliente(cfg):
+def test_pix_a_mais_e_adiantamento_e_pix_a_menos_e_pendencia(cfg):
+    # R22: PIX do lojista acima das remessas do mês é adiantamento de remessa futura, sem pendência,
+    # haja ou não um PIX único igual à sobra. PIX abaixo das remessas continua pendência no cliente (P12).
     pix = classificar(MERIDIANO, [_linha("PIX RECEB KIWI EXPERIENCE TURISMO", "100.00", ref="P1"),
                                   _linha("PIX RECEB KIWI EXPERIENCE TURISMO", "30.00", ref="P2"),
+                                  _linha("PIX RECEB DUBLIN HUB INTERCÂMBIO L", "40.00", ref="P4"),
                                   _linha("PIX RECEB CANGURU INTERCÂMBIOS LTD", "70.00", ref="P3")], cfg)
-    ops = [_op("OP-1", "07752116000126", "99.50", "0.50"), _op("OP-2", "53857560000123", "75.00")]
-    itens, sem_remessa = conferir_pix_remessas(pix, ops, cfg)
-    assert sem_remessa == {"P2"}
+    ops = [_op("OP-1", "07752116000126", "99.50", "0.50"), _op("OP-2", "53857560000123", "75.00"),
+           _op("OP-3", "68567965000102", "25.00")]
+    itens = conferir_pix_remessas(pix, ops, cfg)
     pens = {p.id_saida: p for p in itens}
-    assert set(pens) == {"PEN-PIX-SEMREM-P2", "PEN-PIX-REM-53857560000123"}
-    assert pens["PEN-PIX-SEMREM-P2"].campos["tipo"] == "RECURSO_SEM_REMESSA"
-    assert pens["PEN-PIX-SEMREM-P2"].valor_reportado == D("30.00")
+    assert set(pens) == {"PEN-PIX-REM-53857560000123"}  # Kiwi (+30) e Dublin (+15) são adiantamento
     cliente = pens["PEN-PIX-REM-53857560000123"]
+    assert cliente.campos["tipo"] == "DIFERENCA_PIX_REMESSA"
     assert cliente.valor_reportado == D("-5.00")  # PIX - operações
     assert [(o.ref_origem, o.valor) for o in cliente.origens] == [("P3", D("70.00")), ("OP-2", D("-75.00"))]
-    assert item_lancamento(pix[1], cfg, sem_remessa).campos["confianca"] == D("0.80")
+    adiantado = item_lancamento(pix[1], cfg)
+    assert (adiantado.campos["conta_codigo"], adiantado.campos["metodo"], adiantado.campos["confianca"]) == (
+        "2.1.02.001", "REGRA", D("1.00"))
+
+
+def test_remessa_sem_pix_do_cliente_e_pendencia(cfg):
+    itens = conferir_pix_remessas([], [_op("OP-9", "07752116000126", "50.00", "0.25")], cfg)
+    assert [(p.id_saida, p.valor_reportado) for p in itens] == [("PEN-PIX-REM-07752116000126", D("-50.25"))]
+
+
+@pytest.mark.parametrize("descricao, valor", [
+    ("TED RECEB PONTE AEREA ESTUDANTIL REPASSE COMISSAO", "10.00"),
+    ("TED ENVIADA PONTE AEREA ESTUDANTIL LIQ OPERACOES", "-10.00"),
+])
+def test_ponte_aerea_nao_casa_regra_da_ponte_cambio(cfg, descricao, valor):
+    # R22: a Ponte Aérea Estudantil é lojista e não tem relação com a Ponte Câmbio
+    assert _um(MERIDIANO, cfg, descricao, valor).regra is None
+
+
+def test_pix_da_ponte_aerea_e_lojista_nas_duas_grafias(cfg):
+    for descricao in ("PIX RECEB PONTE AÉREA ESTUDANTIL L", "PIX RECEB PONTE AEREA ESTUDANTIL L"):
+        l = _um(MERIDIANO, cfg, descricao, "10.00")
+        assert (l.regra.conta_codigo, l.papel, l.contraparte.cnpj) == ("2.1.02.001", "pix_cliente", "95739378000118")
 
 
 def test_proximo_dia_util():
@@ -270,13 +294,14 @@ def test_setembro_ted_liq_bate_com_a_ponte(itens):
     assert not _por_prefixo(itens, "PEN-TED-LIQ-")
 
 
-def test_setembro_um_pix_sem_remessa(itens):
-    semrem = _por_prefixo(itens, "PEN-PIX-SEMREM-")
-    assert list(semrem) == ["PEN-PIX-SEMREM-MRD2026090425"]
-    pen = semrem["PEN-PIX-SEMREM-MRD2026090425"]
-    assert pen.valor_reportado == D("18240.00")
-    assert (pen.campos["tipo"], pen.campos["quem_decide"]) == ("RECURSO_SEM_REMESSA", "Financeiro (Helena)")
-    assert not _por_prefixo(itens, "PEN-PIX-REM-")  # os outros 13 clientes fecham centavo a centavo
+def test_setembro_pix_da_ponte_aerea_e_adiantamento_sem_pendencia(itens):
+    # R22 (Helena, 9h45): o PIX de 17/09 da Ponte Aérea Estudantil adianta uma remessa de outubro.
+    assert not _por_prefixo(itens, "PEN-PIX-SEMREM-")
+    assert not _por_prefixo(itens, "PEN-PIX-REM-")  # os 14 clientes fecham ou só adiantaram
+    lan = _por_prefixo(itens, "LAN-MER-MRD2026090425")["LAN-MER-MRD2026090425"]
+    assert lan.valor_reportado == D("18240.00")
+    assert (lan.campos["conta_codigo"], lan.campos["metodo"], lan.campos["confianca"]) == ("2.1.02.001", "REGRA", D("1.00"))
+    assert not [i for i in itens if i.id_saida.startswith("PEN-") and "MRD2026090425" in str(i.campos["ref_origem"])]
 
 
 def test_setembro_uma_transferencia_em_transito(itens):

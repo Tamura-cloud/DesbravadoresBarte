@@ -2,7 +2,7 @@
 
 Fontes deste arquivo:
 - **Fonte 1:** HIPOTESES.md do colega em `origin/main` (commit `d425cd4`). Todo o conteúdo dela está aqui, nas seções 2, 4 e 5, identificado como `F1-H01` a `F1-H10`.
-- **Fonte 2:** respostas públicas da Helena (financeiro da Tarvo) no canal #tarvo-financeiro em 16/10/2026. As perguntas foram feitas por outros times; as respostas valem para todos.
+- **Fonte 2:** respostas públicas da Helena (financeiro da Tarvo) no canal #tarvo-financeiro em 16/10/2026. As perguntas foram feitas por outros times; as respostas valem para todos. Exceção: as duas perguntas do nosso time (Desbravadores Barte), respondidas em 17/10/2026 às 9h45 (seção 3; viraram R22 e a validação de P04).
 
 Pela regra do CLAUDE.md, só entra no código regra de negócio que esteja aqui. Os valores de setembro citados neste arquivo são referência para os testes, nunca para `src/` ou `config/`.
 
@@ -42,6 +42,7 @@ Pela regra do CLAUDE.md, só entra no código regra de negócio que esteja aqui.
 - **R19** — conta_codigo = contrapartida do movimento no banco. Folha, ISS, INSS, FGTS e DARFs de agosto e o repasse da Ponte de 04/09 já estavam registrados: baixam passivo ou recebível. Tarifas, aluguel, cloud, assinaturas e serviços entram direto na despesa do mês. Quando o extrato não deixar claro: premissa no HIPOTESES.md. *(pergunta de Fox AI, resposta da Helena às 21h14)*
 - **R20** — PIX de R$ 7.350 sem identificação: não é receita até identificar. Devolução de PIX da Mundo Aberto: repasse que voltou, motivo desconhecido. Transferência de R$ 300 mil: sai do Aurora em 30/09 e cai no Meridiano em 01/10. *(pergunta de Lucca Landeiro, resposta da Helena às 20h49)*
 - **R21** — A Orbe deposita tudo no Aurora. O saldo negativo é a conta garantida. Conciliar Orbe × banco parcela a parcela está fora do escopo: só classificar os créditos. *(pergunta de Insper AI, resposta da Helena às 22h34)*
+- **R22** — PIX recebido de lojista acima das remessas do mês = adiantamento de remessa futura: é recurso de lojista em 2.1.02.001 e não é pendência. A Ponte Aérea Estudantil (lojista, CNPJ 95739378000118) não tem relação com a Ponte Câmbio. *(pergunta do nosso time, Desbravadores Barte, resposta da Helena às 9h45: "É a Ponte Aérea mandando dinheiro de uma remessa que ainda não foi feita. A operação sai em outubro.")*
 
 ---
 
@@ -59,6 +60,7 @@ Pela regra do CLAUDE.md, só entra no código regra de negócio que esteja aqui.
 
 - **P04 — CNPJ da Ponte fora da planilha de taxas:** a comissão é calculada mesmo assim (50% do spread realizado, R11) e entra na nota; o CNPJ vira pendência LOJISTA_NAO_CADASTRADO (cadastrar o lojista). Não gera divergência.
   - **Motivo:** a Ponte paga a participação pelo realizado, com ou sem cadastro nosso (R11, R16). Sem spread contratado, não há com que comparar a taxa aplicada (R15).
+  - **Validada pela Helena às 9h45** ("tratamento razoável; registrem como premissa"). Não aconteceu em setembro. Continua premissa, não vira regra.
 - **P05 — Spread negativo de CNPJ fora da planilha:** é erro e para o fechamento.
   - **Motivo:** R12 manda contestar e P02 registra a divergência contra o contratado, que nesse caso não existe. Sem regra para o valor da contestação, preferimos parar a inventar um.
 
@@ -73,9 +75,12 @@ Pela regra do CLAUDE.md, só entra no código regra de negócio que esteja aqui.
   - **Motivo:** o CNPJ do pagador é a chave da conferência PIX × remessas (P12); sem CNPJ não há conferência.
 - **P09 — Lançamento sem regra:** entra em lancamentos_classificados.csv sem classificação definitiva: conta_codigo "A_CLASSIFICAR", metodo HUMANO, confiança 0,00, e pendência PEN-SEMREGRA-<ref> com o valor do lançamento. Vale para crédito e débito.
   - **Motivo:** não lançar crédito desconhecido em 1.1.09.002 por regra: R20 cobre um caso conhecido (PIX sem identificação), não qualquer linha que as regras não reconhecem, e para débito não há conta transitória no plano. "A_CLASSIFICAR" não é conta do plano de propósito, para o lançamento não ser importado como definitivo. Esses lançamentos são a entrada do fallback com IA.
-- **P10 — Confiança:** 1,00 para regra confirmada pela Helena (R19 a R21); 0,80 para regra que é premissa nossa: devolução de PIX (P06) e PIX identificado como recurso sem remessa (P12, conta 2.1.02.001 da Fonte 1, F1-H10).
+- **P10 — Confiança:** 1,00 para regra confirmada pela Helena (R19 a R22); 0,80 para regra que é premissa nossa: devolução de PIX (P06). Até a R22, o PIX identificado como recurso sem remessa (P12) também saía com 0,80; com a R22 ele é adiantamento confirmado e sai com 1,00.
 - **P11 — Ponte × Meridiano (TED de liquidação):** para cada data, a soma das TEDs "LIQ OPERACOES" (com sinal) + a soma de valor_brl + iof_brl das operações únicas da Ponte (R13) contratadas nessa data tem que ser zero. Só entram as datas do período do extrato (DTSTART a DTEND). Diferença vira PEN-TED-LIQ-<data>, valor = operações − TEDs pagas.
-- **P12 — PIX recebidos × remessas, por cliente (CNPJ):** a soma dos PIX do mês tem que ser igual à soma de valor_brl + iof_brl das operações únicas do mês (competência pela data de contratação, R11). Se sobrar diferença e houver exatamente UM PIX do cliente com valor igual a ela, ele vira PEN-PIX-SEMREM-<FITID> (RECURSO_SEM_REMESSA). Senão, a pendência fica no nível do cliente, PEN-PIX-REM-<CNPJ>, valor = PIX − operações.
+- **P12 — PIX recebidos × remessas, por cliente (CNPJ):** a soma dos PIX do mês é comparada com a soma de valor_brl + iof_brl das operações únicas do mês (competência pela data de contratação, R11).
+  - **PIX a mais** (soma dos PIX > operações): a sobra é adiantamento de remessa futura (R22). Os PIX ficam em 2.1.02.001 pela regra do PIX, com metodo REGRA, e não há pendência. Todo pagador de "PIX RECEB" com regra é lojista com CNPJ da planilha (P08), então a R22 vale para todos.
+  - **PIX a menos** (remessa sem o dinheiro do cliente): pendência no nível do cliente, PEN-PIX-REM-<CNPJ>, DIFERENCA_PIX_REMESSA, valor = PIX − operações (negativo).
+  - A pendência PEN-PIX-SEMREM-<FITID> (RECURSO_SEM_REMESSA), para um PIX único igual à sobra, deixou de existir com a R22.
 - **P13 — Aurora × Meridiano (transferência entre contas):** cada "TRANSF ENTRE CONTAS" do Aurora casa com uma TED "MESMA TITULARIDADE" do Meridiano de mesmo valor, na mesma data ou no dia útil seguinte (segunda a sexta, sem calendário de feriados); cada TED casa uma vez.
   - Sem par e com o dia útil seguinte depois do fim do extrato do Meridiano: PEN-TRANSF-<ref>, TRANSFERENCIA_EM_TRANSITO, valor positivo em trânsito (R20: cai no Meridiano no dia útil seguinte; conferir no extrato do mês seguinte).
   - Sem par dentro do período do extrato: PEN-TRANSF-<ref>, TRANSFERENCIA_SEM_PAR.
@@ -221,19 +226,22 @@ O conteúdo da Fonte 1 está reproduzido abaixo. Onde ela contradizia a Helena, 
   - **16/09/2026 (L50, Aurora)** — "PIX RECEBIDO 38686002000180 SEM IDENTIFICACAO" (+R$ 7.350,00): não é receita até identificar a origem. Vai para a conta transitória 1.1.09.002 (Créditos não identificados) e para pendencias.csv.
   - **23/09/2026 (L65, Aurora)** — "DEVOLUCAO PIX - MUNDO ABERTO INTERC" (+R$ 12.400,00): repasse que voltou, motivo desconhecido (R20, Helena às 20h49). Vai para 2.1.01.001 (Repasses a lojistas a pagar) e para pendencias.csv, com a pendência de apurar o motivo. Ver C2 em "Conflitos resolvidos" na seção 4.
   - **30/09/2026 (L92, Aurora)** — "TRANSF ENTRE CONTAS P/ BCO MERIDIANO" (-R$ 300.000,00): saída no último dia do mês, compensada no Banco Meridiano em 01/10/2026. Vai para 1.1.09.001 (Transferências entre contas próprias) e para pendencias.csv.
-  - **17/09/2026 (MRD2026090425, Meridiano)** — "PIX RECEB PONTE AEREA ESTUDANTIL L" (+R$ 18.240,00): recurso recebido na conta de câmbio sem operação correspondente no relatório de setembro da Ponte Câmbio. Vai para 2.1.02.001 (Recursos de lojistas para remessas a liquidar) e para pendencias.csv.
-    - **Verificado:** é o único dos 64 PIX recebidos no Meridiano sem remessa correspondente na Ponte. Continua pendência, aguardando resposta da Helena.
+  - **17/09/2026 (MRD2026090425, Meridiano)** — "PIX RECEB PONTE AEREA ESTUDANTIL L" (+R$ 18.240,00): recurso recebido na conta de câmbio antes da operação da Ponte Câmbio. Vai para 2.1.02.001 (Recursos de lojistas para remessas a liquidar), com metodo REGRA.
+    - **Resolvido pela R22 (Helena às 9h45):** é adiantamento de uma remessa que sai em outubro, não pendência. A Fonte 1 mandava para pendencias.csv; saiu de lá.
+    - **Verificado:** é o único dos 64 PIX recebidos no Meridiano acima das remessas do mês na Ponte.
     - **FITID corrigido:** a Fonte 1 citava MRD2026090364, que não existe no OFX. O lançamento de 17/09 de R$ 18.240,00 tem FITID MRD2026090425, e o MEMO no arquivo é "PONTE AEREA", sem acento.
-  - **Motivo:** para os três primeiros casos, R20 dá o fato e R19 manda escrever a premissa quando o extrato não é claro. O quarto caso é achado do colega, verificado por nós, ainda sem resposta da Helena.
+  - **Motivo:** para os três primeiros casos, R20 dá o fato e R19 manda escrever a premissa quando o extrato não é claro. O quarto caso é achado do colega, verificado por nós e respondido pela Helena (R22).
 
 ---
 
 ## 3. Perguntas feitas pelo nosso time (pergunta | resposta | horário)
 
-A Fonte 1 não registra nenhuma pergunta feita pelo nosso time. As confirmações que ela cita são as respostas públicas da seção 1, dadas a perguntas de outros times.
+A Fonte 1 não registra nenhuma pergunta feita pelo nosso time. As confirmações que ela cita são as respostas públicas da seção 1, dadas a perguntas de outros times. As perguntas abaixo foram feitas pelo nosso time (Desbravadores Barte) no #tarvo-financeiro.
 
 | pergunta | resposta | horário |
 |----------|----------|---------|
+| No Meridiano entrou em 17/09 um PIX de R$ 18.240,00 de "PONTE AEREA ESTUDANTIL L" (FITID MRD2026090425), sem remessa correspondente na Ponte. [...] Proposta: 2.1.02.001 + pendência para você confirmar se é adiantamento de outubro ou devolução. | "É a Ponte Aérea mandando dinheiro de uma remessa que ainda não foi feita. A operação sai em outubro. A Ponte Aérea Estudantil é lojista e não tem nada a ver com a Ponte Câmbio." → **R22** | 17/10, 9h45 |
+| Se aparecer na Ponte uma operação de um CNPJ que não está na planilha, propomos calcular a nossa metade do spread mesmo assim e abrir pendência de cadastro para o comercial. | "Não aconteceu em setembro. Se acontecer, o tratamento que vocês propuseram é razoável. Registrem como premissa." → **P04** (continua premissa) | 17/10, 9h45 |
 
 ---
 
@@ -243,7 +251,7 @@ A Fonte 1 não registra nenhuma pergunta feita pelo nosso time. As confirmaçõe
 
 - **TED da Ponte:** conferir se o TED da Ponte bate com a nota de intermediação (R$ 39.543,45, P22). Quem decide é a Helena (R18, 22h33/22h34).
 - **Devolução de PIX da Mundo Aberto (L65, +R$ 12.400,00):** o motivo é desconhecido. Classificada em 2.1.01.001, com a pendência de apurar o motivo (R20, 20h49).
-- **MRD2026090425 (+R$ 18.240,00, PONTE AEREA ESTUDANTIL):** verificado, é o único dos 64 PIX recebidos no Meridiano sem remessa correspondente na Ponte. Aguarda resposta da Helena.
+- **Adiantamento da Ponte Aérea em outubro (pergunta a fazer):** a operação que o PIX de 17/09 adiantou sai em outubro (R22). Se em outubro ela vier sem PIX do mesmo mês, a conferência de outubro (P12) mostra PIX a menos e gera PEN-PIX-REM-95739378000118. Não há regra para abater o adiantamento de um mês anterior; não implementado.
 - **Valores da Fonte 1:** contagens e totais (por exemplo, 228 operações, R$ 39.543,45, R$ 1.546,28 e R$ 1.418,85) ainda precisam ser reconferidos pelo nosso código antes de virar valor de referência nos testes.
 
 ### Conflitos resolvidos
@@ -268,6 +276,7 @@ Em todos, vale a regra da Helena: ela é a fonte, e a Fonte 1 é a interpretaç�
 
 ### Pendências resolvidas
 
+- **MRD2026090425 (+R$ 18.240,00, PONTE AEREA ESTUDANTIL):** adiantamento de remessa de outubro (R22, Helena às 9h45). Saiu de pendencias.csv; o lançamento continua em 2.1.02.001 com metodo REGRA, agora com confiança 1,00 (P10).
 - **IOF (4.3.01):** deixou de ser premissa do colega. É aplicação de R19 (Helena às 21h14: "além desses, nada estava provisionado") e vai direto para a despesa 4.3.01.
 
 ---

@@ -3,12 +3,17 @@
 | | |
 |---|---|
 | Data | 2026-10-17 |
-| Commit do código | `856cf16` (branch `pix`). Os 6 CSVs de `saida/` não mudaram desde `f45295f`: um fechamento novo nesse commit gera arquivos idênticos byte a byte |
+| Commit do código | branch `regras-helena`, commit da R22 (sobre `966ecf5`). Em relação a `f45295f`, a R22 mudou 3 linhas de 3 CSVs (ver abaixo); comissões, notas e divergências estão idênticas byte a byte |
 | Fechamento | `python -m tarvo fechar --competencia 2026-09 --entrada dados/2026-09 --saida saida/` (IA conforme `config/ia.yaml`; em setembro todo lançamento casa uma regra, então a IA não é chamada nenhuma vez, P14) |
 | Resumo | `python -m tarvo resumo --saida saida` |
-| pytest | **314 passed** (`python -m pytest -q`, 15,9 s) |
+| pytest | **318 passed** (`python -m pytest -q`, 14,4 s) |
 | `validar_saida(saida/)` | `[]`, **sem problemas** |
-| Rastro | 493 de 493 itens com soma do rastro por id_saida = valor reportado |
+| Rastro | 492 de 492 itens com soma do rastro por id_saida = valor reportado |
+
+**R22 (Helena, 17/10 às 9h45):** o PIX de 17/09 da Ponte Aérea Estudantil (MRD2026090425, 18.240,00) é adiantamento de uma remessa de outubro, não pendência. Mudou em relação ao fechamento anterior:
+- pendencias.csv: saiu a PEN-PIX-SEMREM-MRD2026090425 (16 → 15 pendências; soma 401.051,75 → 382.811,75);
+- rastro.csv: saiu a linha de rastro dessa pendência (5.176 → 5.175);
+- lancamentos_classificados.csv: LAN-MER-MRD2026090425 continua em 2.1.02.001 com metodo REGRA, e a confiança passa de 0,80 para 1,00 (P10: deixou de ser premissa nossa e virou regra da Helena).
 
 **Coluna "Esperado":** valor copiado de um assert dos testes, com o teste de origem (`arquivo::função`). Quando o número do relatório é a soma de dois asserts, a conta aparece na coluna. "—" quer dizer que nenhum teste fixa esse número.
 ✓ = bate com o esperado; ✗ = não bate.
@@ -27,13 +32,13 @@ Valores em R$, no formato brasileiro.
 | divergencias_taxa.csv | 237 | 210 + 27 | `test_checkout.py::test_set_divergencias` (210) + `test_remessa.py::test_set_divergencias` (27) | ✓ |
 | notas_a_emitir.csv | 21 | 20 + 1 | `test_checkout.py::test_set_notas` (20) + `test_remessa.py::test_set_nota_unica` (1) | ✓ |
 | lancamentos_classificados.csv | 184 | 184 | `test_bancos.py::test_setembro_184_lancamentos_todos_por_regra` | ✓ |
-| pendencias.csv | 16 | — | nenhum teste fixa o total; as 16 aparecem uma a uma na seção 6 | |
-| rastro.csv | 5.176 | — | | |
+| pendencias.csv | 15 | — | nenhum teste fixa o total; as 15 aparecem uma a uma na seção 6 | |
+| rastro.csv | 5.175 | — | | |
 
 | checagem | resultado | Esperado | teste de origem | |
 |---|---|---|---|:-:|
 | `validar_saida` (formato, id único, soma do rastro) | `[]` | `[]` | `test_bancos.py::test_setembro_validar_saida_com_os_tres_modulos` | ✓ |
-| itens com soma do rastro = valor reportado | 493 de 493 | — | | |
+| itens com soma do rastro = valor reportado | 492 de 492 | — | | |
 | itens com soma diferente, itens sem rastro, id do rastro sem item | 0, 0, 0 | — | | |
 
 ---
@@ -252,18 +257,17 @@ As 4 de remessa são os spreads negativos (P15). As 5 de checkout são estornos 
 | LOJISTA_SEM_CONTRATO | 1 | 7.876,05 |
 | NOTA_NAO_EMITIDA | 1 | -5,50 |
 | OPERACAO_DUPLICADA | 1 | 821,88 |
-| RECURSO_SEM_REMESSA | 1 | 18.240,00 |
 | TRANSFERENCIA_EM_TRANSITO | 1 | 300.000,00 |
-| **total** | 16 | 401.051,75 |
+| **total** | 15 | 382.811,75 |
 
 ### Por quem decide
 
 | quem_decide | pendências | soma |
 |---|---:|---:|
 | Comercial | 1 | 7.876,05 |
-| Financeiro (Helena) | 15 | 393.175,70 |
+| Financeiro (Helena) | 14 | 374.935,70 |
 
-Nenhum teste fixa os agregados por tipo ou por quem decide. As 16 pendências estão conferidas uma a uma abaixo.
+Nenhum teste fixa os agregados por tipo ou por quem decide. As 15 pendências estão conferidas uma a uma abaixo.
 
 ### Lista completa
 
@@ -283,7 +287,6 @@ Nenhum teste fixa os agregados por tipo ou por quem decide. As 16 pendências es
 | PEN-TED-PONTE | CONFERENCIA_REPASSE | 228 | 39.543,45 | Financeiro (Helena) | 228 refs · 39.543,45 = NF-REM | `test_remessa.py::test_set_pendencias` | ✓ |
 | PEN-NAOID-L50 | CREDITO_NAO_IDENTIFICADO | 1 | 7.350,00 | Financeiro (Helena) | 7.350,00 · Financeiro (Helena) | `test_bancos.py::test_setembro_pendencias_r20` | ✓ |
 | PEN-DEVOL-PIX-L65 | DEVOLUCAO_PIX | 1 | 12.400,00 | Financeiro (Helena) | 12.400,00 · Financeiro (Helena) | `test_bancos.py::test_setembro_pendencias_r20` | ✓ |
-| PEN-PIX-SEMREM-MRD2026090425 | RECURSO_SEM_REMESSA | 1 | 18.240,00 | Financeiro (Helena) | 18.240,00 · RECURSO_SEM_REMESSA · Financeiro (Helena) | `test_bancos.py::test_setembro_um_pix_sem_remessa` | ✓ |
 | PEN-TRANSF-L92 | TRANSFERENCIA_EM_TRANSITO | 1 | 300.000,00 | Financeiro (Helena) | 300.000,00 · TRANSFERENCIA_EM_TRANSITO | `test_bancos.py::test_setembro_uma_transferencia_em_transito` | ✓ |
 
 Pendências que os testes exigem que **não** existam, e de fato não existem:
@@ -292,7 +295,8 @@ Pendências que os testes exigem que **não** existam, e de fato não existem:
 |---|---|:-:|
 | PEN-SEMREGRA-* (lançamento sem regra) | `test_bancos.py::test_setembro_184_lancamentos_todos_por_regra` | ✓ |
 | PEN-TED-LIQ-* (TED de liquidação × Ponte) | `test_bancos.py::test_setembro_ted_liq_bate_com_a_ponte` | ✓ |
-| PEN-PIX-REM-* (PIX × remessas por cliente) | `test_bancos.py::test_setembro_um_pix_sem_remessa` | ✓ |
+| PEN-PIX-REM-* (PIX × remessas por cliente) | `test_bancos.py::test_setembro_pix_da_ponte_aerea_e_adiantamento_sem_pendencia` | ✓ |
+| PEN-PIX-SEMREM-* e qualquer pendência com MRD2026090425 (adiantamento, R22); o LAN-MER-MRD2026090425 fica em 2.1.02.001 · REGRA · 1,00 | `test_bancos.py::test_setembro_pix_da_ponte_aerea_e_adiantamento_sem_pendencia` | ✓ |
 | PEN-FORA-*, PEN-NAOCAD-*, PEN-NF-* da remessa | `test_remessa.py::test_set_pendencias` | ✓ |
 | PEN-NF-CHK de outro lojista além da Casa do Estudante | `test_checkout.py::test_set_notas` | ✓ |
 
@@ -308,7 +312,7 @@ python -m tarvo fechar --competencia 2026-10 --entrada <tmp>/dados/2026-10 --sai
 python -m tarvo resumo --saida <tmp>/saida
 ```
 
-Resultado: 511 itens, `validar_saida` sem problemas, rastro fechando em 511 de 511. Linhas: comissões 36, divergências 246, notas 21, lançamentos 186, pendências 22, rastro 5.214.
+Resultado: 510 itens, `validar_saida` sem problemas, rastro fechando em 510 de 510. Linhas: comissões 36, divergências 246, notas 21, lançamentos 186, pendências 21, rastro 5.213.
 
 ### O que cada caso novo gerou
 
@@ -321,7 +325,7 @@ Para cada caso, a tabela lista todos os id_saida que têm a referência nova no 
 | (c) Meridiano: "PIX RECEB INSTITUTO SAKURA IDIOMAS", +25.000,00 | MRD2026100446 | LAN-MER-MRD2026100446 (A_CLASSIFICAR · HUMANO · 0,00) e **PEN-SEMREGRA-MRD2026100446**: LANCAMENTO_SEM_REGRA, 25.000,00 | só esses dois; nenhuma conferência PIX × remessa | `test_outubro.py::test_casos_b_c_pix_fora_das_listas_ficam_a_classificar` | ✓ |
 | (d) Ponte: operação de CNPJ fora da planilha (41928553000196) | PC-1026-9001 | COM-REM-41928553000196 (121,50), NF-REM-75374179000146 (121,50 dos 39.664,95), PEN-TED-PONTE (121,50), **PEN-NAOCAD-REM-41928553000196**: LOJISTA_NAO_CADASTRADO, 121,50, **PEN-TED-LIQ-2026-10-14**: DIVERGENCIA_TED_LIQUIDACAO, 16.505,48, **PEN-PIX-REM-41928553000196**: DIFERENCA_PIX_REMESSA, -16.505,48 | exatamente esses 6 id_saida, sem DIV-; comissão = 50% do spread | `test_outubro.py::test_caso_d_operacao_de_cnpj_fora_da_planilha` | ✓ |
 
-**Pendências novas: 6** (as que estão em negrito). Elas explicam a diferença entre as 16 pendências de setembro e as 22 de outubro. 16.505,48 é valor_brl + iof_brl da operação nova, que não tem TED de liquidação nem PIX do cliente. O rastro da PEN-TED-LIQ-2026-10-14 traz as 10 referências do dia: as outras 9 (8 operações e a TED do dia) somam zero entre si.
+**Pendências novas: 6** (as que estão em negrito). Elas explicam a diferença entre as 15 pendências de setembro e as 21 de outubro. 16.505,48 é valor_brl + iof_brl da operação nova, que não tem TED de liquidação nem PIX do cliente. O rastro da PEN-TED-LIQ-2026-10-14 traz as 10 referências do dia: as outras 9 (8 operações e a TED do dia) somam zero entre si.
 
 ### Nada vira definitivo por engano
 
@@ -361,10 +365,10 @@ Os valores alternativos **não são valores de teste**. P15, P16, P19 e P20 são
 | | | DIV-REM-PC-0926-0326 · DIV-REM-PC-0926-0491 | -1.001,30 · -574,90 | | -1.001,29 · -574,91 (os 4 negativos continuam somando -3.565,98) |
 | | | soma das divergências de remessa | -2.147,13 | | -2.147,10 |
 | **P18** | contestação do spread negativo pela diferença contra o contrato (mesmo cálculo de P17) | 4 PEN-NEG-REM: PC-0926-0210 · 0326 · 0491 · 0545 | -1.351,87 · -1.001,30 · -574,90 · -637,91 = **-3.565,98** | pelo Spread R$ negativo da operação | -687,52 · -509,22 · -292,28 · -345,03 = **-1.834,05** |
-| | | CONTESTACAO_PONTE (5 pendências) · total de pendencias.csv | -2.147,13 · 401.051,75 | | -415,20 · 402.783,68 |
+| | | CONTESTACAO_PONTE (5 pendências) · total de pendencias.csv | -2.147,13 · 382.811,75 | | -415,20 · 384.543,68 |
 | **P19** | PEN-DUP pelo Spread R$ da cópia descartada | PEN-DUP-REM-PC-0926-0162 | 821,88 (o quanto o rodapé de 78.073,59 está inflado) | pela parte da Tarvo na cópia (50%, R11) | **410,94** |
-| **P20** | transferência de 30/09 mantida como pendência até a conciliação de outubro | pendencias.csv: quantidade · soma | 16 · 401.051,75 | sem a PEN-TRANSF-L92, já que a R20 explica a transferência | **15 · 101.051,75** |
-| | | "Financeiro (Helena)" | 15 · 393.175,70 | | 14 · 93.175,70 |
+| **P20** | transferência de 30/09 mantida como pendência até a conciliação de outubro | pendencias.csv: quantidade · soma | 15 · 382.811,75 | sem a PEN-TRANSF-L92, já que a R20 explica a transferência | **14 · 82.811,75** |
+| | | "Financeiro (Helena)" | 14 · 374.935,70 | | 13 · 74.935,70 |
 | **P21** | Atlas (EC 1076801732) fora de comissoes_por_lojista; o que a Orbe cobrou fica em PEN-SEMCONTRATO | comissões CHECKOUT: lojistas · soma | 21 · 207.039,73 | faturar a Atlas pela aba "ANTIGO 2025 - nao usar" (CNPJ 39566044000119; débito 1,69%, crédito à vista 2,99%, parcelado 3,49%, Pix 0,99%) | **22 · 211.417,02** (+4.377,29 em 50 linhas; as 7 de antecipação e reversão ficam sem taxa, porque a aba de 2025 não tem antecipação) |
 | | | notas CHECKOUT | 20 | | 21 |
 | | | divergências da Atlas | 0 | | 41 linhas · 827,22 (a Orbe aplicou taxas diferentes das de 2025) |

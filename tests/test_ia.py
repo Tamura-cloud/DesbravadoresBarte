@@ -228,7 +228,7 @@ def _classificar_com_ia(cfg_bancos, contas, cfg_ia, cliente):
     assert lancs[0].regra is not None and lancs[1].regra is None
     fallback = FallbackIA(cfg_ia, contas, cliente)
     sugestoes = sugestoes_ia([lancs], fallback)
-    itens = [item_lancamento(l, cfg_bancos, set(), sugestoes.get(l.id_saida)) for l in lancs]
+    itens = [item_lancamento(l, cfg_bancos, sugestoes.get(l.id_saida)) for l in lancs]
     pendencias = {p.id_saida: p for p in pendencias_lancamentos(lancs, cfg_bancos, sugestoes, cfg_ia)}
     return itens, pendencias
 
