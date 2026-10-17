@@ -1,6 +1,6 @@
 """Leitor do extrato OFX 1.02 (SGML) do Banco Meridiano.
 
-As tags SGML não fecham (<TRNAMT>207215.87 sem </TRNAMT>), então não há parser XML:
+As tags SGML não fecham (<TRNAMT>1234.56 sem </TRNAMT>), então não há parser XML:
 cada campo é lido por regex dentro do seu bloco.
 """
 
@@ -57,7 +57,7 @@ def _tag(bloco: str, nome: str) -> str | None:
 
 
 def _data_ofx(s: str | None) -> date | None:
-    """"20260901120000[-3:BRT]" para date (a data como o banco gravou)."""
+    """"AAAAMMDDHHMMSS[-3:BRT]" para date (a data como o banco gravou)."""
     if not s:
         return None
     if not re.match(r"^\d{8}", s):
