@@ -7,3 +7,8 @@
 - Formato de saída: CSV com ; como separador, ponto decimal, datas AAAA-MM-DD, CNPJ só com 14 dígitos, linha_negocio CHECKOUT|REMESSA, banco AURORA|MERIDIANO, metodo REGRA|IA|HUMANO, confianca de 0 a 1.
 - Todo número de saída precisa fechar com o rastro.csv: a soma de valor por id_saida tem que ser igual ao número reportado. Existe teste para isso.
 - Rode pytest antes de dizer que terminou.
+- Valores de setembro (contagens, totais) podem aparecer SÓ em tests/, como valores de referência. Nunca em src/ ou config/.
+- Dinheiro é sempre decimal.Decimal com 2 casas (quantize ROUND_HALF_UP). Nunca float para valor monetário. Taxas percentuais também são Decimal, em pontos percentuais (2,59% vira Decimal("2.59")).
+- Datas são datetime.date.
+- Todo arquivo é aberto com encoding explícito. Nunca use o encoding padrão do sistema (estamos no Windows).
+- Cada pessoa trabalha na própria branch e só mexe nos próprios arquivos. Arquivos compartilhados (comum.py, cli.py, CLAUDE.md) só mudam com o time avisado.
