@@ -126,6 +126,17 @@ def test_lancamento_classificado_rastro_e_a_propria_linha(cfg):
     assert [tuple(o) for o in item.origens] == [("mer.ofx", "MRDX1", D("-48.21"))]
 
 
+def test_textos_sem_ponto_e_virgula(cfg):
+    # a descrição é só exibição: a regra casa pelo texto original, a saída troca ";" por " - "
+    l = _um(AURORA, cfg, "PIX ENVIADO FORNECEDOR; QUALQUER", "-10.00", ref="L8")
+    devol = _um(AURORA, cfg, "DEVOLUCAO PIX - MUNDO ABERTO INTERC", "12.00", ref="L9")
+    item = item_lancamento(l, cfg, set())
+    assert item.campos["descricao"] == "PIX ENVIADO FORNECEDOR - QUALQUER"
+    textos = [v for i in [item, *pendencias_lancamentos([l, devol], cfg)] for v in i.campos.values()
+              if isinstance(v, str)]
+    assert textos and not [t for t in textos if ";" in t]
+
+
 def test_pendencias_r20(cfg):
     naoid = _um(AURORA, cfg, "PIX RECEBIDO 00000000000000 SEM IDENTIFICACAO", "50.00", ref="L3")
     devol = _um(AURORA, cfg, "DEVOLUCAO PIX - LOJA QUALQUER", "20.00", ref="L4")

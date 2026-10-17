@@ -18,7 +18,7 @@ import pandas as pd
 import yaml
 
 from tarvo.leitores.comum import dinheiro, sem_acento
-from tarvo.saida import COMISSOES, DIVERGENCIAS, NOTAS, PENDENCIAS, ItemSaida
+from tarvo.saida import COMISSOES, DIVERGENCIAS, NOTAS, PENDENCIAS, ItemSaida, texto_saida
 
 if TYPE_CHECKING:
     from tarvo.fechamento import Entradas
@@ -30,18 +30,18 @@ ZERO = Decimal("0.00")
 # Colunas que o leitor acrescenta e que não são conteúdo da operação.
 COLUNAS_POSICAO = ("arquivo_origem", "linha_planilha")
 
-MOTIVO_DUPLICATA = "o relatório da Ponte soma a operação duas vezes; pedir correção do relatório"
+MOTIVO_DUPLICATA = "o relatório da Ponte soma a operação duas vezes - pedir correção do relatório"
 MOTIVO_FORA_COMPETENCIA = "operação contratada fora da competência {competencia}: não entra no mês (R11)"
 MOTIVO_NAO_CADASTRADO = (
     "CNPJ da Ponte fora da planilha de taxas: comissão calculada mesmo assim (a Ponte paga), "
-    "sem spread contratado para conferir divergência; cadastrar o lojista"
+    "sem spread contratado para conferir divergência - cadastrar o lojista"
 )
 MOTIVO_CONTESTACAO = (
-    "spread aplicado acima do contratado; a nota sai pelo realizado (R16) e o ajuste vem quando a Ponte devolver"
+    "spread aplicado acima do contratado - a nota sai pelo realizado (R16) e o ajuste vem quando a Ponte devolver"
 )
-MOTIVO_NEGATIVO = "spread negativo com trava D-1 vencida (R12); fora da comissão"
+MOTIVO_NEGATIVO = "spread negativo com trava D-1 vencida (R12) - fora da comissão"
 MOTIVO_NOTA_NAO_EMITIDA = "comissão de remessa do mês zero ou negativa: não emite nota (R17)"
-MOTIVO_TED = "conferir o TED de repasse da Ponte quando cair; não supor desconto (R18)"
+MOTIVO_TED = "conferir se o TED de repasse da Ponte bate com a nota de intermediação - não supor desconto (R18)"
 
 
 class ErroRemessa(ValueError):
@@ -219,7 +219,7 @@ def _soma(valores) -> Decimal:
 
 def _pendencia(id_saida: str, tipo: str, refs, motivo: str, valor: Decimal, origens, cfg: ConfigRemessa) -> ItemSaida:
     return ItemSaida(id_saida, PENDENCIAS.nome,
-                     {"tipo": tipo, "ref_origem": refs, "motivo": motivo, "quem_decide": cfg.quem_decide},
+                     {"tipo": tipo, "ref_origem": refs, "motivo": texto_saida(motivo), "quem_decide": cfg.quem_decide},
                      valor, origens)
 
 
@@ -238,7 +238,7 @@ def gerar_itens(operacoes: list[OperacaoRemessa], descartadas: list[dict], fora:
         rastro = [(o.arquivo_origem, o.ref_origem, o.comissao) for o in com_comissao]
         if com_comissao:
             itens.append(ItemSaida(f"COM-REM-{cnpj}", COMISSOES.nome,
-                                   {"cnpj": cnpj, "lojista": nomes[cnpj], "linha_negocio": LINHA_NEGOCIO},
+                                   {"cnpj": cnpj, "lojista": texto_saida(nomes[cnpj]), "linha_negocio": LINHA_NEGOCIO},
                                    _soma(o.comissao for o in com_comissao), rastro))
             rastro_nota.extend(rastro)
 
@@ -278,19 +278,19 @@ def gerar_itens(operacoes: list[OperacaoRemessa], descartadas: list[dict], fora:
                                 [(op["arquivo_origem"], op["ref_origem"], op["spread_brl"])], cfg))
 
     total = _soma(o[2] for o in rastro_nota)
+    refs_nota = [o[1] for o in rastro_nota] or arquivo_ponte
     if total > 0:  # R16, R17: uma nota, tomadora Ponte, pelo realizado
         itens.append(ItemSaida(f"NF-REM-{cfg.tomador_cnpj}", NOTAS.nome,
-                               {"tomador_cnpj": cfg.tomador_cnpj, "tomador": cfg.tomador_nome,
+                               {"tomador_cnpj": cfg.tomador_cnpj, "tomador": texto_saida(cfg.tomador_nome),
                                 "linha_negocio": LINHA_NEGOCIO,
-                                "discriminacao": cfg.discriminacao_nota.format(competencia=competencia)},
+                                "discriminacao": texto_saida(cfg.discriminacao_nota.format(competencia=competencia))},
                                total, rastro_nota))
     else:
-        refs = [o[1] for o in rastro_nota] or arquivo_ponte
-        itens.append(_pendencia(f"PEN-NF-REM-{cfg.tomador_cnpj}", "NOTA_NAO_EMITIDA", refs,
+        itens.append(_pendencia(f"PEN-NF-REM-{cfg.tomador_cnpj}", "NOTA_NAO_EMITIDA", refs_nota,
                                 MOTIVO_NOTA_NAO_EMITIDA, total, rastro_nota, cfg))
 
-    # R18: sem valor e sem origens; a referência é o relatório da Ponte que anuncia o repasse
-    itens.append(_pendencia("PEN-TED-PONTE", "CONFERENCIA_REPASSE", arquivo_ponte, MOTIVO_TED, ZERO, [], cfg))
+    # R18: o TED é conferido contra a nota (mesmo valor e mesmas operações); nenhum desconto é suposto
+    itens.append(_pendencia("PEN-TED-PONTE", "CONFERENCIA_REPASSE", refs_nota, MOTIVO_TED, total, rastro_nota, cfg))
     return itens
 
 

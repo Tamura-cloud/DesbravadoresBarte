@@ -213,11 +213,27 @@ def test_total_zero_nao_gera_nota_e_gera_pendencia(taxas, cfg):
     assert pen.campos["tipo"] == "NOTA_NAO_EMITIDA" and pen.valor_reportado == D("0.00")
 
 
-def test_pendencia_do_ted_sem_valor_e_sem_origens(taxas, cfg):
-    itens = _calc(taxas, cfg, _op("OP-1", CNPJ_A, "10.00", "1.2000"))
+def test_pendencia_do_ted_tem_o_valor_e_as_origens_da_nota(taxas, cfg):
+    # R18: conferir o TED contra a nota, sem supor desconto
+    itens = _calc(taxas, cfg, _op("OP-1", CNPJ_A, "10.00", "1.2000"), _op("OP-2", CNPJ_B, "7.01", "1.5000"),
+                  _op("OP-NEG", CNPJ_B, "-10.00", "-1.0000"))
+    nf = _por_prefixo(itens, "NF-")["NF-REM-75374179000146"]
     ted = _por_prefixo(itens, "PEN-TED-")["PEN-TED-PONTE"]
-    assert ted.valor_reportado == D("0.00") and ted.origens == ()
+    assert ted.valor_reportado == nf.valor_reportado == D("8.51")
+    assert ted.origens == nf.origens
+    assert ted.campos["ref_origem"] == ["OP-1", "OP-2"]
     assert ted.campos["tipo"] == "CONFERENCIA_REPASSE"
+    assert ted.campos["motivo"] == ("conferir se o TED de repasse da Ponte bate com a nota de intermediação - "
+                                    "não supor desconto (R18)")
+
+
+def test_textos_sem_ponto_e_virgula(taxas, cfg):
+    itens = _calc(taxas, cfg, _op("OP-1", CNPJ_FORA, "10.00", "1.9000", cliente="NOVA; LOJA"),
+                  _op("OP-1", CNPJ_FORA, "10.00", "1.9000", cliente="NOVA; LOJA", observacao="reprocessada"),
+                  _op("OP-NEG", CNPJ_B, "-10.00", "-1.0000"))
+    assert _por_prefixo(itens, "COM-")[f"COM-REM-{CNPJ_FORA}"].campos["lojista"] == "NOVA - LOJA"
+    textos = [v for i in itens for k, v in i.campos.items() if isinstance(v, str)]
+    assert textos and not [t for t in textos if ";" in t]
 
 
 def test_sinteticos_gravam_e_validam(taxas, cfg, tmp_path):
@@ -309,7 +325,10 @@ def test_set_pendencias(itens):
     assert pen[f"PEN-CONTEST-REM-{MUNDO_ABERTO}"].valor_reportado == D("1418.85")
     assert len(pen[f"PEN-CONTEST-REM-{MUNDO_ABERTO}"].campos["ref_origem"]) == 23
     assert {r: pen[f"PEN-NEG-REM-{r}"].valor_reportado for r in NEGATIVOS} == NEGATIVOS
-    assert pen["PEN-TED-PONTE"].valor_reportado == D("0.00")
+    ted = pen["PEN-TED-PONTE"]
+    nf = _por_prefixo(itens, "NF-")[f"NF-REM-{PONTE}"]
+    assert ted.valor_reportado == nf.valor_reportado == D("39543.45")
+    assert ted.origens == nf.origens and len(ted.campos["ref_origem"]) == 228
     assert not [p for p in pen if p.startswith(("PEN-FORA-", "PEN-NAOCAD-", "PEN-NF-"))]
 
 

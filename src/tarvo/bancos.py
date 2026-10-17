@@ -24,7 +24,7 @@ from tarvo import ia
 from tarvo.leitores.comum import dinheiro
 from tarvo.remessa import carregar_config as carregar_config_remessa
 from tarvo.remessa import deduplicar, na_competencia
-from tarvo.saida import LANCAMENTOS, PENDENCIAS, ItemSaida
+from tarvo.saida import LANCAMENTOS, PENDENCIAS, ItemSaida, texto_saida
 
 if TYPE_CHECKING:
     from tarvo.fechamento import Entradas
@@ -48,17 +48,17 @@ MESES = ("janeiro", "fevereiro", "março", "abril", "maio", "junho", "julho", "a
          "outubro", "novembro", "dezembro")
 
 MOTIVO_NAO_IDENTIFICADO = "PIX recebido sem identificação: não é receita até identificar a origem (R20)"
-MOTIVO_DEVOLUCAO = "devolução de PIX: repasse que voltou, motivo desconhecido (R20); apurar o motivo (P06)"
+MOTIVO_DEVOLUCAO = "devolução de PIX: repasse que voltou, motivo desconhecido (R20) - apurar o motivo (P06)"
 MOTIVO_SEM_REGRA = "nenhuma regra de config/bancos.yaml cobre o lançamento: classificar manualmente (P09)"
 MOTIVO_IA = (
-    "nenhuma regra de config/bancos.yaml cobre o lançamento (P09); sugestão da IA ({modelo}, {nivel} "
+    "nenhuma regra de config/bancos.yaml cobre o lançamento (P09) - sugestão da IA ({modelo}, {nivel} "
     "{confianca}): {justificativa} Uma pessoa revisa antes de lançar (P14)"
 )
 NIVEL_IA = "confiança"
 NIVEL_IA_BAIXO = "baixa confiança, abaixo do limiar {limiar}:"
 MOTIVO_TED_LIQ = (
     "TEDs LIQ OPERACOES do dia diferentes de valor_brl + iof_brl das operações únicas da Ponte contratadas "
-    "no dia (P11); valor = operações - TEDs pagas"
+    "no dia (P11) - valor = operações - TEDs pagas"
 )
 MOTIVO_PIX_SEM_REMESSA = (
     "PIX do cliente sem operação correspondente da Ponte no mês: a soma dos PIX excede a das operações "
@@ -66,11 +66,11 @@ MOTIVO_PIX_SEM_REMESSA = (
 )
 MOTIVO_PIX_DIFERENCA = (
     "soma dos PIX do cliente no mês diferente de valor_brl + iof_brl das operações únicas da Ponte no mês, "
-    "sem um PIX único que explique a diferença (P12); valor = PIX - operações"
+    "sem um PIX único que explique a diferença (P12) - valor = PIX - operações"
 )
 MOTIVO_TRANSITO = (
     "transferência entre contas sem TED de mesma titularidade no Meridiano até {fim}: pela R20 cai no "
-    "Meridiano em {chegada}; conferir no extrato de {mes}"
+    "Meridiano em {chegada} - conferir no extrato de {mes}"
 )
 MOTIVO_SEM_PAR = (
     "transferência entre contas sem TED de mesma titularidade e mesmo valor no Meridiano na mesma data "
@@ -329,7 +329,8 @@ def item_lancamento(l: Lancamento, cfg: ConfigBancos, sem_remessa: set[str],
         if l.ref_origem in sem_remessa:  # P10
             confianca = min(confianca, cfg.confianca_pix_sem_remessa)
     return ItemSaida(l.id_saida, LANCAMENTOS.nome,
-                     {"banco": l.banco, "ref_origem": l.ref_origem, "data": l.data, "descricao": l.descricao,
+                     {"banco": l.banco, "ref_origem": l.ref_origem, "data": l.data,
+                      "descricao": texto_saida(l.descricao),
                       "conta_codigo": conta, "metodo": metodo, "confianca": confianca},
                      l.valor, [l.origem()])
 
@@ -342,7 +343,7 @@ def _soma(valores) -> Decimal:
 
 def _pendencia(id_saida: str, tipo: str, refs, motivo: str, valor: Decimal, origens, cfg: ConfigBancos) -> ItemSaida:
     return ItemSaida(id_saida, PENDENCIAS.nome,
-                     {"tipo": tipo, "ref_origem": refs, "motivo": motivo, "quem_decide": cfg.quem_decide},
+                     {"tipo": tipo, "ref_origem": refs, "motivo": texto_saida(motivo), "quem_decide": cfg.quem_decide},
                      valor, origens)
 
 
@@ -351,7 +352,7 @@ def pendencia_ia(l: Lancamento, s: ia.Sugestao, cfg_ia: ia.ConfigIA) -> ItemSaid
     nivel = NIVEL_IA if s.confianca >= cfg_ia.limiar_confianca else NIVEL_IA_BAIXO.format(limiar=cfg_ia.limiar_confianca)
     motivo = MOTIVO_IA.format(modelo=cfg_ia.modelo, nivel=nivel, confianca=s.confianca, justificativa=s.justificativa)
     return ItemSaida(f"PEN-IA-{l.ref_origem}", PENDENCIAS.nome,
-                     {"tipo": "REVISAR_SUGESTAO_IA", "ref_origem": l.ref_origem, "motivo": motivo,
+                     {"tipo": "REVISAR_SUGESTAO_IA", "ref_origem": l.ref_origem, "motivo": texto_saida(motivo),
                       "quem_decide": cfg_ia.quem_decide},
                      l.valor, [l.origem()])
 

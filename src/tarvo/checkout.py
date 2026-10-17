@@ -18,7 +18,7 @@ import pandas as pd
 import yaml
 
 from tarvo.leitores.comum import dinheiro
-from tarvo.saida import COMISSOES, DIVERGENCIAS, NOTAS, PENDENCIAS, ItemSaida
+from tarvo.saida import COMISSOES, DIVERGENCIAS, NOTAS, PENDENCIAS, ItemSaida, texto_saida
 
 if TYPE_CHECKING:
     from tarvo.fechamento import Entradas
@@ -29,11 +29,15 @@ ZERO = Decimal("0.00")
 
 MOTIVO_NOTA_NAO_EMITIDA = "comissão de checkout do mês zero ou negativa: não emite nota e não passa para o mês seguinte (R06)"
 MOTIVO_SEM_CONTRATO = (
-    "EC sem taxa contratada na aba vigente nem em ec_sem_codigo: não faturar até o comercial confirmar (R08); "
+    "EC sem taxa contratada na aba vigente nem em ec_sem_codigo: não faturar até o comercial confirmar (R08) - "
     "valor = taxa cobrada pela Orbe"
 )
 MOTIVO_DEVOLUCAO = (
-    "taxa aplicada pela Orbe diferente da contratada; devolução ao lojista e cobrança da Orbe decididas caso a caso (R03)"
+    "taxa aplicada pela Orbe diferente da contratada - devolução ao lojista e cobrança da Orbe decididas caso a caso (R03)"
+)
+MOTIVO_DEVOLUCAO_CONDICAO = (
+    "tarifa de checkout zerada por condição especial vigente ({regra}) - devolução já decidida pelo financeiro: "
+    "o que a Orbe cobrou é devolvido ao lojista - valor = taxa cobrada pela Orbe"
 )
 
 
@@ -229,6 +233,27 @@ def _soma(valores) -> Decimal:
     return sum(valores, ZERO)
 
 
+def _pendencia_devolucao(cnpj: str, divergentes: list[LinhaCheckout], cfg: ConfigCheckout) -> ItemSaida:
+    """R03: valor = diferença pela fórmula. R10: com a condição especial vigente, a devolução já está decidida
+    e o valor é a taxa que a Orbe efetivamente cobrou, linha a linha. A divergência continua pela R03."""
+    regras = {c.regra for c in cfg.condicoes}
+    condicao = {l.origem_taxa for l in divergentes if l.origem_taxa in regras}
+    if not condicao:  # R03
+        motivo = MOTIVO_DEVOLUCAO
+        origens = [(l.arquivo_origem, l.ref_origem, l.diferenca) for l in divergentes]
+    elif len(condicao) == 1 and all(l.origem_taxa in condicao for l in divergentes):  # R10
+        motivo = MOTIVO_DEVOLUCAO_CONDICAO.format(regra=condicao.pop())
+        origens = [(l.arquivo_origem, l.ref_origem, l.valor_taxa_orbe) for l in divergentes]
+    else:
+        refs = ", ".join(sorted(l.ref_origem for l in divergentes))
+        raise ErroCheckout(f"CNPJ {cnpj}: divergências com e sem condição especial no mesmo mês ({refs}); "
+                           f"sem regra para juntar as duas devoluções")
+    return ItemSaida(f"PEN-DEVOL-CHK-{cnpj}", PENDENCIAS.nome,
+                     {"tipo": "DEVOLUCAO_LOJISTA", "ref_origem": [l.ref_origem for l in divergentes],
+                      "motivo": texto_saida(motivo), "quem_decide": cfg.quem_decide["devolucao_lojista"]},
+                     _soma(o[2] for o in origens), origens)
+
+
 def gerar_itens(linhas: list[LinhaCheckout], contratos_nome, competencia: str, cfg: ConfigCheckout) -> list[ItemSaida]:
     """contratos_nome: CNPJ -> nome do lojista na planilha."""
     itens: list[ItemSaida] = []
@@ -239,7 +264,7 @@ def gerar_itens(linhas: list[LinhaCheckout], contratos_nome, competencia: str, c
 
     for cnpj in sorted(por_cnpj):
         doc = por_cnpj[cnpj]
-        nome = contratos_nome(cnpj)
+        nome = texto_saida(contratos_nome(cnpj))
         rastro_comissao = [(l.arquivo_origem, l.ref_origem, l.comissao) for l in doc]
         comissao = _soma(l.comissao for l in doc)
         itens.append(ItemSaida(f"COM-CHK-{cnpj}", COMISSOES.nome,
@@ -249,12 +274,12 @@ def gerar_itens(linhas: list[LinhaCheckout], contratos_nome, competencia: str, c
         if comissao > 0:  # R05, R06: uma nota por lojista, antecipação na mesma nota
             itens.append(ItemSaida(f"NF-CHK-{cnpj}", NOTAS.nome,
                                    {"tomador_cnpj": cnpj, "tomador": nome, "linha_negocio": LINHA_NEGOCIO,
-                                    "discriminacao": cfg.discriminacao_nota.format(competencia=competencia)},
+                                    "discriminacao": texto_saida(cfg.discriminacao_nota.format(competencia=competencia))},
                                    comissao, rastro_comissao))
         else:
             itens.append(ItemSaida(f"PEN-NF-CHK-{cnpj}", PENDENCIAS.nome,
                                    {"tipo": "NOTA_NAO_EMITIDA", "ref_origem": [l.ref_origem for l in doc],
-                                    "motivo": MOTIVO_NOTA_NAO_EMITIDA,
+                                    "motivo": texto_saida(MOTIVO_NOTA_NAO_EMITIDA),
                                     "quem_decide": cfg.quem_decide["nota_nao_emitida"]},
                                    comissao, rastro_comissao))
 
@@ -264,18 +289,14 @@ def gerar_itens(linhas: list[LinhaCheckout], contratos_nome, competencia: str, c
                                    {"cnpj": cnpj, "linha_negocio": LINHA_NEGOCIO, "ref_origem": l.ref_origem,
                                     "taxa_contratada_pct": l.taxa_contratada, "taxa_aplicada_pct": l.taxa_aplicada},
                                    l.diferenca, [(l.arquivo_origem, l.ref_origem, l.diferenca)]))
-        if divergentes:  # R03
-            itens.append(ItemSaida(f"PEN-DEVOL-CHK-{cnpj}", PENDENCIAS.nome,
-                                   {"tipo": "DEVOLUCAO_LOJISTA", "ref_origem": [l.ref_origem for l in divergentes],
-                                    "motivo": MOTIVO_DEVOLUCAO, "quem_decide": cfg.quem_decide["devolucao_lojista"]},
-                                   _soma(l.diferenca for l in divergentes),
-                                   [(l.arquivo_origem, l.ref_origem, l.diferenca) for l in divergentes]))
+        if divergentes:
+            itens.append(_pendencia_devolucao(cnpj, divergentes, cfg))
 
     for ec in sorted(sem_contrato):  # R08: uma pendência por EC, nada de comissão, divergência ou nota
         doc = sem_contrato[ec]
         itens.append(ItemSaida(f"PEN-SEMCONTRATO-{ec}", PENDENCIAS.nome,
                                {"tipo": "LOJISTA_SEM_CONTRATO", "ref_origem": [l.ref_origem for l in doc],
-                                "motivo": MOTIVO_SEM_CONTRATO, "quem_decide": cfg.quem_decide["lojista_sem_contrato"]},
+                                "motivo": texto_saida(MOTIVO_SEM_CONTRATO), "quem_decide": cfg.quem_decide["lojista_sem_contrato"]},
                                _soma(l.valor_taxa_orbe for l in doc),
                                [(l.arquivo_origem, l.ref_origem, l.valor_taxa_orbe) for l in doc]))
     return itens

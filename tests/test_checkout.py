@@ -190,6 +190,45 @@ def test_condicao_especial_sobrepoe_planilha_na_data_de_referencia(taxas, cfg):
     devol = pen[f"PEN-DEVOL-CHK-{CNPJ_B}"]
     assert devol.valor_reportado == D("20.00") and devol.campos["ref_origem"] == ["T1", "AN"]
     assert devol.campos["tipo"] == "DEVOLUCAO_LOJISTA"
+    assert "(RX)" in devol.campos["motivo"] and "devolvido ao lojista" in devol.campos["motivo"]
+
+
+def test_devolucao_com_condicao_especial_vale_a_taxa_cobrada_pela_orbe(taxas, cfg):
+    # R10: com a condição vigente, devolve-se o que a Orbe cobrou (truncado), não a diferença da R03
+    cfg = replace(cfg, condicoes=(CondicaoEspecial("RX", CNPJ_B, date(2031, 3, 1), date(2031, 3, 31),
+                                                   {"taxa_debito": D("0")}),))
+    itens = _rodar([_orbe("T1", EC_B, "1000.55", "1.00"), _orbe("T2", EC_B, "333.33", "1.00")], taxas, cfg)
+    div = _por_prefixo(itens, "DIV-")
+    assert {k: v.valor_reportado for k, v in div.items()} == {"DIV-CHK-T1": D("10.01"), "DIV-CHK-T2": D("3.33")}
+    devol = _por_prefixo(itens, "PEN-DEVOL-")[f"PEN-DEVOL-CHK-{CNPJ_B}"]
+    assert [(o.ref_origem, o.valor) for o in devol.origens] == [("T1", D("10.00")), ("T2", D("3.33"))]
+    assert devol.valor_reportado == D("13.33")
+    assert devol.campos["motivo"].startswith("tarifa de checkout zerada por condição especial vigente (RX)")
+
+
+def test_devolucao_sem_condicao_continua_pela_formula_da_r03(taxas, cfg):
+    itens = _rodar([_orbe("T1", EC_B, "1000.55", "2.00")], taxas, cfg)
+    devol = _por_prefixo(itens, "PEN-DEVOL-")[f"PEN-DEVOL-CHK-{CNPJ_B}"]
+    assert devol.valor_reportado == D("10.01")
+    assert devol.campos["motivo"].endswith("(R03)")
+
+
+def test_devolucao_com_e_sem_condicao_no_mesmo_lojista_para(taxas, cfg):
+    cfg = replace(cfg, condicoes=(CondicaoEspecial("RX", CNPJ_B, date(2031, 3, 1), date(2031, 3, 31),
+                                                   {"taxa_debito": D("0")}),))
+    with pytest.raises(ErroCheckout, match="com e sem condição especial"):
+        _rodar([_orbe("T1", EC_B, "100.00", "1.00"),
+                _orbe("E1", EC_B, "-200.00", "2.00", tipo="ESTORNO", id_referencia="V0",
+                      data_venda_original=date(2031, 2, 27))], taxas, cfg)
+
+
+def test_textos_sem_ponto_e_virgula(taxas, cfg):
+    taxas = taxas.copy()
+    taxas.loc[taxas["cnpj"] == CNPJ_B, "lojista"] = "Loja B; Filial"
+    itens = _rodar([_orbe("V1", EC_B, "1000.00", "1.00"), _orbe("T1", EC_B, "1000.00", "2.00")], taxas, cfg)
+    assert _por_prefixo(itens, "COM-")[f"COM-CHK-{CNPJ_B}"].campos["lojista"] == "Loja B - Filial"
+    textos = [v for i in itens for k, v in i.campos.items() if isinstance(v, str)]
+    assert textos and not [t for t in textos if ";" in t]
 
 
 def test_comissao_zero_nao_gera_nota(taxas, cfg):
@@ -292,7 +331,8 @@ def test_set_divergencias(itens):
     }
     pen = _por_prefixo(itens, "PEN-DEVOL-")
     assert {k: (len(v.origens), v.valor_reportado) for k, v in pen.items()} == {
-        f"PEN-DEVOL-CHK-{CASA_ESTUDANTE}": (118, D("15397.42")),
+        # R10: a Casa recebe de volta o valor_taxa que a Orbe cobrou; a divergência acima segue a R03
+        f"PEN-DEVOL-CHK-{CASA_ESTUDANTE}": (118, D("15396.77")),
         f"PEN-DEVOL-CHK-{ROTA_GLOBAL}": (87, D("1546.28")),
         f"PEN-DEVOL-CHK-{BRIDGE}": (5, D("29.95")),
     }

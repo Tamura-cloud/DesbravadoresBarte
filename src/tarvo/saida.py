@@ -3,6 +3,7 @@
 Cada ItemSaida vira uma linha num dos 5 arquivos de resultado e uma ou mais linhas no rastro.csv.
 A soma das origens precisa fechar com o valor reportado já na criação do item.
 A escrita nunca arredonda: valor com casas a mais é erro, quem arredonda é a regra de negócio.
+Pelo mesmo motivo, a escrita nunca troca o separador: texto com ";" é erro, quem monta o texto usa texto_saida.
 """
 
 from __future__ import annotations
@@ -43,6 +44,11 @@ class Origem(NamedTuple):
 
 # ---------------------------------------------------------------- tipos de coluna
 
+def texto_saida(texto: str) -> str:
+    """Texto pronto para a saída: cada ";" (com os espaços em volta) vira " - ". Os módulos chamam ao montar o texto."""
+    return re.sub(r"\s*;\s*", " - ", texto)
+
+
 def _decimal(v, coluna: str, casas: Decimal) -> Decimal:
     if isinstance(v, bool) or not isinstance(v, Decimal):
         raise ErroSaida(f"{coluna}: esperado Decimal, veio {type(v).__name__} ({v!r})")
@@ -65,6 +71,8 @@ def _texto(v, coluna: str) -> str:
         raise ErroSaida(f"{coluna}: esperado texto não vazio, veio {v!r}")
     if "\n" in v or "\r" in v:
         raise ErroSaida(f"{coluna}: texto com quebra de linha ({v!r})")
+    if SEPARADOR in v:
+        raise ErroSaida(f"{coluna}: texto com '{SEPARADOR}', o separador do CSV; monte o texto com texto_saida ({v!r})")
     return v
 
 
@@ -121,7 +129,7 @@ def _data_valida(s: str) -> bool:
 
 
 def _refs_validas(s: str) -> bool:
-    return all(r.strip() and "\n" not in r for r in s.split(SEPARADOR_REFS))
+    return SEPARADOR not in s and all(r.strip() and "\n" not in r for r in s.split(SEPARADOR_REFS))
 
 
 @dataclass(frozen=True)
@@ -143,11 +151,15 @@ TAXA = TipoColuna(
 )
 DATA = TipoColuna("data AAAA-MM-DD", _data, _data_valida)
 CNPJ = TipoColuna("CNPJ com 14 dígitos", _cnpj, lambda s: bool(re.fullmatch(r"[0-9]{14}", s)))
-TEXTO = TipoColuna("texto não vazio", _texto, lambda s: bool(s.strip()) and "\n" not in s)
+TEXTO = TipoColuna(
+    f"texto não vazio (sem '{SEPARADOR}')",
+    _texto,
+    lambda s: bool(s.strip()) and "\n" not in s and SEPARADOR not in s,
+)
 REF = TipoColuna(
-    f"ref_origem única (sem '{SEPARADOR_REFS}')",
+    f"ref_origem única (sem '{SEPARADOR_REFS}' nem '{SEPARADOR}')",
     _ref,
-    lambda s: bool(s.strip()) and SEPARADOR_REFS not in s and "\n" not in s,
+    lambda s: bool(s.strip()) and SEPARADOR_REFS not in s and SEPARADOR not in s and "\n" not in s,
 )
 REFS = TipoColuna(f"ref_origem ou lista separada por '{SEPARADOR_REFS}'", _refs, _refs_validas)
 LINHA_NEGOCIO = TipoColuna("|".join(LINHAS_NEGOCIO), _dominio(LINHAS_NEGOCIO), lambda s: s in LINHAS_NEGOCIO)
@@ -296,6 +308,8 @@ def _fmt_extra(v, coluna: str) -> str:
         texto = str(v)
         if "\n" in texto or "\r" in texto:
             raise ErroSaida(f"{coluna}: texto com quebra de linha ({texto!r})")
+        if SEPARADOR in texto:
+            raise ErroSaida(f"{coluna}: texto com '{SEPARADOR}', o separador do CSV; monte o texto com texto_saida ({texto!r})")
         return texto
     raise ErroSaida(f"{coluna}: tipo {type(v).__name__} não é aceito ({v!r})")
 

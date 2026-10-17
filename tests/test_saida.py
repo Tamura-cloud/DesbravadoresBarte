@@ -18,6 +18,7 @@ from tarvo.saida import (
     ItemSaida,
     Origem,
     gravar_saida,
+    texto_saida,
     validar_saida,
 )
 
@@ -41,7 +42,7 @@ def divergencia(id_saida="DIV-1", **campos):
 
 def nota(id_saida="NF-1", **campos):
     base = {"tomador_cnpj": CNPJ_A, "tomador": "Loja Teste Ltda", "linha_negocio": "CHECKOUT",
-            "discriminacao": "Serviço de teste; competência 2031-03"}
+            "discriminacao": "Serviço de teste - competência 2031-03"}
     return ItemSaida(id_saida, NOTAS.nome, {**base, **campos}, D("10.50"),
                      [("entrada_a.csv", "T1", D("4.25")), ("entrada_a.csv", "T2", D("6.25"))])
 
@@ -136,6 +137,32 @@ def test_id_saida_duplicado_gera_erro(tmp_path):
 def test_dominio_invalido_gera_erro_na_escrita(tmp_path, item, trecho):
     with pytest.raises(ErroSaida, match=trecho):
         gravar_saida(tmp_path, [item()])
+
+
+@pytest.mark.parametrize("item, coluna", [
+    (lambda: comissao(lojista="Loja; Filial"), "lojista"),
+    (lambda: nota(tomador="Loja;Filial"), "tomador"),
+    (lambda: nota(discriminacao="Serviço; competência 2031-03"), "discriminacao"),
+    (lambda: lancamento(descricao="PIX;TESTE"), "descricao"),
+    (lambda: pendencia(motivo="sem regra; perguntar"), "motivo"),
+    (lambda: pendencia(quem_decide="Financeiro;Comercial"), "quem_decide"),
+    (lambda: pendencia(ref_origem=["T1", "T;2"]), "ref_origem"),
+    (lambda: comissao(observacao="extra; com separador"), "observacao"),
+], ids=lambda x: x if isinstance(x, str) else "")
+def test_texto_com_ponto_e_virgula_gera_erro_na_escrita(tmp_path, item, coluna):
+    # a escrita não altera conteúdo: em vez de pôr o texto entre aspas, recusa
+    with pytest.raises(ErroSaida, match=f"{coluna}: texto com ';'"):
+        gravar_saida(tmp_path, [item()])
+    assert not any(tmp_path.iterdir())  # nada gravado
+
+
+def test_texto_saida_troca_ponto_e_virgula_por_traco(tmp_path):
+    assert texto_saida("duas vezes; pedir correção") == "duas vezes - pedir correção"
+    assert texto_saida("a;b ;  c") == "a - b - c"
+    assert texto_saida("sem separador") == "sem separador"
+    gravar_saida(tmp_path, [pendencia(motivo=texto_saida("sem regra; perguntar"))])
+    assert validar_saida(tmp_path) == []
+    assert b'"' not in (tmp_path / PENDENCIAS.nome).read_bytes()
 
 
 def test_coluna_obrigatoria_ausente_gera_erro(tmp_path):
@@ -256,6 +283,8 @@ def test_validar_acha_valor_reportado_adulterado(saida_valida):
     (NOTAS.nome, ";10.50;", ";10.5;", "valor_brl"),
     (COMISSOES.nome, "COM-1;", "NF-77;", "prefixo COM-"),
     (COMISSOES.nome, "linha_negocio;comissao_brl", "comissao_brl;linha_negocio", "cabeçalho"),
+    (PENDENCIAS.nome, ";agrupa duas linhas;", ';"agrupa; duas linhas";', "motivo"),
+    (NOTAS.nome, ";Loja Teste Ltda;", ';"Loja; Teste Ltda";', "tomador"),
 ])
 def test_validar_acha_formato_invalido(saida_valida, arquivo, antigo, novo, trecho):
     _reescrever(saida_valida / arquivo, antigo, novo)
@@ -285,7 +314,8 @@ def test_validar_acha_id_repetido_entre_arquivos(saida_valida):
 def test_ponta_a_ponta_grava_e_rele(tmp_path):
     itens = [
         comissao("COM-A", valor=D("10.50")),
-        comissao("COM-B", valor=D("-2.00"), cnpj=CNPJ_B, lojista="Loja; com separador", linha_negocio="REMESSA"),
+        comissao("COM-B", valor=D("-2.00"), cnpj=CNPJ_B, lojista=texto_saida("Loja; com separador"),
+                 linha_negocio="REMESSA"),
         divergencia("DIV-A"),
         nota("NF-A"),
         lancamento("LAN-A"),
@@ -299,7 +329,7 @@ def test_ponta_a_ponta_grava_e_rele(tmp_path):
 
     pasta = tmp_path / "nova" / "pasta"
     com = ler(pasta / COMISSOES.nome)
-    assert com[2] == ["COM-B", CNPJ_B, "Loja; com separador", "REMESSA", "-2.00"]
+    assert com[2] == ["COM-B", CNPJ_B, "Loja - com separador", "REMESSA", "-2.00"]
     pen = ler(pasta / PENDENCIAS.nome)
     assert [l[2] for l in pen[1:]] == ["T1|T2", "X1|X2|X3"]
     lan = ler(pasta / LANCAMENTOS.nome)

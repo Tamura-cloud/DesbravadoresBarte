@@ -249,13 +249,16 @@ def test_caso_d_operacao_de_cnpj_fora_da_planilha(pack, saida, entradas):
     assert cnpj not in set(entradas.taxas["cnpj"])
     total = caso["valor_brl"] + caso["iof_brl"]
     id_ted = f"PEN-TED-LIQ-{caso['data_contratacao'].isoformat()}"
-    ids = {f"COM-REM-{cnpj}", f"NF-REM-{TOMADOR_PONTE}", f"PEN-NAOCAD-REM-{cnpj}", id_ted, f"PEN-PIX-REM-{cnpj}"}
+    # PEN-TED-PONTE tem as mesmas origens da NF-REM (P22)
+    ids = {f"COM-REM-{cnpj}", f"NF-REM-{TOMADOR_PONTE}", "PEN-TED-PONTE", f"PEN-NAOCAD-REM-{cnpj}", id_ted,
+           f"PEN-PIX-REM-{cnpj}"}
     assert _ids_com_ref(saida, ref) == ids
     assert not any(i.startswith("DIV-") for i in _ids_com_ref(saida, ref))
 
     comissao = dinheiro(caso["spread_brl"] * carregar_config_remessa().participacao)  # R11
     rastro = {(l["id_saida"], l["ref_origem"]): Decimal(l["valor"]) for l in _ler(saida, "rastro.csv")}
-    assert rastro[(f"COM-REM-{cnpj}", ref)] == rastro[(f"NF-REM-{TOMADOR_PONTE}", ref)] == comissao
+    assert (rastro[(f"COM-REM-{cnpj}", ref)] == rastro[(f"NF-REM-{TOMADOR_PONTE}", ref)]
+            == rastro[("PEN-TED-PONTE", ref)] == comissao)
 
     pend = _por_id(saida, "pendencias.csv")
     naocad = pend[f"PEN-NAOCAD-REM-{cnpj}"]
