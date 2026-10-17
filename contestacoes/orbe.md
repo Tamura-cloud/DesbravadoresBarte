@@ -12,9 +12,9 @@ Condição usada no texto (referências da planilha, que não vão no e-mail):
 - Escola Bridge de Idiomas Ltda: planilha de taxas, linha 7, observação "só mudou o crédito à vista", vigente desde 2026-09-15.
 - Rota Global Intercâmbio Ltda: planilha de taxas, linha 10, vigente desde 2026-01-01.
 
-Valor a devolver a cada lojista (R25, pendências PEN-DEVOL-CHK):
-- Escola Bridge de Idiomas Ltda: R$ 29,95.
-- Rota Global Intercâmbio Ltda: R$ 1.546,28.
+Valor a devolver a cada lojista (R25, R45, pendências PEN-DEVOL-CHK): o que saiu do bolso do lojista, o valor_taxa descontado pela Orbe menos a comissão pela taxa contratada, transação a transação.
+- Escola Bridge de Idiomas Ltda: **R$ 29,94**. O e-mail cobra da Orbe R$ 29,95 (valor bruto × diferença de taxa, arredondado, como em divergencias_taxa.csv); nas mesmas 5 transações, o descontado de fato a mais foi R$ 29,94. A diferença de R$ 0,01 é arredondamento: a Orbe trunca o valor_taxa no centavo (P03).
+- Rota Global Intercâmbio Ltda: **R$ 1.545,86**. O e-mail cobra da Orbe R$ 1.546,28 (valor bruto × diferença de taxa, arredondado, como em divergencias_taxa.csv); nas mesmas 87 transações, o descontado de fato a mais foi R$ 1.545,86. A diferença de R$ 0,42 é arredondamento: a Orbe trunca o valor_taxa no centavo (P03).
 
 Os 4 estornos entram no total do e-mail e o reduzem.
 

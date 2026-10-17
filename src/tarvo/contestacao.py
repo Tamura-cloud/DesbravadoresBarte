@@ -9,6 +9,8 @@ saida/ (config/contestacao.yaml), que continua com exatamente os 6 CSVs:
   operação duplicada (PEN-DUP-REM).
 Cada .md abre com um bloco de notas internas para a Helena (a apagar antes de enviar); o corpo do e-mail não fala
 de aviso do Comercial. Todo total do texto é a soma das linhas do CSV ao lado.
+Fechamento parcial (R44): com uma fonte do rascunho bloqueada, o .md diz que não foi gerado e por quê, e o CSV sai só
+com o cabeçalho (nunca fica o rascunho de uma execução anterior); com o checkout provisório, as notas avisam.
 """
 
 from __future__ import annotations
@@ -24,6 +26,7 @@ from typing import TYPE_CHECKING, Iterable
 import yaml
 
 from tarvo import checkout as mod_checkout
+from tarvo import dependencias as dep
 from tarvo import remessa as mod_remessa
 from tarvo.leitores.comum import dinheiro
 from tarvo.resumo import _tabela, brl
@@ -285,8 +288,7 @@ def _perfil_orbe(ls: list[dict], todas_do_lojista: list[dict], condicoes: list[C
 
 
 def _taxa_concessao(cnpj: str, cfg_ck) -> str:
-    valores = sorted({v for c in cfg_ck.condicoes if c.cnpj == cnpj for v in c.taxas.values()})
-    return " ou ".join(f"{v.normalize():f}".replace(".", ",") + "%" for v in valores) or "a taxa da concessão"
+    return mod_checkout.taxa_concessao(cnpj, cfg_ck)
 
 
 def _notas_concessao(concessoes, contratos, cfg, cfg_ck) -> list[str]:
@@ -321,7 +323,8 @@ def _md_orbe(linhas, todas_orbe, entradas, contratos, cfg, cfg_ck, devolucoes, c
     for cnpj, ls in grupos.items():
         for c in condicoes[cnpj]:
             notas.append(f"- {ls[0]['lojista']}: {c.ref}" + (f", observação \"{c.obs}\"" if c.obs else "") + f", {c.vigencia()}.")
-    notas += ["", "Valor a devolver a cada lojista (R25, pendências PEN-DEVOL-CHK):"]
+    notas += ["", "Valor a devolver a cada lojista (R25, R45, pendências PEN-DEVOL-CHK): o que saiu do bolso do lojista, "
+                  "o valor_taxa descontado pela Orbe menos a comissão pela taxa contratada, transação a transação."]
     for cnpj, ls in grupos.items():
         formula = sum((Decimal(l["diferenca_brl"]) for l in ls), ZERO)
         devolver = devolucoes.get(cnpj)
@@ -330,10 +333,10 @@ def _md_orbe(linhas, todas_orbe, entradas, contratos, cfg, cfg_ck, devolucoes, c
         elif devolver == formula:
             notas.append(f"- {ls[0]['lojista']}: {_rs(devolver)}.")
         else:
-            notas.append(f"- {ls[0]['lojista']}: **{_rs(devolver)}**. O e-mail usa {_rs(formula)} (taxa × valor bruto, "
-                         f"arredondado); o que a Orbe cobrou de fato nas mesmas {len(ls)} transações foi {_rs(devolver)} "
-                         f"(valor_taxa, truncado pela Orbe); a diferença de {_rs(formula - devolver)} é o truncamento. "
-                         f"Pela R10, o lojista recebe de volta o que foi cobrado.")
+            notas.append(f"- {ls[0]['lojista']}: **{_rs(devolver)}**. O e-mail cobra da {nome} {_rs(formula)} (valor bruto × "
+                         f"diferença de taxa, arredondado, como em divergencias_taxa.csv); nas mesmas {len(ls)} transações, "
+                         f"o descontado de fato a mais foi {_rs(devolver)}. A diferença de {_rs(formula - devolver)} é "
+                         f"arredondamento: a {nome} trunca o valor_taxa no centavo (P03).")
     if estornos:
         notas += ["", f"Os {len(estornos)} estornos entram no total do e-mail e o reduzem."]
     notas += _notas_concessao(concessoes, contratos, cfg, cfg_ck)
@@ -573,9 +576,38 @@ def _md_ponte(linhas, entradas, contratos, cfg, participacao) -> list[str]:
 
 # ---------------------------------------------------------------- entrada do módulo
 
+TEXTO_BLOQUEADO = (
+    "[BLOQUEADO — rascunho não gerado nesta execução] A fonte {fontes} está bloqueada (pendência {pendencias} em "
+    "pendencias.csv, R44): sem ela não há {conteudo} para contestar. Este arquivo substitui o rascunho de qualquer "
+    "execução anterior. Próximo passo: liberar a fonte e rodar o fechamento de novo; o rascunho sai sozinho."
+)
+AVISO_PROVISORIO = (
+    "- **PROVISÓRIO:** {arquivos} da {fonte} ficou fora do fechamento (pendência PEN-BLOQUEIO em pendencias.csv, "
+    "R44). As operações e os valores abaixo podem mudar quando o arquivo for liberado; confira antes de enviar."
+)
+
+
+def _bloqueado(chave: str, entradas: Entradas, cfg: ConfigContestacao, conteudo: str) -> list[str]:
+    fontes = sorted(set(dep.POR_CHAVE[chave].fontes) & dep.bloqueadas(entradas.bloqueios))
+    return [cfg.cabecalho, "", TEXTO_BLOQUEADO.format(
+        fontes=" e ".join(fontes), pendencias=", ".join(f"PEN-BLOQUEIO-{f.upper()}" for f in fontes), conteudo=conteudo)]
+
+
+def _com_aviso_provisorio(texto: list[str], chave: str, entradas: Entradas, cfg: ConfigContestacao) -> list[str]:
+    """Põe o aviso de provisório no começo das notas internas, logo depois do título delas."""
+    if not dep.provisorio(chave, entradas):
+        return texto
+    avisos = [AVISO_PROVISORIO.format(arquivos=b.arquivo, fonte=b.fonte) for b in entradas.bloqueios
+              if b.parcial and b.fonte in dep.POR_CHAVE[chave].fontes]
+    i = texto.index(cfg.titulo_notas) + 2
+    return texto[:i] + avisos + [""] + texto[i:]
+
+
 def gerar_contestacoes(itens: Iterable[ItemSaida], entradas: Entradas, pasta, cfg: ConfigContestacao | None = None,
                        cfg_checkout=None, cfg_remessa=None) -> dict[str, Path]:
-    """Grava orbe.md, orbe_operacoes.csv, ponte.md e ponte_operacoes.csv em pasta. Devolve nome -> caminho."""
+    """Grava orbe.md, orbe_operacoes.csv, ponte.md e ponte_operacoes.csv em pasta. Devolve nome -> caminho.
+
+    Rascunho com uma fonte bloqueada sai como aviso de bloqueio, com o CSV só com o cabeçalho (R44)."""
     itens = list(itens)
     cfg = cfg or carregar_config()
     cfg_checkout = cfg_checkout or mod_checkout.carregar_config()
@@ -583,15 +615,25 @@ def gerar_contestacoes(itens: Iterable[ItemSaida], entradas: Entradas, pasta, cf
     pasta = Path(pasta)
     pasta.mkdir(parents=True, exist_ok=True)
 
-    ck = mod_checkout.Contratos(entradas.taxas, cfg_checkout)
-    rm = mod_remessa.Contratos(entradas.taxas, cfg_remessa)
-    devolucoes = {i.id_saida.removeprefix("PEN-DEVOL-CHK-"): i.valor_reportado for i in _por_prefixo(itens, "PEN-DEVOL-CHK-")}
-    orbe = _linhas_orbe(itens, entradas, ck, cfg)
-    ponte = _linhas_ponte(itens, entradas, rm, cfg_remessa.participacao)
-    concessoes = {i.id_saida.removeprefix("PEN-CONCESSAO-CHK-"): i.valor_reportado
-                  for i in _por_prefixo(itens, "PEN-CONCESSAO-CHK-")}
-    md_orbe = _md_orbe(orbe, _todas_orbe_por_cnpj(entradas, ck), entradas, ck, cfg, cfg_checkout, devolucoes, concessoes)
-    md_ponte = _md_ponte(ponte, entradas, rm, cfg, cfg_remessa.participacao)
+    if dep.gera("contestacao_orbe", entradas):
+        ck = mod_checkout.Contratos(entradas.taxas, cfg_checkout)
+        devolucoes = {i.id_saida.removeprefix("PEN-DEVOL-CHK-"): i.valor_reportado
+                      for i in _por_prefixo(itens, "PEN-DEVOL-CHK-")}
+        orbe = _linhas_orbe(itens, entradas, ck, cfg)
+        concessoes = {i.id_saida.removeprefix("PEN-CONCESSAO-CHK-"): i.valor_reportado
+                      for i in _por_prefixo(itens, "PEN-CONCESSAO-CHK-")}
+        md_orbe = _com_aviso_provisorio(
+            _md_orbe(orbe, _todas_orbe_por_cnpj(entradas, ck), entradas, ck, cfg, cfg_checkout, devolucoes, concessoes),
+            "contestacao_orbe", entradas, cfg)
+    else:
+        orbe, md_orbe = [], _bloqueado("contestacao_orbe", entradas, cfg, "taxa de checkout")
+    if dep.gera("contestacao_ponte", entradas):
+        rm = mod_remessa.Contratos(entradas.taxas, cfg_remessa)
+        ponte = _linhas_ponte(itens, entradas, rm, cfg_remessa.participacao)
+        md_ponte = _com_aviso_provisorio(_md_ponte(ponte, entradas, rm, cfg, cfg_remessa.participacao),
+                                         "contestacao_ponte", entradas, cfg)
+    else:
+        ponte, md_ponte = [], _bloqueado("contestacao_ponte", entradas, cfg, "operação de remessa")
 
     gravados = {}
     for (md, csv_nome), colunas, linhas, texto in ((ARQUIVO_ORBE, COLUNAS_ORBE, orbe, md_orbe),

@@ -20,6 +20,7 @@ from pathlib import Path
 import pytest
 
 from gerar_outubro import deslocar, deslocar_texto, gerar, mes_seguinte
+from tarvo import ia
 from tarvo.checkout import calcular_linhas
 from tarvo.checkout import carregar_config as carregar_config_checkout
 from tarvo.fechamento import fechar, ler_entradas
@@ -86,7 +87,7 @@ def test_gerador_nao_toca_nos_originais(pack):
 
 def test_nomes_assunto_e_anexo_de_outubro(pack):
     nomes = sorted(p.name for p in pack["pasta"].iterdir())
-    assert len(nomes) == 6
+    assert len(nomes) == 7  # os 6 tipos, com a Orbe em 2 arquivos: relatório e ajustes tardios (O05)
     assert not any("set2026" in n for n in nomes)
     originais = [n for n in pack["antes"] if "set2026" in n]
     assert originais and all(n.replace("set2026", "out2026") in nomes for n in originais)
@@ -99,7 +100,7 @@ def test_nomes_assunto_e_anexo_de_outubro(pack):
 
 
 def test_orbe_datas_deslocadas_e_uma_venda_nova(pack):
-    original = {r["ref_origem"]: r for r in ler_orbe(next(SETEMBRO.glob("*orbe*.csv"))).to_dict("records")}
+    original = {r["ref_origem"]: r for r in ler_orbe(sorted(SETEMBRO.glob("*orbe*.csv"))[0]).to_dict("records")}
     novo = {r["ref_origem"]: r for r in ler_orbe(pack["casos"]["orbe"]["arquivo"]).to_dict("records")}
     assert set(novo) - set(original) == {pack["casos"]["orbe"]["ref_origem"]}
     for ref, o in original.items():
@@ -264,6 +265,7 @@ def test_caso_d_operacao_de_cnpj_fora_da_planilha(pack, saida, entradas):
     naocad = pend[f"PEN-NAOCAD-REM-{cnpj}"]
     assert (naocad["tipo"], naocad["ref_origem"], Decimal(naocad["valor_brl"])) == ("LOJISTA_NAO_CADASTRADO", ref, comissao)
     assert "cadastrar" in naocad["motivo"]
+    assert naocad["quem_decide"] == "Comercial"  # P04: pendência de cadastro para o Comercial (spread é taxa, R28)
     # o resto do dia fecha com as TEDs: a diferença é exatamente a operação nova, sem TED paga
     assert pend[id_ted]["tipo"] == "DIVERGENCIA_TED_LIQUIDACAO" and Decimal(pend[id_ted]["valor_brl"]) == total
     pix = pend[f"PEN-PIX-REM-{cnpj}"]
@@ -309,3 +311,55 @@ def test_bridge_vendas_de_outubro_na_taxa_nova(saida, entradas):
     div = {d["ref_origem"]: d for d in _ler(saida, "divergencias_taxa.csv") if d["cnpj"] == CNPJ_BRIDGE}
     vendas_div = [div[l.ref_origem] for l in linhas if l.ref_origem in div]
     assert vendas_div and all(d["taxa_contratada_pct"] == "2.1900" for d in vendas_div)
+
+
+def test_sem_chave_e_sem_sem_ia_lancamento_novo_vira_pendencia(pack, saida, tmp_path, monkeypatch):
+    """O01: a banca roda sem ANTHROPIC_API_KEY e sem --sem-ia. Lançamento que nenhuma regra nem o cache cobrem vira
+    pendência LANCAMENTO_SEM_REGRA (P09), sem erro, sem gravar no cache e com a mesma saída do --sem-ia."""
+    monkeypatch.delenv(ia.VARIAVEL_CHAVE, raising=False)
+    cache = ia.carregar_config().cache
+    antes = cache.read_bytes() if cache.exists() else None
+    assert ia.carregar_config().habilitada
+    sem_chave = tmp_path / "saida"
+    fechar(pack["pasta"], sem_chave, COMPETENCIA, contestacoes=False)  # usar_ia=True, o padrão
+    for tipo in ("aurora", "meridiano"):
+        pen = _por_id(sem_chave, "pendencias.csv")[f"PEN-SEMREGRA-{pack['casos'][tipo]['ref_origem']}"]
+        assert "P09" in pen["motivo"] and pen["quem_decide"]
+    assert _hashes(sem_chave) == _hashes(saida)
+    assert (cache.read_bytes() if cache.exists() else None) == antes
+
+
+@pytest.mark.parametrize("pasta", ["dados", "saida", "contestacoes"])
+def test_gerador_recusa_gravar_o_simulado_no_repositorio(pasta):
+    with pytest.raises(ValueError, match="pasta temporária"):
+        gerar(SETEMBRO, RAIZ / pasta / COMPETENCIA)
+    assert not (RAIZ / pasta / COMPETENCIA).exists()
+
+
+# ---------------------------------------------------------------- pacote anthropic é opcional (P14)
+
+def test_sem_o_pacote_anthropic_com_chave_o_lancamento_vira_pendencia(pack, saida, tmp_path, monkeypatch, caplog):
+    """sys.modules["anthropic"] = None faz o import falhar como num ambiente sem o pacote. Com chave e sem cache, a
+    IA não pode chamar a API: o lançamento segue a P09 e a saída é igual à do --sem-ia, sem erro."""
+    monkeypatch.setitem(sys.modules, "anthropic", None)
+    monkeypatch.setenv(ia.VARIAVEL_CHAVE, "chave-de-teste")
+    assert ia._sdk() is None
+    sem_pacote = tmp_path / "saida"
+    with caplog.at_level("WARNING", logger="tarvo.ia"):
+        fechar(pack["pasta"], sem_pacote, COMPETENCIA, contestacoes=False)
+    assert "pacote anthropic não instalado" in caplog.text
+    assert _hashes(sem_pacote) == _hashes(saida)
+    assert {l["tipo"] for l in _ler(sem_pacote, "pendencias.csv")} >= {"LANCAMENTO_SEM_REGRA"}
+
+
+def test_cli_funciona_sem_o_pacote_anthropic_instalado(pack, tmp_path):
+    """Processo novo em que o import de anthropic falha desde o início: a CLI inteira roda e nada importa o pacote no topo."""
+    roteiro = ("import sys; sys.modules['anthropic'] = None; from tarvo.cli import main; "
+               "sys.exit(main(sys.argv[1:]))")
+    env = {**os.environ, "PYTHONPATH": str(RAIZ / "src"), "PYTHONIOENCODING": "utf-8", "ANTHROPIC_API_KEY": "chave-de-teste"}
+    r = subprocess.run([sys.executable, "-c", roteiro, "fechar", "--competencia", COMPETENCIA,
+                        "--entrada", str(pack["pasta"]), "--saida", str(tmp_path), "--sem-contestacao"],
+                       capture_output=True, text=True, encoding="utf-8", env=env, cwd=RAIZ)
+    assert r.returncode == 0, r.stderr
+    assert "validados sem problemas" in r.stdout
+    assert any(l["tipo"] == "LANCAMENTO_SEM_REGRA" for l in _ler(tmp_path, "pendencias.csv"))

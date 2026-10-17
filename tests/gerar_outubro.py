@@ -37,6 +37,12 @@ from pathlib import Path
 import openpyxl
 
 CENTAVO = Decimal("0.01")
+RAIZ = Path(__file__).resolve().parents[1]
+PROTEGIDAS = (RAIZ / "dados", RAIZ / "saida", RAIZ / "contestacoes")  # nunca recebem o pack simulado
+
+# Tipos que podem vir em vários arquivos no mesmo formato (config/entradas.yaml, multiplos: true). O caso novo
+# vai no primeiro em ordem de nome (o relatório); os outros (ajustes) só têm as datas deslocadas.
+MULTIPLOS = ("orbe",)
 
 # (a) Orbe: venda de crédito à vista de um EC fora da planilha e fora de ec_sem_codigo.
 CASO_ORBE = {
@@ -169,8 +175,11 @@ def _fim_de_linha(texto: str) -> str:
     return "\r\n" if "\r\n" in texto else "\n"
 
 
-def gerar_orbe(origem: Path, destino: Path) -> dict:
-    """CSV da Orbe (ASCII, CRLF): desloca data_movimento e data_venda_original e insere o caso (a)."""
+def gerar_orbe(origem: Path, destino: Path, com_caso: bool = True) -> dict:
+    """CSV da Orbe (ASCII, CRLF): desloca data_movimento e data_venda_original e, com com_caso, insere o caso (a).
+
+    Sem o caso (arquivos de ajuste da Orbe depois do relatório, O05), só desloca as datas e devolve {}.
+    """
     texto = origem.read_bytes().decode("utf-8")
     if '"' in texto:
         raise ValueError(f"{origem.name}: campo entre aspas; o gerador separa por ';' sem csv")
@@ -189,6 +198,9 @@ def gerar_orbe(origem: Path, destino: Path) -> dict:
         ids.add(campos[i_id])
         saida.append(";".join(campos))
 
+    if not com_caso:
+        destino.write_bytes((fim.join(saida) + fim).encode("utf-8"))
+        return {}
     caso = CASO_ORBE
     if caso["id_transacao"] in ids:
         raise ValueError(f"id_transacao {caso['id_transacao']} já existe na Orbe")
@@ -432,14 +444,20 @@ def gerar(origem, destino) -> dict:
     origem, destino = Path(origem), Path(destino)
     if origem.resolve() == destino.resolve():
         raise ValueError("destino não pode ser a pasta de origem")
+    for protegida in PROTEGIDAS:
+        if destino.resolve().is_relative_to(protegida):
+            raise ValueError(f"destino {destino} está dentro de {protegida}: o outubro simulado vai para uma "
+                             "pasta temporária, fora do repositório (dados/ é só leitura e saida/ é só setembro)")
     destino.mkdir(parents=True, exist_ok=True)
     casos: dict = {}
     for padrao, (tipo, gerador) in GERADORES.items():
-        arquivos = sorted(origem.glob(padrao))
-        if len(arquivos) != 1:
+        arquivos = sorted(origem.glob(padrao), key=lambda p: p.name)
+        if len(arquivos) != 1 and not (tipo in MULTIPLOS and arquivos):
             raise ValueError(f"{padrao}: esperado 1 arquivo em {origem}, achei {len(arquivos)}")
         alvo = destino / nome_outubro(arquivos[0].name)
         casos[tipo] = {**gerador(arquivos[0], alvo), "arquivo": alvo}
+        for outro in arquivos[1:]:  # ajustes da Orbe (O05): mesmas datas deslocadas, sem caso novo
+            gerador(outro, destino / nome_outubro(outro.name), com_caso=False)
     for padrao in COPIAS:
         for arquivo in origem.glob(padrao):
             shutil.copyfile(arquivo, destino / nome_outubro(arquivo.name))

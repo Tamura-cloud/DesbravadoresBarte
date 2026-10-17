@@ -5,6 +5,9 @@
 #   sentido:      C (crédito, valor > 0) ou D (débito, valor < 0); a regra só casa no sentido indicado
 #   conta_codigo: contrapartida do movimento no banco (R19); precisa existir no plano e aceitar lançamento
 #   confianca:    1.00 = regra confirmada pela Helena; 0.80 = premissa nossa
+# O fechamento só classifica o que passou nos extratos: o pagamento de competência anterior baixa a provisão feita
+# pela contabilidade; a provisão do mês fica fora do fechamento (R24, R42). Nenhuma regra cria lançamento sem linha
+# de extrato.
 #   lista:        a regra só casa se o grupo (?P<contraparte>...) estiver nessa lista explícita (P07, P08)
 #   papel:        uso do lançamento nas conferências cruzadas e pendências de bancos.py
 # Códigos de conta sempre entre aspas (texto).
@@ -40,37 +43,37 @@ regras:
       fonte: R19
     - padrao: '^PAGTO SALARIOS - FOLHA'
       sentido: D
-      conta_codigo: "2.1.04.001"   # Salários a pagar (provisionado no mês anterior)
+      conta_codigo: "2.1.04.001"   # Salários a pagar: baixa a provisão feita pela contabilidade (R24, R42)
       confianca: "1.00"
       fonte: R19
     - padrao: '^GPS INSS'
       sentido: D
-      conta_codigo: "2.1.04.002"   # INSS a recolher
+      conta_codigo: "2.1.04.002"   # INSS a recolher: baixa a provisão da contabilidade (R24, R42)
       confianca: "1.00"
       fonte: R19
     - padrao: '^GRF FGTS'
       sentido: D
-      conta_codigo: "2.1.04.003"   # FGTS a recolher
+      conta_codigo: "2.1.04.003"   # FGTS a recolher: baixa a provisão da contabilidade (R24, R42)
       confianca: "1.00"
       fonte: R19
     - padrao: '^PAGTO ISS'
       sentido: D
-      conta_codigo: "2.1.03.003"   # ISS a recolher
+      conta_codigo: "2.1.03.003"   # ISS a recolher: baixa a provisão da contabilidade (R24, R42)
       confianca: "1.00"
       fonte: R19
     - padrao: 'DARF 0561'
       sentido: D
-      conta_codigo: "2.1.03.004"   # IRRF a recolher
+      conta_codigo: "2.1.03.004"   # IRRF a recolher: baixa a provisão da contabilidade (R24, R42)
       confianca: "1.00"
       fonte: R19
     - padrao: 'DARF 8109'
       sentido: D
-      conta_codigo: "2.1.03.001"   # PIS a recolher
+      conta_codigo: "2.1.03.001"   # PIS a recolher: baixa a provisão da contabilidade (R24, R42)
       confianca: "1.00"
       fonte: R19
     - padrao: 'DARF 2172'
       sentido: D
-      conta_codigo: "2.1.03.002"   # COFINS a recolher
+      conta_codigo: "2.1.03.002"   # COFINS a recolher: baixa a provisão da contabilidade (R24, R42)
       confianca: "1.00"
       fonte: R19
     - padrao: 'CONDOMINIO'

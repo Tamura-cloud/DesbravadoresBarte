@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from tarvo.cli import CONFIG_PADRAO, carregar_padroes, localizar_arquivos
+from tarvo.cli import localizar_pela_config
 from tarvo.leitores.aurora import COLUNAS, ler_aurora
 
 ENTRADA = Path(__file__).resolve().parents[1] / "dados" / "2026-09"
@@ -12,7 +12,7 @@ ENTRADA = Path(__file__).resolve().parents[1] / "dados" / "2026-09"
 
 @pytest.fixture(scope="module")
 def aurora():
-    caminho = localizar_arquivos(ENTRADA, carregar_padroes(CONFIG_PADRAO))["aurora"]
+    caminho = localizar_pela_config(ENTRADA)["aurora"]
     return ler_aurora(caminho)
 
 

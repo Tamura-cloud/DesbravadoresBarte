@@ -6,6 +6,7 @@ Toda sugestão sai com metodo IA e vira pendência de revisão em bancos.py. Con
 Ordem: com habilitada=false, nada. Senão, a resposta vem do cache em disco (hash do lançamento + modelo);
 se não estiver lá, só chama o modelo com ANTHROPIC_API_KEY definida. Sem chave e sem cache: None, e o
 lançamento segue o fluxo de P09 (A_CLASSIFICAR, HUMANO). O cache vai para o git: a banca reproduz sem chave.
+O pacote anthropic é opcional: só é importado na chamada à API; sem ele vale o mesmo que sem chave.
 A resposta guardada é a bruta; a validação (conta do plano com aceita_lancto, confiança de 0 a 1) roda sempre.
 """
 
@@ -22,7 +23,6 @@ from decimal import ROUND_HALF_UP, Decimal
 from pathlib import Path
 from typing import NamedTuple, Protocol
 
-import anthropic
 import pandas as pd
 import yaml
 
@@ -34,6 +34,19 @@ CENTAVO = Decimal("0.01")
 ESFORCOS = ("low", "medium", "high", "xhigh", "max")
 
 log = logging.getLogger(__name__)
+
+
+def _sdk():
+    """SDK anthropic, importado só na hora de chamar a API; None se o pacote não estiver instalado.
+
+    O fechamento funciona sem ele: o cache e as regras não precisam do pacote, e sem o pacote o lançamento sem
+    regra segue o fluxo de P09, como sem chave.
+    """
+    try:
+        import anthropic
+    except ImportError:
+        return None
+    return anthropic
 
 
 class ErroIA(ValueError):
@@ -213,6 +226,8 @@ def _gravar_cache(caminho: Path, cache: dict) -> None:
 def _perguntar(cliente, l: LancamentoIA, contas: dict[str, str], exemplos: list[Exemplo],
                cfg: ConfigIA) -> dict | None:
     """Resposta bruta do modelo ({"stop_reason", "texto"}), ou None se a chamada falhar (não vai para o cache)."""
+    sdk = _sdk()
+    erros_da_api = (sdk.APIStatusError, sdk.APIConnectionError) if sdk else ()  # cliente falso sem o pacote
     try:
         resposta = cliente.messages.create(
             model=cfg.modelo,
@@ -221,7 +236,7 @@ def _perguntar(cliente, l: LancamentoIA, contas: dict[str, str], exemplos: list[
             messages=[{"role": "user", "content": _pergunta(l, exemplos)}],
             output_config={"effort": cfg.esforco, "format": {"type": "json_schema", "schema": _schema(contas)}},
         )
-    except (anthropic.APIStatusError, anthropic.APIConnectionError) as e:
+    except erros_da_api as e:
         log.warning("IA: chamada falhou para %s (%s); segue sem sugestão", l.ref_origem, e)
         return None
     texto = "".join(b.text for b in resposta.content if b.type == "text")
@@ -271,7 +286,11 @@ def sugerir_conta(lancamento: LancamentoIA, contas_analiticas: dict[str, str], e
             api_key = os.environ.get(VARIAVEL_CHAVE)
             if not api_key:
                 return None
-            cliente = anthropic.Anthropic(api_key=api_key)
+            sdk = _sdk()
+            if sdk is None:
+                log.warning("IA: pacote anthropic não instalado; segue sem sugestão (P09)")
+                return None
+            cliente = sdk.Anthropic(api_key=api_key)
         resposta = _perguntar(cliente, lancamento, contas_analiticas, exemplos, cfg)
         if resposta is None:
             return None

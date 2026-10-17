@@ -1,9 +1,29 @@
 # Padrões de nome (glob, sem diferenciar maiúsculas) para localizar cada arquivo de entrada.
 # Nunca use o nome exato: os nomes mudam a cada competência.
+# Cada tipo exige exatamente 1 arquivo, salvo multiplos: true. Aí todos os arquivos que casam são lidos, em ordem
+# de nome, no mesmo formato (O05: a Orbe manda o relatório e, depois, os ajustes que ficaram fora dele).
+# Tipo sem arquivo, com dois arquivos (tipo único) ou ilegível fica BLOQUEADO: o que depende dele não sai e o resto
+# fecha (R44, mapa em src/tarvo/dependencias.py).
 arquivos:
-  orbe: "*orbe*.csv"
+  orbe: {padrao: "*orbe*.csv", multiplos: true}
   taxas: "*taxas*.xlsx"
   ponte_eml: "*.eml"
   plano_de_contas: "*plano_de_contas*.csv"
   aurora: "*aurora*.csv"
   meridiano: "*.ofx"
+
+# Como cada tipo aparece nas mensagens de erro e aviso do fechamento (o que a pessoa procura na pasta).
+descricoes:
+  orbe: "relatório de transações da Orbe, CSV"
+  taxas: "planilha de taxas contratadas, XLSX"
+  ponte_eml: "e-mail da Ponte Câmbio com o relatório anexo, EML"
+  plano_de_contas: "plano de contas do ERP, CSV"
+  aurora: "extrato do Banco Aurora, CSV"
+  meridiano: "extrato do Banco Meridiano, OFX"
+
+# R44: quem libera cada fonte bloqueada (pendência PEN-BLOQUEIO-<tipo>). "Quem libera sou eu. Se for taxa ou
+# cadastro, o comercial decide antes." (Helena, 12h31). quem_decide é texto livre (O03).
+bloqueio:
+  quem_decide: "Financeiro (Helena)"
+  quem_decide_por_fonte:
+    taxas: "Comercial e Financeiro (Helena)"   # R28: taxa e condição comercial, o Comercial aprova
