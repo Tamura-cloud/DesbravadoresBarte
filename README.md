@@ -14,6 +14,42 @@ Fecha o mês da Tarvo a partir dos arquivos do data pack, lidos como vêm (sem e
 6 CSVs de `saida/`. Cada número de saída é rastreável até a linha do arquivo de origem pelo `rastro.csv`,
 e a execução falha se algum valor não fechar com o rastro.
 
+## Por que o fechamento é lento e erra
+
+Três causas, cada uma com um caso de setembro:
+
+1. **A regra está fora do sistema.** O acordo de tarifa zero da Casa do Estudante (setembro a dezembro) existia só
+   num comentário da célula A13 da planilha de taxas e na cabeça do comercial. Ninguém avisou a Orbe, que cobrou:
+   são **R$ 15.396,77** que a Tarvo devolve ao lojista (R10, R32). Nas palavras da Helena: "quase tudo que vocês já
+   descobriram aqui no canal estava só na minha cabeça".
+2. **Ninguém confere a cobrança contra o contrato, então ninguém contesta.** A Orbe cobrou 0,5 p.p. a mais da Rota
+   Global desde 12/09, sem reajuste de contrato (**R$ 1.545,86** a devolver, R09). A Ponte aplicou 1,50% na Mundo
+   Aberto, que tem 1,20% registrado desde julho (**R$ 1.418,85**, R15, R16). A Bridge renegociou para 2,19% a
+   partir de 15/09, mas a Orbe seguiu cobrando 2,59% até 18/09, porque o aviso chegou atrasado (**R$ 29,94**; "o
+   aviso atrasado é problema nosso de processo", R32). Hoje a cobrança errada só aparece quando o lojista reclama.
+3. **O cruzamento é manual.** Dos 8 dias de fechamento, a comissão de checkout leva uns 3: metade casando à mão o
+   nome do lojista com o EC e o CNPJ, metade refazendo trabalho quando a planilha está desatualizada
+   (`HIPOTESES.md`, seção 6). A solução casa só por código (`cod_estabelecimento` e CNPJ), nunca por nome.
+
+## Dinheiro em jogo em setembro
+
+Os valores abaixo têm naturezas diferentes e **não devem ser somados**. O total de `pendencias.csv`
+(R$ 382.811,32) mistura dinheiro a devolver com dinheiro que só precisa ser conferido quando chegar.
+
+| natureza | caso | valor (R$) | pendência |
+|----------|------|-----------:|-----------|
+| **Custo da Tarvo** (concessão comercial devolvida ao lojista) | Casa do Estudante | 15.396,77 | `PEN-CONCESSAO-CHK` |
+| **Cobrado a mais pela Orbe** (devolver ao lojista e contestar com a Orbe) | Rota Global | 1.545,86 | `PEN-DEVOL-CHK` |
+| | Escola Bridge | 29,94 | `PEN-DEVOL-CHK` |
+| **A contestar com a Ponte** | Mundo Aberto: spread acima do contratado | 1.418,85 | `PEN-CONTEST-REM` |
+| | 4 operações com spread negativo: diferença até o spread contratado (o relatório mostra -1.834,05) | 3.565,98 | `PEN-NEG-REM` |
+| | operação `PC-0926-0162` repetida no relatório (spread da cópia) | 821,88 | `PEN-DUP-REM` |
+| **Receita não faturada até o Comercial confirmar** | Atlas Idiomas, sem contrato: taxa que a Orbe descontou | 7.876,05 | `PEN-SEMCONTRATO` |
+| **Caixa a identificar ou apurar** | PIX recebido sem identificação | 7.350,00 | `PEN-NAOID` |
+| | PIX de repasse à Mundo Aberto que voltou, motivo desconhecido | 12.400,00 | `PEN-DEVOL-PIX` |
+| **Conferir quando chegar** (acompanhamento, não é perda) | transferência Aurora → Meridiano de 30/09, que cai em 01/10 | 300.000,00 | `PEN-TRANSF` |
+| | repasse da Ponte a conferir contra a nota de intermediação | 39.543,45 | `PEN-TED-PONTE` |
+
 ## Histórico de IA
 
 O histórico completo das sessões de IA, de preparação e de construção, está em [`PROMPTS/`](PROMPTS/), sem
@@ -71,14 +107,15 @@ python -m tarvo fechar --competencia 2026-09 --entrada dados/2026-09 --saida sai
 ```
 
 O comando lista os arquivos encontrados, grava os 6 CSVs em `--saida`, relê o que gravou e termina com um quadro:
-**FECHAMENTO COMPLETO** ou **FECHAMENTO PARCIAL**, com as fontes bloqueadas e o que não foi gerado.
+**FECHAMENTO COMPLETO** ou **FECHAMENTO PARCIAL**, com as fontes bloqueadas, os itens que ficaram fora por erro de
+dado e o que não foi gerado.
 
 | código | significado |
 |-------:|-------------|
 | 0 | completo: todas as fontes lidas |
-| 3 | parcial: alguma fonte bloqueada; o resto foi gerado e validado, e cada bloqueio vira uma pendência `PEN-BLOQUEIO` (R44) |
+| 3 | parcial: alguma fonte bloqueada ou algum item fora por erro de dado; o resto foi gerado e validado, e cada caso vira uma pendência `PEN-BLOQUEIO` ou `PEN-REGRA` (R44) |
 | 1 | a saída gerada não passou na validação; nada foi gravado |
-| 2 | erro que impede o fechamento (pasta de entrada inexistente, ou um dado que nenhuma regra cobre, como uma modalidade sem taxa); nada foi gravado |
+| 2 | erro que impede o fechamento: pasta de entrada inexistente, competência fora do formato AAAA-MM ou erro na configuração; nada foi gravado |
 
 **Testes:**
 
@@ -86,7 +123,7 @@ O comando lista os arquivos encontrados, grava os 6 CSVs em `--saida`, relê o q
 python -m pytest
 ```
 
-São 437 testes, sem acesso à rede. Incluem o fechamento de um outubro simulado (ver "Como rodar outubro").
+São 456 testes, sem acesso à rede. Incluem o fechamento de um outubro simulado (ver "Como rodar outubro").
 
 ## Fechamento parcial
 
@@ -101,6 +138,8 @@ marca o que é provisório e deixa claro o que está bloqueado e por quê. Quem 
 | arquivo de ajustes da Orbe com cabeçalho diferente do relatório (inclusive coluna a mais) ou com id repetido e dados diferentes | bloqueia só esse arquivo; o relatório é lido e o checkout sai marcado como provisório (coluna `situacao` = `PROVISORIO` nos CSVs) | 3 |
 | coluna a mais ou fora de ordem numa fonte de arquivo único | só aviso (`PEN-AVISO-LAYOUT`); nada deixa de ser gerado | 0 |
 | mesmo `id_transacao` com os mesmos dados em dois arquivos da Orbe | conta uma vez e vira pendência informativa (`PEN-REPET-CHK`, P27) | 0 |
+| linha com dado inválido num arquivo (número ou data em formato desconhecido, FITID repetido, campo obrigatório vazio) | só a linha fica de fora e vira `PEN-REGRA-LINHA-...`; o resto do arquivo é lido. Exceção: no plano de contas, uma linha ilegível bloqueia o plano inteiro | 3 |
+| dado que nenhuma regra cobre (modalidade sem taxa, parcelas fora das faixas, CNPJ sem linha vigente na planilha, spread em texto, spread negativo de CNPJ fora da planilha, favorecido fora da planilha) | só a transação, a operação ou o lojista afetado fica de fora, com a pendência `PEN-REGRA-<tipo>` (tipo `ITEM_BLOQUEADO`). Testado: uma modalidade nova na Orbe tirou só aquela transação | 3 |
 
 Cada bloqueio vira a pendência `PEN-BLOQUEIO-<fonte>`, de valor 0, com o arquivo, o erro exato, o que não foi
 gerado e o próximo passo. Quem libera é a Helena; na planilha de taxas, o Comercial e a Helena (R28). Testamos com
@@ -261,14 +300,15 @@ O gerador só lê `dados/2026-09`: nada é gravado no repositório. O mesmo ensa
 ## Como a analista usa no fechamento
 
 1. **Rodar** o fechamento do mês (comando acima). Se terminar com **FECHAMENTO PARCIAL**, começar pelas
-   pendências `PEN-BLOQUEIO`: cada uma diz o arquivo, o erro e o próximo passo (ver "Fechamento parcial"). Se
-   parar com erro, a mensagem diz o arquivo, a linha e o motivo (ver "Casos que param com erro").
+   pendências `PEN-BLOQUEIO` e `PEN-REGRA`: cada uma diz o arquivo ou o item, o erro e o próximo passo (ver
+   "Fechamento parcial"). Se parar com erro, a mensagem diz o arquivo, a linha e o motivo (ver "O que ainda para
+   tudo", em "Limitações conhecidas").
 2. **Abrir `pendencias.csv`.** Cada linha tem tipo, `ref_origem` (as linhas de origem, separadas por `|`), valor,
    motivo e quem decide. Tipos possíveis:
 
    | tipo | regra | quem decide | o que fazer | set/2026 |
    |------|-------|-------------|-------------|---------:|
-   | `NOTA_NAO_EMITIDA` | R06 | Financeiro (Helena) | comissão do mês zero ou negativa: decidir o tratamento (não passa para o mês seguinte) | 1 |
+   | `NOTA_NAO_EMITIDA` | R06, R16, R17 | Financeiro (Helena) | comissão do mês zero ou negativa, no checkout ou na nota da Ponte: decidir o tratamento (não passa para o mês seguinte) | 1 |
    | `DEVOLUCAO_LOJISTA` | R03, R25, R32, R45 | Financeiro (Helena) | devolver ao lojista o que foi descontado acima do contrato (taxa descontada pela Orbe menos a comissão contratada) | 2 |
    | `DEVOLUCAO_CONCESSAO` | R10, R32, R38, R41, R45 | Financeiro (Helena) e Comercial | devolver ao lojista a taxa cobrada numa concessão comercial: custo da Tarvo, não se cobra da Orbe | 1 |
    | `ALERTA_ANTECIPACAO` | R33, P26 | Financeiro (Helena) e Comercial | lojista sem histórico antecipou mais do que vendeu no mês: avaliar o risco (não muda nenhum valor) | 1 |
@@ -283,6 +323,8 @@ O gerador só lê `dados/2026-09`: nada é gravado no repositório. O mesmo ensa
    | `AVISO_LAYOUT` | R44 | quem decide a fonte | coluna a mais ou fora de ordem: confirmar com quem mandou que o layout mudou | 0 |
    | `TRANSACAO_REPETIDA` | P27 | Financeiro (Helena) | mesmo id_transacao em dois arquivos da Orbe, com os mesmos dados: contado uma vez; confirmar | 0 |
    | `REFERENCIA_NAO_ENCONTRADA` | P28 | Financeiro (Helena) | estorno ou reversão sem a transação original no mês: conferir | 0 |
+   | `ITEM_BLOQUEADO` | R44 | Comercial e Financeiro (Helena) se for taxa, cadastro ou vigência; Financeiro (Helena) nos demais | dado sem regra ou linha inválida (ids `PEN-REGRA-...`): o item ficou fora do fechamento; corrigir o dado e rodar de novo | 0 |
+   | `CONFERENCIA_NAO_FEITA` | R44 | Financeiro (Helena) | conferência cruzada que não rodou porque uma fonte ficou bloqueada: refazer quando a fonte for liberada | 0 |
    | `OPERACAO_FORA_DA_COMPETENCIA` | R11 | Financeiro (Helena) | operação contratada em outro mês: conferir | 0 |
    | `CONFERENCIA_REPASSE` | R18, P22 | Financeiro (Helena) | conferir o TED de repasse da Ponte contra a nota de remessa quando cair | 1 |
    | `CREDITO_NAO_IDENTIFICADO` | R20 | Financeiro (Helena) | identificar o PIX recebido; não é receita até lá | 1 |
@@ -328,20 +370,20 @@ O gerador só lê `dados/2026-09`: nada é gravado no repositório. O mesmo ensa
   a partir de 01/09; estorno de venda anterior segue a taxa da venda) vale até 2026-12-31 em
   `config/checkout.yaml`; renovações e contratos novos precisam ser atualizados lá e na planilha de taxas.
 - **Nomes fixos de abas e colunas.** A planilha de taxas precisa ter a aba "Taxas vigentes", e o relatório da
-  Ponte, a aba "Operações" com a coluna "Nº Operação". Se o formato mudar, a leitura para com erro.
-- **Arquivo com problema não para mais o mês (R44):** arquivo ausente, mais de um para um tipo que aceita só um,
-  ou ilegível (coluna obrigatória ausente, número ou data em formato desconhecido, FITID repetido, OFX sem
-  DTSTART/DTEND) bloqueia só a fonte. Ver "Fechamento parcial".
-- **Casos que param com erro, de propósito, em vez de supor** (código 2, nada é gravado). São dados que nenhuma
-  regra cobre:
-  - CNPJ sem linha vigente na planilha, ou com mais de uma, na data da transação; EC com dois CNPJs;
-  - tipo de lançamento ou modalidade da Orbe sem taxa mapeada (testado: uma modalidade nova na Orbe para o
-    fechamento); parcelas fora das faixas da configuração;
-  - texto de spread na planilha que não é número nem "padrão" (R14);
-  - Nº Operação repetido com valores diferentes além da observação (R13);
-  - spread negativo de CNPJ fora da planilha (P05);
-  - CNPJ em `favorecidos.yaml` ou `pagadores_meridiano.yaml` que não está na planilha;
-  - qualquer saída fora do formato ou que não feche com o rastro (código 1).
+  Ponte, a aba "Operações" com a coluna "Nº Operação". Se o formato mudar, a fonte fica bloqueada (ilegível), sem
+  parar o mês.
+- **Problema de arquivo ou de dado não para mais o mês (R44):**
+  - arquivo ausente, mais de um para um tipo que aceita só um, ou ilegível (coluna obrigatória ausente) bloqueia
+    a fonte;
+  - linha com número ou data em formato desconhecido, FITID repetido ou campo obrigatório vazio sai sozinha
+    (`PEN-REGRA-LINHA`);
+  - dado que nenhuma regra cobre tira só o item afetado (`PEN-REGRA-<tipo>`): CNPJ sem linha vigente na
+    planilha ou com mais de uma, tipo de lançamento ou modalidade da Orbe sem taxa, parcelas fora das faixas,
+    texto de spread que não é número nem "padrão" (R14), Nº Operação repetido com valores diferentes (R13),
+    spread negativo de CNPJ fora da planilha (P05), favorecido ou pagador com CNPJ fora da planilha.
+  Ver "Fechamento parcial".
+- **O que ainda para tudo, sem gravar nada:** pasta de entrada inexistente, competência fora do formato ou erro
+  na configuração (código 2), e saída fora do formato ou que não feche com o rastro (código 1).
 
 ## Estrutura do repositório
 
@@ -378,7 +420,7 @@ O gerador só lê `dados/2026-09`: nada é gravado no repositório. O mesmo ensa
 │   ├── ia.py                 sugestão de conta para lançamento sem regra
 │   ├── contestacao.py        rascunhos de contestação por contraparte (R29)
 │   └── saida.py              ItemSaida, escrita e validação dos 6 CSVs
-├── tests/                    437 testes + gerar_outubro.py (outubro simulado)
+├── tests/                    456 testes + gerar_outubro.py (outubro simulado)
 ├── dados/2026-09/            data pack de setembro, como recebido (com os ajustes tardios da Orbe, arquivo 06)
 ├── cache/ia_sugestoes.json   respostas da IA já obtidas (vazio em setembro)
 ├── saida/                    os 6 CSVs de setembro
