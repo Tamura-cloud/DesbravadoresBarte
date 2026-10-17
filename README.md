@@ -114,7 +114,7 @@ dado e o que não foi gerado.
 |-------:|-------------|
 | 0 | completo: todas as fontes lidas |
 | 3 | parcial: alguma fonte bloqueada ou algum item fora por erro de dado; o resto foi gerado e validado, e cada caso vira uma pendência `PEN-BLOQUEIO` ou `PEN-REGRA` (R44) |
-| 1 | a saída gerada não passou na validação; nada foi gravado |
+| 1 | a saída gerada não passou na validação, ou um arquivo de destino está travado (aberto no Excel: a mensagem diz "Feche <arquivo> e rode de novo"); nada foi gravado |
 | 2 | erro que impede o fechamento: pasta de entrada inexistente, competência fora do formato AAAA-MM ou erro na configuração; nada foi gravado |
 
 **Testes:**
@@ -123,7 +123,7 @@ dado e o que não foi gerado.
 python -m pytest
 ```
 
-São 456 testes, sem acesso à rede. Incluem o fechamento de um outubro simulado (ver "Como rodar outubro").
+São 489 testes, sem acesso à rede. Incluem o fechamento de um outubro simulado (ver "Como rodar outubro").
 
 ## Fechamento parcial
 
@@ -135,9 +135,10 @@ marca o que é provisório e deixa claro o que está bloqueado e por quê. Quem 
 | fonte ausente (nenhum arquivo casa com o padrão) | a fonte fica bloqueada e só o que depende dela não é gerado. Sem o `.ofx`, por exemplo, checkout, remessa e notas fecham; ficam de fora os lançamentos do Meridiano e as conferências P11, P12 e P13 | 3 |
 | fonte ambígua (dois arquivos para um tipo que aceita só um) | bloqueada: o fechamento não escolhe um deles. Com dois `.eml`, a remessa e a nota da Ponte não são geradas | 3 |
 | arquivo ilegível ou sem coluna obrigatória | bloqueado | 3 |
-| arquivo de ajustes da Orbe com cabeçalho diferente do relatório (inclusive coluna a mais) ou com id repetido e dados diferentes | bloqueia só esse arquivo; o relatório é lido e o checkout sai marcado como provisório (coluna `situacao` = `PROVISORIO` nos CSVs) | 3 |
+| arquivo de ajustes da Orbe com cabeçalho diferente do relatório (inclusive coluna a mais) | bloqueia só esse arquivo; o relatório é lido e o checkout sai marcado como provisório (coluna `situacao` = `PROVISORIO` nos CSVs) | 3 |
 | coluna a mais ou fora de ordem numa fonte de arquivo único | só aviso (`PEN-AVISO-LAYOUT`); nada deixa de ser gerado | 0 |
 | mesmo `id_transacao` com os mesmos dados em dois arquivos da Orbe | conta uma vez e vira pendência informativa (`PEN-REPET-CHK`, P27) | 0 |
+| mesmo `id_transacao` com dados diferentes em dois arquivos da Orbe | é uma correção: a linha do arquivo posterior substitui a anterior, e a pendência `PEN-CORRECAO-ORBE` mostra o antes e o depois (P27). O checkout não fica provisório | 0 |
 | linha com dado inválido num arquivo (número ou data em formato desconhecido, FITID repetido, campo obrigatório vazio) | só a linha fica de fora e vira `PEN-REGRA-LINHA-...`; o resto do arquivo é lido. Exceção: no plano de contas, uma linha ilegível bloqueia o plano inteiro | 3 |
 | dado que nenhuma regra cobre (modalidade sem taxa, parcelas fora das faixas, CNPJ sem linha vigente na planilha, spread em texto, spread negativo de CNPJ fora da planilha, favorecido fora da planilha) | só a transação, a operação ou o lojista afetado fica de fora, com a pendência `PEN-REGRA-<tipo>` (tipo `ITEM_BLOQUEADO`). Testado: uma modalidade nova na Orbe tirou só aquela transação | 3 |
 
@@ -202,8 +203,13 @@ Por linha de negócio:
   `saida/`, um rascunho de e-mail por contraparte (`orbe.md`, `ponte.md`) com as operações anexadas
   (`orbe_operacoes.csv`, 92 linhas; `ponte_operacoes.csv`, 28 linhas). A Helena revisa e envia.
   `--sem-contestacao` desliga os rascunhos.
+- **Registro de execução (O06):** cada `fechar` que passa na validação grava em `auditoria/`, também ao lado de
+  `saida/`, o `execucao.md` (legível) e o `execucao.json`: data e hora, commit do código, comando, SHA-256 de cada
+  arquivo de entrada, linhas lidas e rejeitadas, status e código de saída. Guarda só a última execução, então rodar
+  o fechamento de novo reescreve esses dois arquivos; os CSVs de `saida/` continuam idênticos.
 - **Como o rastro fecha:** o `rastro.csv` tem uma ou mais linhas por id_saida (`arquivo_origem`, `ref_origem`,
-  `valor`). Para cada id_saida, a soma do `valor` no rastro é igual ao valor reportado. Por isso a soma do
+  `valor`, e as colunas extras `regra` e `detalhe`, que dizem qual regra gerou o valor da linha e como, O06). Para
+  cada id_saida, a soma do `valor` no rastro é igual ao valor reportado. Por isso a soma do
   rastro inteiro (-543718.70) é a soma das cinco colunas de valor acima. São 371 id_saida.
 - **ref_origem:** `id_transacao` (Orbe), Nº Operação (Ponte), `L<n>` = número da linha física no arquivo (Aurora),
   FITID (Meridiano).
@@ -228,7 +234,7 @@ Essa conferência usou as regras confirmadas até 16/10. As respostas da Helena 
 
 ## Como funciona
 
-Seis etapas, orquestradas por `src/tarvo/fechamento.py`:
+Sete etapas, orquestradas por `src/tarvo/fechamento.py`:
 
 | etapa | o que faz | código | configuração |
 |-------|-----------|--------|--------------|
@@ -238,6 +244,7 @@ Seis etapas, orquestradas por `src/tarvo/fechamento.py`:
 | 4. Conferências cruzadas | Orbe × planilha (EC sem contrato), duplicatas da Ponte (R13), TED de liquidação Ponte × Meridiano (P11), PIX recebidos × remessas por CNPJ (P12), transferência Aurora × Meridiano (P13), TED de repasse × nota de remessa (R18, P22). Toda diferença vira pendência | `checkout.py`, `remessa.py`, `bancos.py` | as mesmas da etapa 3 |
 | 5. Saída com rastro | cada resultado é um `ItemSaida` com as suas origens, e o item não é criado se a soma das origens não fechar com o valor. Grava os 6 CSVs e relê tudo: formato, domínios, id_saida único e soma do rastro por id_saida | `saida.py`, `fechamento.py` | — |
 | 6. Rascunhos de contestação | depois da validação, monta um rascunho de e-mail por contraparte (Orbe e Ponte), com as operações anexadas e uma nota interna para a Helena, e grava em `contestacoes/`, ao lado de `saida/`. Desliga com `--sem-contestacao` | `contestacao.py`, `fechamento.py` | `config/contestacao.yaml` |
+| 7. Registro de execução | grava em `auditoria/` o que foi lido (com SHA-256), o comando, o commit, o status e o código de saída da última execução. Antes de gravar, confere que nenhum destino está travado; se um estiver, nada é trocado | `auditoria.py`, `fechamento.py` | `config/auditoria.yaml` |
 
 Dinheiro é sempre `Decimal` com 2 casas, arredondado linha a linha com ROUND_HALF_UP (R02); a escrita nunca
 arredonda nem troca texto: valor com casas a mais ou texto com `;` é erro.
@@ -312,18 +319,20 @@ O gerador só lê `dados/2026-09`: nada é gravado no repositório. O mesmo ensa
    | `DEVOLUCAO_LOJISTA` | R03, R25, R32, R45 | Financeiro (Helena) | devolver ao lojista o que foi descontado acima do contrato (taxa descontada pela Orbe menos a comissão contratada) | 2 |
    | `DEVOLUCAO_CONCESSAO` | R10, R32, R38, R41, R45 | Financeiro (Helena) e Comercial | devolver ao lojista a taxa cobrada numa concessão comercial: custo da Tarvo, não se cobra da Orbe | 1 |
    | `ALERTA_ANTECIPACAO` | R33, P26 | Financeiro (Helena) e Comercial | lojista sem histórico antecipou mais do que vendeu no mês: avaliar o risco (não muda nenhum valor) | 1 |
-   | `LOJISTA_SEM_CONTRATO` | R08 | Comercial | EC da Orbe sem taxa contratada: confirmar o contrato antes de faturar | 1 |
+   | `LOJISTA_SEM_CONTRATO` | R08, R60 | Comercial (Diego) | EC da Orbe sem taxa contratada: confirmar o contrato antes de faturar | 1 |
    | `LOJISTA_NAO_CADASTRADO` | P04 | Financeiro (Helena) | CNPJ da Ponte fora da planilha: cadastrar (a comissão já entrou na nota) | 0 |
    | `CONTESTACAO_PONTE` | R12, R15, R16, R18, R23, R34 | Financeiro (Helena) | contestar com a Ponte o spread acima do contrato ou negativo | 5 |
    | `OPERACAO_DUPLICADA` | R13, P19 | Financeiro (Helena) | pedir à Ponte a correção do relatório | 1 |
    | `AJUSTE_SEM_OPERACAO_ORIGINAL` | R31, P25 | Financeiro (Helena) | ajuste da Ponte cuja operação original não está no relatório: conferir (já abatido da participação) | 0 |
    | `AJUSTE_SEM_LOJISTA` | R31 | Financeiro (Helena) | ajuste da Ponte sem CNPJ nem operação original: identificar o lojista (não foi abatido) | 0 |
    | `FONTE_BLOQUEADA` | R44 | Financeiro (Helena); na planilha de taxas, Comercial e Financeiro (Helena) | fonte ausente, ambígua ou ilegível: seguir o próximo passo da pendência e rodar de novo | 0 |
-   | `ARQUIVO_BLOQUEADO` | R28, R44 | Financeiro (Helena) | arquivo de ajustes da Orbe recusado: pedir à Orbe o arquivo no layout do relatório; até lá o checkout é provisório | 0 |
+   | `ARQUIVO_BLOQUEADO` | R28, R44 | Financeiro (Helena) | arquivo de ajustes da Orbe com cabeçalho diferente do relatório: pedir à Orbe o arquivo no layout do relatório; até lá o checkout é provisório | 0 |
    | `AVISO_LAYOUT` | R44 | quem decide a fonte | coluna a mais ou fora de ordem: confirmar com quem mandou que o layout mudou | 0 |
    | `TRANSACAO_REPETIDA` | P27 | Financeiro (Helena) | mesmo id_transacao em dois arquivos da Orbe, com os mesmos dados: contado uma vez; confirmar | 0 |
-   | `REFERENCIA_NAO_ENCONTRADA` | P28 | Financeiro (Helena) | estorno ou reversão sem a transação original no mês: conferir | 0 |
-   | `ITEM_BLOQUEADO` | R44 | Comercial e Financeiro (Helena) se for taxa, cadastro ou vigência; Financeiro (Helena) nos demais | dado sem regra ou linha inválida (ids `PEN-REGRA-...`): o item ficou fora do fechamento; corrigir o dado e rodar de novo | 0 |
+   | `REFERENCIA_NAO_ENCONTRADA` | R48 | Financeiro (Helena) | estorno ou reversão sem a transação original em nenhum arquivo da Orbe: entra pelo valor que veio, e a pendência mostra o efeito na comissão; a Helena pede a venda original à Orbe | 0 |
+   | `CORRECAO_ORBE` | P27 | Financeiro (Helena) | id_transacao que veio de novo, com dados diferentes, num arquivo posterior da Orbe: vale a linha nova; conferir o antes e o depois | 0 |
+   | `AJUSTE_APOS_APROVACAO` | R46 | Financeiro (Helena) | ajuste da Orbe de um mês já aprovado, recebido depois: entra no mês atual, sem reabrir o mês aprovado | 0 |
+   | `ITEM_BLOQUEADO` | R44, R51 | Comercial se for taxa, cadastro ou vigência; Financeiro (Helena) nos demais | dado sem regra ou linha inválida (ids `PEN-REGRA-...`): o item ficou fora do fechamento; corrigir o dado e rodar de novo | 0 |
    | `CONFERENCIA_NAO_FEITA` | R44 | Financeiro (Helena) | conferência cruzada que não rodou porque uma fonte ficou bloqueada: refazer quando a fonte for liberada | 0 |
    | `OPERACAO_FORA_DA_COMPETENCIA` | R11 | Financeiro (Helena) | operação contratada em outro mês: conferir | 0 |
    | `CONFERENCIA_REPASSE` | R18, P22 | Financeiro (Helena) | conferir o TED de repasse da Ponte contra a nota de remessa quando cair | 1 |
@@ -407,6 +416,7 @@ O gerador só lê `dados/2026-09`: nada é gravado no repositório. O mesmo ensa
 │   ├── bancos.yaml           regras de classificação dos extratos, em ordem
 │   ├── favorecidos.yaml      PIX enviados do Aurora que são repasse a lojista (P07)
 │   ├── pagadores_meridiano.yaml  PIX recebidos no Meridiano de clientes da remessa (P08)
+│   ├── auditoria.yaml        pasta do registro de execução (O06)
 │   ├── contestacao.yaml      pasta e textos dos rascunhos de contestação (R29)
 │   └── ia.yaml               modelo, limiar e cache da IA (P14)
 ├── src/tarvo/
@@ -418,11 +428,13 @@ O gerador só lê `dados/2026-09`: nada é gravado no repositório. O mesmo ensa
 │   ├── remessa.py            linha REMESSA (Ponte Câmbio)
 │   ├── bancos.py             classificação dos extratos e conferências cruzadas
 │   ├── ia.py                 sugestão de conta para lançamento sem regra
+│   ├── auditoria.py          registro de execução em auditoria/ (O06)
 │   ├── contestacao.py        rascunhos de contestação por contraparte (R29)
 │   └── saida.py              ItemSaida, escrita e validação dos 6 CSVs
-├── tests/                    456 testes + gerar_outubro.py (outubro simulado)
+├── tests/                    489 testes + gerar_outubro.py (outubro simulado)
 ├── dados/2026-09/            data pack de setembro, como recebido (com os ajustes tardios da Orbe, arquivo 06)
 ├── cache/ia_sugestoes.json   respostas da IA já obtidas (vazio em setembro)
 ├── saida/                    os 6 CSVs de setembro
-└── contestacoes/             rascunhos de contestação para a Helena revisar (R29)
+├── contestacoes/             rascunhos de contestação para a Helena revisar (R29)
+└── auditoria/                registro da última execução do fechamento (O06)
 ```
