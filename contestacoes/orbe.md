@@ -45,6 +45,7 @@ Nota: a tabela mostra valor bruto × taxa aplicada, arredondado (R$ 15.397,42); 
 ## 2. Taxas aplicadas acima do contrato
 
 - Escola Bridge de Idiomas Ltda (CNPJ 22224579000109): condição contratada vigente desde 2026-09-15. 5 transações de crédito à vista, de 2026-09-15 a 2026-09-18, com taxa aplicada de 2,59% contra 2,19% contratados, somando R$ 29,95.
+  - A nova condição vale só para crédito à vista (2,19%), desde 2026-09-15; as demais modalidades não mudaram.
 - Rota Global Intercâmbio Ltda (CNPJ 95927868000148): condição contratada vigente desde 2026-01-01. 87 transações de crédito parcelado e crédito à vista, de 2026-09-12 a 2026-09-30, com taxa aplicada de 2,99% a 4,09% contra 2,49% a 3,59% contratados, somando R$ 1.546,28.
   - Até 2026-09-11 (52 transações), a taxa aplicada foi a contratada.
   - A partir de 2026-09-12, todas as 83 transações de crédito à vista e crédito parcelado vieram com a taxa 0,50 p.p. acima da contratada; as de antecipação, débito e PIX seguiram a taxa contratada.

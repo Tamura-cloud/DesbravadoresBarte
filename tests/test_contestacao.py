@@ -162,6 +162,10 @@ def test_orbe_bridge_so_credito_a_vista_de_15_a_18(cont):
     assert len(linhas) == 5 and {l["taxa_contratada_pct"] for l in linhas} == {"2.1900"}
     contrato = _secao(_partes(cont, "orbe.md")[1], "## 2. Taxas aplicadas acima do contrato")
     assert "vigente desde 2026-09-15" in contrato
+    # a condição de 2,19% é só do crédito à vista; as outras modalidades não mudaram
+    assert ("A nova condição vale só para crédito à vista (2,19%), desde 2026-09-15; "
+            "as demais modalidades não mudaram.") in contrato
+    assert contrato.count("as demais modalidades não mudaram") == 1  # a Rota não mudou de contrato
     assert "5 transações de crédito à vista, de 2026-09-15 a 2026-09-18" in contrato
 
 

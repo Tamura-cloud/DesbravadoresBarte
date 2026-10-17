@@ -36,3 +36,12 @@ modalidades:
   PIX: "PIX"
   ANTECIPACAO: "antecipação"
   "REVERSAO ANTECIPACAO": "reversão de antecipação"
+
+# Colunas de taxa da planilha, como aparecem no texto quando uma condição muda só algumas modalidades.
+campos_taxa:
+  taxa_debito: "débito"
+  taxa_credito_vista: "crédito à vista"
+  taxa_parc_2_6: "crédito parcelado (2 a 6x)"
+  taxa_parc_7_12: "crédito parcelado (7 a 12x)"
+  taxa_pix: "PIX"
+  taxa_antecipacao: "antecipação"

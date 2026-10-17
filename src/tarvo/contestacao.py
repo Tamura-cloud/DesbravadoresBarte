@@ -65,6 +65,7 @@ class ConfigContestacao:
     padrao_lojista: dict[str, str]
     textos_aviso: dict[str, str]
     modalidades: dict[str, str]
+    campos_taxa: dict[str, str]
 
     def secao(self, cnpj: str) -> str:
         return self.lojistas.get(cnpj, self.padrao_lojista)["secao"]
@@ -84,7 +85,7 @@ def carregar_config(caminho=CONFIG_CONTESTACAO) -> ConfigContestacao:
         destinatarios=dict(bruto["destinatarios"]), nomes=dict(bruto["nomes"]),
         lojistas={str(k): dict(v) for k, v in (bruto.get("lojistas") or {}).items()},
         padrao_lojista=dict(bruto["padrao_lojista"]), textos_aviso=dict(bruto["textos_aviso"]),
-        modalidades=dict(bruto["modalidades"]),
+        modalidades=dict(bruto["modalidades"]), campos_taxa=dict(bruto["campos_taxa"]),
     )
     for cnpj, l in [("padrao_lojista", cfg.padrao_lojista), *cfg.lojistas.items()]:
         if l.get("aviso") not in cfg.textos_aviso:
@@ -237,6 +238,23 @@ def _condicoes_checkout(cnpj: str, datas: Iterable[date], contratos, cfg_ck) -> 
     return sorted(achadas.values(), key=lambda c: (c.inicio or date.min, c.descricao))
 
 
+def _mudanca_contrato(cnpj: str, condicao: Condicao, contratos, cfg: ConfigContestacao) -> str:
+    """Quais modalidades mudaram na linha da planilha que começa em condicao.inicio, comparada com a anterior."""
+    if condicao.inicio is None or not condicao.ref.startswith("planilha"):
+        return ""
+    try:
+        antes = contratos.vigente(cnpj, condicao.inicio - timedelta(days=1))
+        agora = contratos.vigente(cnpj, condicao.inicio)
+    except mod_checkout.ErroCheckout:
+        return ""
+    mudou = [c for c in cfg.campos_taxa if agora.get(c) != antes.get(c) and agora.get(c) is not None]
+    if not mudou:
+        return ""
+    quais = _lista([f"{cfg.campos_taxa[c]} ({_pct_br(agora[c])})" for c in mudou])
+    return (f"A nova condição vale só para {quais}, desde {condicao.inicio.isoformat()}; "
+            f"as demais modalidades não mudaram.")
+
+
 def _perfil_orbe(ls: list[dict], todas_do_lojista: list[dict], condicoes: list[Condicao], cfg) -> list[str]:
     """Frases sobre quando a diferença começou, para o lojista cujo contrato já valia antes dela."""
     vendas = [l for l in ls if l["tipo_lancamento"] != TIPO_ESTORNO] or ls
@@ -353,6 +371,7 @@ def _md_orbe(linhas, todas_orbe, entradas, contratos, cfg, cfg_ck, devolucoes) -
                          f"{_faixa_pct(Decimal(l['taxa_aplicada_pct']) for l in ls)} contra "
                          f"{_faixa_pct(Decimal(l['taxa_contratada_pct']) for l in ls)} contratados, "
                          f"somando {_rs(sum((Decimal(l['diferenca_brl']) for l in ls), ZERO))}.")
+            texto += [f"  - {m}" for m in (_mudanca_contrato(c, x, contratos, cfg) for x in conds) if m]
             texto += [f"  - {f}" for f in _perfil_orbe(ls, todas_orbe.get(c, []), conds, cfg)]
         texto += ["", tabela(contrato), "",
                   f"Pedimos que a {nome} informe a causa e corrija a parametrização. O total desta parte é {_rs(soma)}.", ""]
