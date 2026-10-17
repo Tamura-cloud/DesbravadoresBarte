@@ -3,10 +3,10 @@
 | | |
 |---|---|
 | Data | 2026-10-17 |
-| Commit do código | branch `regras-helena-2`, sobre `b01ff9d` (R25 a R30). Em relação a `b01ff9d`, os 6 CSVs de `saida/` estão idênticos byte a byte; a novidade é a pasta `contestacoes/` (R29), ao lado de `saida/` |
+| Commit do código | branch `regras-helena-2`, sobre `6f28288` (R29). Em relação a `6f28288`, os 6 CSVs de `saida/` estão idênticos byte a byte; mudou só `contestacoes/` (estrutura dos .md e colunas novas no ponte_operacoes.csv) |
 | Fechamento | `python -m tarvo fechar --competencia 2026-09 --entrada dados/2026-09 --saida saida/` (IA conforme `config/ia.yaml`; em setembro todo lançamento casa uma regra, então a IA não é chamada nenhuma vez, P14) |
 | Resumo | `python -m tarvo resumo --saida saida` |
-| pytest | **336 passed** (`python -m pytest -q`, 15,9 s) |
+| pytest | **346 passed** (`python -m pytest -q`, 20,2 s) |
 | `validar_saida(saida/)` | `[]`, **sem problemas** |
 | Rastro | 488 de 488 itens com soma do rastro por id_saida = valor reportado |
 
@@ -35,7 +35,17 @@ Auditoria das regras novas contra este fechamento:
 | ponte_operacoes.csv · SPREAD_NEGATIVO | PEN-NEG-REM (R23) | 4 | -3.565,98 | 4 · -3.565,98 | idem | ✓ |
 | ponte_operacoes.csv · OPERACAO_DUPLICADA | PEN-DUP-REM-PC-0926-0162 | 1 | 821,88 | 1 · 821,88 | idem | ✓ |
 
-Os textos orbe.md e ponte.md levam o cabeçalho de rascunho, os destinatários `<e-mail da Orbe>` e `<e-mail da Ponte>`, as condições vigentes de cada lojista com a data de início (planilha ou condição especial) e o aviso (config/contestacao.yaml): Casa e Mundo Aberto não foram avisadas; a Bridge foi avisada alguns dias depois de 15/09.
+Cada .md abre com um bloco "NOTAS PARA A HELENA — apagar antes de enviar" (avisos, valor a devolver pela R25, ressalvas); o corpo não fala de aviso do Comercial. Orbe: "Comunicação de condição comercial" (Casa, 0% de 2026-09-01 a 2026-12-31) e "Taxas aplicadas acima do contrato" (Bridge e Rota). Ponte: Mundo Aberto como comunicação de condição, mais os spreads negativos e a duplicada como contestação. Os destinatários são `<e-mail da Orbe>` e `<e-mail da Ponte>`.
+
+Colunas novas no ponte_operacoes.csv (P24, exibição, aguardando aprovação):
+
+| natureza | coluna | total | Esperado | teste de origem | |
+|---|---|---:|---|---|:-:|
+| SPREAD_ACIMA_CONTRATADO | parte_tarvo_brl (50% da diferença, por operação) | 709,46 | 709,46 | `test_contestacao.py::test_ponte_partes_da_tarvo_no_csv` | ✓ |
+| SPREAD_NEGATIVO | tarvo_deixou_de_receber_brl (50% do spread contratado) | 865,98 | 865,98 | idem | ✓ |
+| OPERACAO_DUPLICADA | parte_tarvo_brl · valor_operacao_brl | 410,94 · 55.811,47 | 410,94 · 55.811,47 | idem | ✓ |
+
+O `fechar` pelo CLI lista os 4 arquivos gravados e aceita `--sem-contestacao` (`test_contestacao.py::test_cli_lista_os_rascunhos_e_grava_na_pasta_irma`, `::test_cli_sem_contestacao_nao_grava_a_pasta`).
 
 A mudança anterior (R23, 9h48: spread negativo só como contestação, fora das divergências) está no commit `292a3eb`.
 

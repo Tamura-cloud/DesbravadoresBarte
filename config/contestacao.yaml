@@ -4,6 +4,7 @@
 pasta: contestacoes
 
 cabecalho: "[RASCUNHO — Helena revisa antes de enviar]"
+titulo_notas: "NOTAS PARA A HELENA — apagar antes de enviar"
 
 # Nunca um e-mail inventado: a Helena preenche ao enviar.
 destinatarios:
@@ -13,13 +14,25 @@ nomes:
   orbe: "Orbe"
   ponte: "Ponte Câmbio S.A."
 
-# Aviso da condição à contraparte, por CNPJ de lojista (resposta da Helena às 9h53). O CNPJ que não
-# estiver aqui sai com "sem_registro". {inicio} = data de início da condição, lida da planilha ou da config.
-avisos:
-  "22224579000109": avisada_depois   # Bridge
-  "00520815000100": nao_avisada      # Casa do Estudante
-  "17217888000111": nao_avisada      # Mundo Aberto
+# Por CNPJ de lojista (respostas da Helena às 9h53):
+# - secao: "comunicacao" = o e-mail comunica a condição comercial e pede a regularização do período;
+#          "contrato" (padrão) = o e-mail aponta taxa aplicada acima do contrato.
+# - aviso: se a contraparte foi avisada da condição. Só vai nas notas internas, nunca no corpo do e-mail.
+lojistas:
+  "22224579000109": {secao: contrato, aviso: avisada_depois}      # Bridge
+  "00520815000100": {secao: comunicacao, aviso: nao_avisada}      # Casa do Estudante
+  "17217888000111": {secao: comunicacao, aviso: nao_avisada}      # Mundo Aberto
+padrao_lojista: {secao: contrato, aviso: sem_registro}
 textos_aviso:
-  nao_avisada: "O Comercial não avisou a {contraparte} desta condição."
-  avisada_depois: "A {contraparte} só foi avisada desta condição alguns dias depois do início da vigência ({inicio})."
-  sem_registro: "Não há registro de que a {contraparte} tenha sido avisada desta condição."
+  nao_avisada: "nunca foi avisada: o Comercial não avisou a {contraparte} desta condição."
+  avisada_depois: "foi avisada só alguns dias depois do início da vigência ({inicio})."
+  sem_registro: "não há registro de que a {contraparte} tenha sido avisada."
+
+# Como a modalidade da Orbe aparece no texto (a chave é a modalidade, ou o tipo quando não há modalidade).
+modalidades:
+  DEBITO: "débito"
+  "CREDITO A VISTA": "crédito à vista"
+  "CREDITO PARCELADO": "crédito parcelado"
+  PIX: "PIX"
+  ANTECIPACAO: "antecipação"
+  "REVERSAO ANTECIPACAO": "reversão de antecipação"

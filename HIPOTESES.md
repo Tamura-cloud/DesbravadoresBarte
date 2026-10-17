@@ -4,7 +4,7 @@ Fontes deste arquivo:
 - **Fonte 1:** HIPOTESES.md do colega em `origin/main` (commit `d425cd4`). Todo o conteúdo dela está aqui, nas seções 2, 4 e 5, identificado como `F1-H01` a `F1-H10`.
 - **Fonte 2:** respostas públicas da Helena (financeiro da Tarvo) no canal #tarvo-financeiro em 16/10/2026. As perguntas foram feitas por outros times; as respostas valem para todos. Exceção: as perguntas do nosso time (Desbravadores Barte), respondidas em 17/10/2026: duas às 9h45 (viraram R22 e a validação de P04) e três às 9h48 (viraram R23, R24 e a validação de P16; na R23 a Helena remeteu à resposta pública dada à MN AI às 9h44). Ver seção 3.
 - **Fonte 2, 17/10/2026:** respostas públicas da Helena a outros times às 9h47 (R30), 9h49 (R28), 9h53 (R29) e 10h44 (itens 4 a 6: R25, R26 e R27; os itens 1 a 3 descrevem o processo e não viraram regra). As citações literais estão em cada regra.
-- **Aprovado por:** cada regra diz quem aprovou e quando, pelo critério da R28. Toda premissa (P01 a P23) diz o status.
+- **Aprovado por:** cada regra diz quem aprovou e quando, pelo critério da R28. Toda premissa (P01 a P24) diz o status.
 
 Pela regra do CLAUDE.md, só entra no código regra de negócio que esteja aqui. Os valores de setembro citados neste arquivo são referência para os testes, nunca para `src/` ou `config/`.
 
@@ -58,11 +58,11 @@ Pela regra do CLAUDE.md, só entra no código regra de negócio que esteja aqui.
 
 ### Aprovação e contestação
 
-- **R28** — Quem aprova cada tipo de regra: regra de fechamento é aprovada pela Helena; taxa ou condição comercial é aprovada pelo Comercial e registrada pela Helena. É o critério do campo "Aprovado por" deste arquivo. Premissa nossa (P01 a P23) fica "aguardando aprovação" até a pessoa certa aprovar. *(resposta da Helena à MN AI, 17/10/2026, 9h49: "Taxa e condição comercial, quem aprova é o comercial, e eu registro. Regra de como fechar, aprovo eu. [...] Registrar quem aprovou e quando é ótimo.")* **Aprovado por:** Helena — 17/10/2026, 9h49.
+- **R28** — Quem aprova cada tipo de regra: regra de fechamento é aprovada pela Helena; taxa ou condição comercial é aprovada pelo Comercial e registrada pela Helena. É o critério do campo "Aprovado por" deste arquivo. Premissa nossa (P01 a P24) fica "aguardando aprovação" até a pessoa certa aprovar. *(resposta da Helena à MN AI, 17/10/2026, 9h49: "Taxa e condição comercial, quem aprova é o comercial, e eu registro. Regra de como fechar, aprovo eu. [...] Registrar quem aprovou e quando é ótimo.")* **Aprovado por:** Helena — 17/10/2026, 9h49.
 - **R29** — Contestação: um rascunho de e-mail por contraparte, com as operações anexadas. A Helena revisa e envia. *(resposta da Helena à MN AI, 17/10/2026, 9h53, à proposta de entregar "um rascunho de e-mail por contraparte com as operações em anexo: Orbe (Casa 118, Rota 87, Bridge 5) e Ponte (Mundo Aberto 23, os 4 spreads negativos e a PC-0926-0162 repetida)": "Ninguém tem essa função hoje. O comercial fecha e, quando lembra, manda um e-mail para a Orbe ou a Ponte. A Bridge foi avisada alguns dias depois de 15/09, e a Casa do Estudante e a Mundo Aberto não foram avisadas. Serve, e muito. Um rascunho por contraparte, com as operações anexadas, eu reviso e envio. Quantas operações vão em cada um é com vocês.")* **Aprovado por:** Helena — 17/10/2026, 9h53.
   - **Contrapartes:** Orbe e Ponte (a proposta citava as duas e a Helena aprovou). Os avisos de condição ficam em config/contestacao.yaml.
   - **Decisão nossa ("quantas operações vão em cada um é com vocês"):** todas as operações de cada contraparte vão no anexo: as divergências de checkout (DIV-CHK) para a Orbe; as divergências de remessa (DIV-REM), os spreads negativos (PEN-NEG-REM, R23) e a operação duplicada (PEN-DUP-REM) para a Ponte. Estornos ficam no total, com uma linha explicando.
-  - **Implementação:** src/tarvo/contestacao.py, chamado pelo fechar. Usa os itens já calculados e grava numa pasta irmã de saida/ (padrão contestacoes/, em config/contestacao.yaml): orbe.md + orbe_operacoes.csv e ponte.md + ponte_operacoes.csv. saida/ continua com exatamente 6 CSVs. Cabeçalho "[RASCUNHO — Helena revisa antes de enviar]"; destinatário só como <e-mail da Orbe> e <e-mail da Ponte>.
+  - **Implementação:** src/tarvo/contestacao.py, chamado pelo fechar. Usa os itens já calculados e grava numa pasta irmã de saida/ (padrão contestacoes/, em config/contestacao.yaml): orbe.md + orbe_operacoes.csv e ponte.md + ponte_operacoes.csv. saida/ continua com exatamente 6 CSVs. Cabeçalho "[RASCUNHO — Helena revisa antes de enviar]"; destinatário só como <e-mail da Orbe> e <e-mail da Ponte>. Cada .md abre com um bloco "NOTAS PARA A HELENA — apagar antes de enviar" (quem foi ou não avisado, valor a devolver a cada lojista pela R25, ressalvas); o corpo do e-mail não fala de aviso do Comercial. Lojista com condição comercial a comunicar (Casa do Estudante, Mundo Aberto) vai numa seção de comunicação e pedido de regularização; taxa acima do contrato (Bridge, Rota) e a contestação da Ponte (spreads negativos, duplicada) vão como cobrança. Qual seção cada lojista usa fica em config/contestacao.yaml. As partes da Tarvo mostradas são a P24.
 
 ---
 
@@ -150,6 +150,15 @@ Uma revisão independente questionou as escolhas abaixo. Todas foram mantidas, m
   - **Motivo:** R10 já decidiu a devolução ("o que a Orbe cobrou é devolvido ao lojista"). Para os outros lojistas, a R25 decidiu que o que a Orbe cobra a mais é devolvido; o valor continua pela fórmula da R03.
   - As divergências em divergencias_taxa.csv não mudam: continuam pela fórmula da R03 (ver F1-H03).
   - Se o mesmo lojista tiver no mês divergências com e sem condição especial, o fechamento para: não há regra para juntar as duas devoluções.
+
+**Rascunhos de contestação (P24)**
+
+- **P24 — Partes da Tarvo mostradas nos rascunhos da Ponte (R29):** em ponte_operacoes.csv e ponte.md, três números que não estão nos CSVs de saida/:
+  - spread acima do contratado: `parte_tarvo_brl` = participação (R11, 50%) × a diferença da DIV-REM, por operação, arredondada (R02);
+  - operação duplicada: `parte_tarvo_brl` = participação × o spread da cópia (a PEN-DUP vale o spread inteiro, P19), mais `valor_operacao_brl` = valor em R$ + IOF, o que o cliente pagou;
+  - spread negativo: `tarvo_deixou_de_receber_brl` = participação × o spread contratado em R$ (contratado % × PTAX de referência × valor em ME). É o que a Tarvo receberia pelo contrato e não recebeu, porque a operação sai da comissão (R12). A PEN-NEG continua valendo a diferença do spread inteiro (P18).
+  - **Motivo:** a Helena pediu que o e-mail deixe claro o que é do cliente e o que é da Tarvo. R11 dá a participação, e o contrato dá o spread. Os números são exibição: nenhum deles entra em comissão, nota, divergência ou pendência.
+  - **Status:** aguardando aprovação. A leitura "a Tarvo também dividiria o prejuízo do spread negativo" (50% do spread aplicado negativo) não foi adotada: a Helena disse que o prejuízo é da Tarvo com a Ponte (R23) e não pediu para somá-lo.
 
 ### 2.2 Premissas e achados do HIPOTESES.md do colega (Fonte 1)
 
@@ -352,7 +361,6 @@ O HIPOTESES.md da Fonte 1 não cita encoding. Quem cita é o CLAUDE.md do colega
 Fonte: resposta da Helena à Turma do Barulho, 17/10/2026, 10h44, itens 1 a 3. Descreve como o fechamento é feito hoje; nada daqui entra no código. Resumo, sem citação literal.
 
 - **Sequência:** baixar os arquivos → checkout → remessa → extratos → notas.
-- **Quem faz:** as analistas executam; a Helena confere e aprova.
-- **Controle de etapa:** uma aba com "ok" e a data.
-- **Tempo:** os 8 dias se dividem em cerca de 3 de checkout, 2 de remessa (quase tudo é espera), 2 de extratos e 1 de notas e revisão.
-- **Conhecimento:** as regras estão só com a Helena. Na ausência dela, ninguém fecha (R28).
+- **Quem faz e quem controla (item 1):** "Quem executa são as duas analistas, e quem confere e aprova sou eu. O registro de que uma etapa terminou é uma aba de controle na mesma planilha, onde cada uma marca 'ok' e a data. Não tem nada além disso."
+- **Tempo (item 2):** "Comissão de checkout, uns 3 dias. Metade é trabalho manual, casando nome com EC e CNPJ. A outra metade é retrabalho, quando a planilha está desatualizada. Remessa e Ponte, uns 2 dias. A maior parte é espera [...] Classificar os extratos, uns 2 dias. Quase tudo manual, linha por linha. O último dia é para as notas e a minha revisão." Soma: 8 dias.
+- **Conhecimento (item 3):** "Quase tudo que vocês já descobriram aqui no canal estava só na minha cabeça [...] Se eu faltar, ninguém sabe essas regras." (ver R28)
