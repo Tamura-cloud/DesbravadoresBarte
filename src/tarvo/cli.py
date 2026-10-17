@@ -1,4 +1,7 @@
-"""CLI do fechamento: python -m tarvo fechar --competencia AAAA-MM --entrada <dir> --saida <dir> [--sem-ia]."""
+"""CLI do fechamento: python -m tarvo fechar --competencia AAAA-MM --entrada <dir> --saida <dir> [--sem-ia]
+
+e o resumo da saída: python -m tarvo resumo --saida <dir>.
+"""
 
 from __future__ import annotations
 
@@ -76,6 +79,18 @@ def cmd_fechar(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_resumo(args: argparse.Namespace) -> int:
+    from tarvo.resumo import ErroResumo, resumir
+
+    try:
+        texto = resumir(Path(args.saida))
+    except ErroResumo as e:
+        print(f"Erro ao ler a saída:\n{e}", file=sys.stderr)
+        return 2
+    print(texto, end="")
+    return 0
+
+
 def construir_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="tarvo", description="Fechamento mensal da Tarvo Pagamentos")
     sub = parser.add_subparsers(dest="comando", required=True)
@@ -88,6 +103,10 @@ def construir_parser() -> argparse.ArgumentParser:
     fechar.add_argument("--sem-ia", action="store_true",
                         help="Não usa a IA nos extratos: lançamento sem regra fica A_CLASSIFICAR/HUMANO (P09)")
     fechar.set_defaults(func=cmd_fechar)
+
+    resumo = sub.add_parser("resumo", help="Imprime em Markdown o resumo dos 6 CSVs de uma pasta de saída")
+    resumo.add_argument("--saida", required=True, help="Diretório com os 6 CSVs gravados pelo fechar")
+    resumo.set_defaults(func=cmd_resumo)
     return parser
 
 
