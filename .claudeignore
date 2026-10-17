@@ -1,0 +1,12 @@
+# Ignora materiais de pesquisa prévia e arquivos binários pesados
+# para manter a janela de contexto do Claude Code 100% limpa e focada no Case Tarvo
+_referencias_internas/
+slack_tarvo*
+*.zip
+
+*.pdf
+.venv/
+venv/
+__pycache__/
+.pytest_cache/
+.git/
