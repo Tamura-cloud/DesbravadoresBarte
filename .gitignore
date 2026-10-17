@@ -1,5 +1,6 @@
 # Materiais internos de preparação (preservados localmente e na branch backup-dossies-barte)
 _referencias_internas/
+slack_tarvo*
 
 # Ambientes virtuais e cache Python
 .venv/
