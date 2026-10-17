@@ -17,6 +17,7 @@ from tarvo.leitores.orbe import ler_orbe
 from tarvo.leitores.plano_contas import ler_plano
 from tarvo.leitores.ponte import ler_ponte
 from tarvo.leitores.taxas import ler_taxas
+from tarvo.remessa import remessa
 from tarvo.saida import ItemSaida, gravar_saida, validar_saida
 
 RE_COMPETENCIA = re.compile(r"[0-9]{4}-(0[1-9]|1[0-2])")
@@ -42,7 +43,7 @@ class Entradas:
 Modulo = Callable[[Entradas], Iterable[ItemSaida]]
 
 # Módulos que geram itens de saída. Cada um recebe as Entradas e devolve ItemSaida.
-MODULOS: list[Modulo] = [checkout]
+MODULOS: list[Modulo] = [checkout, remessa]
 
 
 class ErroFechamento(Exception):

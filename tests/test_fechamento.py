@@ -7,6 +7,7 @@ import pytest
 
 from tarvo.checkout import checkout
 from tarvo.fechamento import MODULOS, Entradas, fechar
+from tarvo.remessa import remessa
 from tarvo.saida import ARQUIVOS, PENDENCIAS, ErroSaida, ItemSaida, validar_saida
 
 ENTRADA = Path(__file__).resolve().parents[1] / "dados" / "2026-09"
@@ -28,7 +29,7 @@ def test_grava_direto_na_pasta_de_saida_sem_subpasta_da_competencia(tmp_path):
 
 
 def test_modulos_registrados():
-    assert MODULOS == [checkout]
+    assert MODULOS == [checkout, remessa]
 
 
 def test_modulo_recebe_entradas_e_seus_itens_sao_gravados(tmp_path):

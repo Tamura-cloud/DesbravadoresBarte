@@ -1,0 +1,27 @@
+# Regras da linha REMESSA (Ponte Câmbio). Cada item cita a regra de origem no HIPOTESES.md.
+# CNPJ sempre entre aspas (zeros à esquerda). Taxas em pontos percentuais, como texto (viram Decimal).
+
+# R11: a Tarvo fica com 50% do Spread R$ realizado (e-mail da Ponte), arredondado por operação.
+participacao_tarvo: "0.5"
+
+# R14: spread contratado quando a planilha tem a célula em branco ou um destes textos (comparados sem acento).
+spread_padrao_pct: "1.5"
+spread_padrao_textos:
+  - "padrão"
+
+# P01: diferença de spread abaixo disto (em p.p.) não é divergência.
+tolerancia_divergencia_pp: "0.01"
+
+# R13: colunas que podem diferir entre cópias do mesmo Nº Operação sem deixar de ser duplicata.
+# A cópia reprocessada traz só a observação diferente; qualquer outra coluna diferente é erro.
+duplicata_colunas_ignoradas:
+  - observacao
+
+# R17: uma nota só, tomadora Ponte Câmbio (CNPJ da assinatura do e-mail da Ponte).
+tomador_nota:
+  cnpj: "75374179000146"
+  nome: "Ponte Câmbio S.A."
+discriminacao_nota: "Intermediação de câmbio - participação no spread - competência {competencia}"
+
+# Quem decide as pendências da remessa (R12, R13, R16, R18).
+quem_decide: "Financeiro (Helena)"
