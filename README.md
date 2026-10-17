@@ -68,7 +68,7 @@ só se a validação não achar problema; sai com 1 ou 2 se a saída ou uma entr
 python -m pytest
 ```
 
-São 303 testes, sem acesso à rede. Incluem o fechamento de um outubro simulado (ver "Como rodar outubro").
+São 318 testes, sem acesso à rede. Incluem o fechamento de um outubro simulado (ver "Como rodar outubro").
 
 ## Chaves
 
@@ -184,27 +184,29 @@ arredonda nem troca texto: valor com casas a mais ou texto com `;` é erro.
 
 ## Como rodar outubro
 
-1. Ponha os 6 arquivos de outubro, como chegaram, em `dados/2026-10/`. Os nomes podem mudar, desde que casem
-   com os padrões da tabela de entradas.
-2. Rode:
+O mesmo comando fecha qualquer mês, sem mexer no código: só mudam a competência e as pastas.
+
+1. Ponha os 6 arquivos do mês, como chegaram, numa pasta **fora deste repositório**. Os nomes podem mudar,
+   desde que casem com os padrões da tabela de entradas.
+2. Rode, com a saída também fora do repositório:
    ```bash
-   python -m tarvo fechar --competencia 2026-10 --entrada dados/2026-10 --saida saida/
+   python -m tarvo fechar --competencia 2026-10 --entrada <pasta com os arquivos de outubro> --saida <pasta de saída de outubro>
    ```
-   Isso substitui os CSVs de setembro em `saida/` (setembro continua no git). Para manter os dois meses lado a
-   lado, use outra pasta, por exemplo `--saida saida/2026-10/`.
+   `dados/` (somente leitura) e `saida/` (os 6 CSVs de setembro, que são a entrega) não são tocados.
 3. Siga "Como a analista usa no fechamento", abaixo. Atenção às pendências que vêm de setembro (ver "Limitações").
 
 **Ensaio sem os arquivos reais:** `tests/gerar_outubro.py` gera um outubro simulado a partir de setembro (datas
 +1 mês e quatro casos novos: venda de EC fora da planilha, PIX enviado a favorecido desconhecido, PIX recebido
-de pagador fora da lista, operação da Ponte de CNPJ fora da planilha).
+de pagador fora da lista, operação da Ponte de CNPJ fora da planilha). Tudo vai para uma pasta temporária:
 
 ```bash
-python tests/gerar_outubro.py dados/2026-09 dados/2026-10
-python -m tarvo fechar --competencia 2026-10 --entrada dados/2026-10 --saida saida_outubro/ --sem-ia
+python tests/gerar_outubro.py dados/2026-09 <pasta temporária>/dados/2026-10
+python -m tarvo fechar --competencia 2026-10 --entrada <pasta temporária>/dados/2026-10 --saida <pasta temporária>/saida --sem-ia
+python -m tarvo resumo --saida <pasta temporária>/saida
 ```
 
-O mesmo ensaio roda dentro de `python -m pytest tests/test_outubro.py`, em pasta temporária. Apague
-`dados/2026-10/` antes de colocar os arquivos reais: o simulado não é o outubro de verdade.
+O gerador só lê `dados/2026-09`: nada é gravado no repositório. O mesmo ensaio roda dentro de
+`python -m pytest tests/test_outubro.py`, também em pasta temporária, e o resultado está na seção 7 do `RESULTADOS.md`.
 
 ## Como a analista usa no fechamento
 
@@ -302,7 +304,7 @@ O mesmo ensaio roda dentro de `python -m pytest tests/test_outubro.py`, em pasta
 │   ├── bancos.py             classificação dos extratos e conferências cruzadas
 │   ├── ia.py                 sugestão de conta para lançamento sem regra
 │   └── saida.py              ItemSaida, escrita e validação dos 6 CSVs
-├── tests/                    303 testes + gerar_outubro.py (outubro simulado)
+├── tests/                    318 testes + gerar_outubro.py (outubro simulado)
 ├── dados/2026-09/            data pack de setembro, como recebido
 ├── cache/ia_sugestoes.json   respostas da IA já obtidas (vazio em setembro)
 └── saida/                    os 6 CSVs de setembro
