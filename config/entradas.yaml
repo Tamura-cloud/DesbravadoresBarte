@@ -1,0 +1,9 @@
+# Padrões de nome (glob, sem diferenciar maiúsculas) para localizar cada arquivo de entrada.
+# Nunca use o nome exato: os nomes mudam a cada competência.
+arquivos:
+  orbe: "*orbe*.csv"
+  taxas: "*taxas*.xlsx"
+  ponte_eml: "*.eml"
+  plano_de_contas: "*plano_de_contas*.csv"
+  aurora: "*aurora*.csv"
+  meridiano: "*.ofx"

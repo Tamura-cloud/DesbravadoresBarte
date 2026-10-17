@@ -1,1 +1,5 @@
-openpyxl>=3.1
+pandas
+openpyxl
+pyyaml
+anthropic
+pytest

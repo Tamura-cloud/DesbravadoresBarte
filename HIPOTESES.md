@@ -1,102 +1,307 @@
-# HIPOTESES.md — Premissas Contábeis, Regras da Helena e Provas Matemáticas (Setembro/2026)
+# Hipóteses — fechamento de setembro/2026
 
-Este documento consolida todas as regras de negócio confirmadas pela **Helena (financeiro da Tarvo)** no canal oficial do Slack (até `22h35` de `16/10/2026`), as premissas do time e as **provas matemáticas exatas** (auditadas em Python sobre os arquivos de `dados/`), resolvendo integralmente os pontos levantados na branch `origin/pix` (`CONFLITO C1`, `C2`, `C3` e verificações numéricas).
+Fontes deste arquivo:
+- **Fonte 1:** HIPOTESES.md do colega em `origin/main` (commit `d425cd4`). Todo o conteúdo dela está aqui, nas seções 2, 4 e 5, identificado como `F1-H01` a `F1-H10`.
+- **Fonte 2:** respostas públicas da Helena (financeiro da Tarvo) no canal #tarvo-financeiro em 16/10/2026. As perguntas foram feitas por outros times; as respostas valem para todos.
 
-> **Revisão de `16/10/2026` (recálculo independente em Python/`Decimal`):** corrigidos (1) divergência da Casa do Estudante `15.397,32` → **`15.397,42`**; (2) Rota Global: o `+0,50 p.p.` foi em Crédito à Vista, 2-6x e 7-12x, **não em Débito**; (3) duplicata `PC-0926-0162` é da **Bagagem Livre**; (4) são **`6`** (não `3`) operações de `30/09` liquidadas em `01/10`; (5) Aurora tem **`84`** lançamentos (linhas `9` a `92`, total `184`), com `ref_origem` = linha física `L9…L92`; (6) `21` (não `19`) TEDs da Orbe; (7) incluído o `SEGURO EMPRESARIAL` (`4.2.05`), que não estava mapeado; (8) spread negativo da Novo Horizonte comparado com `1,40%`. Os schemas de saída foram alinhados à instrução oficial (6 CSVs, incluindo `rastro.csv`).
-
----
-
-## 1. Mapeamento Cadastral, Contratos e Condições Comerciais
-
-* **H01 — Vínculo dos 3 ECs sem código na aba `'Taxas vigentes'` (`R07`):**
-  * Confirmado pela Helena às `20h24`:
-    * `EC 1043300981` (`HORIZONTE INTERCAMBIO`) $\rightarrow$ **Novo Horizonte Intercambio** (`CNPJ 66564512000199`).
-    * `EC 1043396662` (`HORIZONTE VIAGENS TURISMO`) $\rightarrow$ **Horizonte Viagens** (`CNPJ 78576234000179`).
-    * `EC 1038867654` (`KIWI EXPERIENCE TURISMO`) $\rightarrow$ **Kiwi Experience** (`CNPJ 07752116000126`).
-  * *Regra de pareamento no código:* casar sempre por `cod_estabelecimento` (Orbe) e `CNPJ` de 14 dígitos (planilha e Ponte), usando nome apenas como evidência.
-* **H02 — `Atlas Idiomas Ltda` (`EC 1076801732`, `CNPJ 39566044000119` — `R08`):**
-  * Começou a transacionar em `10/09/2026` (`57` transações, `R$ 262.138,61` brutos, `R$ 7.876,05` de taxa retida pela Orbe), mas consta apenas na aba histórica `'ANTIGO 2025 - nao usar'` sem contrato assinado na aba vigente.
-  * **Decisão (`R08`):** Conforme orientação expressa da Helena (*"Não sei qual taxa vale. Não fatura a Atlas até o comercial confirmar"*), a Atlas Idiomas **não tem NF emitida em `notas_a_emitir.csv`**, não gera linhas em `divergencias_taxa.csv` (premissa técnica necessária pois, sem taxa contratada vigente, `taxa_aplicada − taxa_contratada` é indefinida) e é registrada em `pendencias.csv` para validação contratual junto ao Comercial (Diego).
-* **H03 — Isenção (`0,00%`) da `Casa do Estudante Viagens Ltda` (`EC 1018325654`, `CNPJ 00520815000100` — `R10`, `R04`, `R06`):**
-  * A célula `A13` da planilha vigente possui o comentário `"conversar com Diego (comercial) sobre condição especial"`. Conforme confirmação da Helena às `20h49` (`R10`), a Casa do Estudante possui **tarifa zerada (`0,00%`) no Checkout (MDR e Antecipação) de setembro a dezembro/2026** (mantendo-se o spread contratado normal de `1,50%` apenas em Remessas de Câmbio).
-  * Como a Orbe não foi avisada, cobrou indevidamente `R$ 15.391,27` líquidos nas `119` movimentações do mês.
-  * **Tratamento do Estorno de Venda de Agosto (`TX88445133` — linha física `433` da Orbe):** Em `07/09/2026`, ocorreu o estorno de débito `TX88445133` (`-R$ 369,39`) referente a uma venda realizada em **`21/08/2026`** (`data_venda_original = 21/08/2026`). Pela regra `R04` (*"A taxa usada é a que valia na data da venda original"*), em agosto/2026 (antes do acordo de setembro a dezembro) valia a taxa contratada da planilha desde `01/01/2026` (`1,49%`), gerando comissão contratada de **`-R$ 5,50`** em setembro (sem divergência de taxa nessa linha). As demais **`118`** transações de setembro (`113` vendas, `4` antecipações, `1` estorno de venda de setembro) têm taxa contratada `0,00%`, gerando **`R$ 15.397,42`** de divergência a devolver ao lojista pelo cálculo arredondado linha a linha (`R$ 15.396,77` retidos pela Orbe nessas `118` linhas).
-  * **Resolução do `CONFLITO C3` (Saldo zero ou negativo):** Pela regra `R06` (*"Zero ou negativo não emite nota... coloca como pendência para mim"*), **tanto saldo zero quanto saldo negativo não emitem NF e ambos geram pendência para a Helena**. Na Casa do Estudante, o saldo líquido de comissão de Checkout em setembro é `-R$ 5,50` (negativo), não emitindo NF e indo obrigatoriamente para `pendencias.csv`.
-* **H04 — Preservação de Zeros à Esquerda em CNPJs:**
-  * Na planilha de taxas contratadas, os CNPJs de `Fluente Idiomas Online Ltda` (`03229837000103`) e `Campus Global Ltda` (`08780784000120`) estão gravados como inteiros de 13 dígitos. Todos os CNPJs são normalizados para `14` dígitos numéricos (`zfill(14)`).
+Pela regra do CLAUDE.md, só entra no código regra de negócio que esteja aqui. Os valores de setembro citados neste arquivo são referência para os testes, nunca para `src/` ou `config/`.
 
 ---
 
-## 2. Regras de Cálculo de Comissões, Arredondamento e Divergências
+## 1. Regras confirmadas pelo financeiro (fonte: Slack, com horário)
 
-* **H05 — Arredondamento Padrão (`ROUND_HALF_UP`) Linha a Linha (`R02`, `R11`):**
-  * Enquanto a Orbe trunca os centavos na segunda casa decimal, a Tarvo aplica **arredondamento comum para o centavo (`ROUND_HALF_UP`: `0,005 -> 0,01` e `-0,005 -> -0,01`) linha por linha (operação por operação)** antes de somar.
-* **H06 — Base da Comissão e Divergências no Checkout (`R01`, `R03`, `R09`, `R22`):**
-  * A comissão da Tarvo no Checkout é a **taxa contratada inteira** (sem desconto de custo da Orbe, conforme reiterado pela Helena em `R22`), calculada como `ROUND_HALF_UP(valor_bruto * taxa_contratada_pct / 100, 2)` por transação.
-  * Diferenças de `R$ 0,01` causadas pelo truncamento da Orbe **não são divergência** (`R02`, `R03`).
-  * Só entra em `divergencias_taxa.csv` quando `taxa_aplicada_pct != taxa_contratada_pct`, com valor `ROUND_HALF_UP(valor_bruto * (taxa_aplicada_pct - taxa_contratada_pct) / 100, 2)`. Casos em setembro (`210` transações com taxa divergente):
-    1. **`Casa do Estudante` (`EC 1018325654`):** `118` transações de setembro cobradas pela Orbe durante vigência da tarifa `0,00%`, somando **`R$ 15.397,42`** (arredondado por linha).
-    2. **`Rota Global Intercâmbio Ltda` (`EC 1074504011` — `R09`):** `87` transações (`83` vendas e `4` estornos) a partir de `12/09/2026` com `+0,50 p.p.` cobrados a mais pela Orbe sem alteração contratual — Crédito à Vista `2,49% -> 2,99%`, Créd. 2-6x `2,99% -> 3,49%`, Créd. 7-12x `3,59% -> 4,09%` (Débito `1,49%` e PIX `0,89%` não mudaram) —, somando diferença líquida de **`R$ 1.546,28`**.
-    3. **`Escola Bridge de Idiomas Ltda` (`EC 1075624862`):** renegociou Crédito à Vista de `2,59%` (`até 14/09/2026`) para `2,19%` (`a partir de 15/09/2026`). Em **`5` vendas** de Crédito à Vista entre `15/09` e `18/09` (`TX88428053`, `TX88429199`, `TX88428930`, `TX88429931`, `TX88431123`), a Orbe aplicou `2,59%` em vez de `2,19%`, gerando divergência de **`R$ 29,95`**.
-* **H07 — Estornos, Antecipações e Reversões no Checkout (`R04`, `R05`, `R06`):**
-  * Estornos (`ESTORNO`) ocorridos em setembro (inclusive os `9` estornos de vendas de agosto) entram em setembro, abatendo a comissão pela taxa contratada vigente na `data_venda_original`.
-  * `ANTECIPACAO` (`2,10%`, exceto Casa do Estudante `0,00%`) e `REVERSAO ANTECIPACAO` (que anula a taxa da antecipação referenciada em `id_referencia`) entram na **mesma Nota Fiscal mensal de Checkout** do lojista.
-  * Saldo mensal zero ou negativo não emite NF e entra em `pendencias.csv` para a Helena.
-* **H08 — Remessas de Câmbio (`REMESSA` — Ponte Câmbio — `R11` a `R18`):**
-  * Na remessa, a comissão da Tarvo e a **Nota Fiscal única contra a Ponte Câmbio S.A. (`75374179000146`)** são **50% do `Spread R$` realizado**, arredondado (`ROUND_HALF_UP`) **operação por operação** (`R11`, `R17`).
-  * Células de spread em branco ou `"padrão"` na planilha valem **`1,50%` sobre a PTAX de referência** (`PTAX Ref. × Valor ME` — `R14`).
-  * **Operações Incluídas em Setembro (`228` operações válidas $\rightarrow$ NF Ponte Câmbio = `R$ 39.543,45`):**
-    * As **`6`** operações contratadas em `30/09/2026` e liquidadas em `01/10/2026` (`PC-0926-0002`, `PC-0926-0110`, `PC-0926-0249`, `PC-0926-0384`, `PC-0926-0549`, `PC-0926-0566`; `R$ 2.078,71` de spread) entram em setembro pela data de contratação (`R11`).
-    * Operações com status `"APROVADO C/ RESSALVA"` entram normalmente (`R11`).
-    * **`Mundo Aberto` (`17217888000111` — `R15`, `R16`):** as **23 operações** em que a Ponte aplicou `~1,50%` em vez dos `1,20%` renegociados em jul/2026 **entram na comissão e na NF de setembro pelo valor realizado** (`R16`), são reportadas em `divergencias_taxa.csv` pelo **valor cheio pago a mais pelo lojista (`R$ 1.418,85` = `(Spread % aplicado − 1,20%) × PTAX × Valor ME` — `R15`)** e vão para `pendencias.csv` para contestação com a Ponte.
-  * **Operações Excluídas da Comissão e da NF de Remessa (`R12`, `R13`, `R18`):**
-    * **Duplicidade (`PC-0926-0162`, `Bagagem Livre Turismo`, `50900987000179`, contratada em `22/09` — `R13`, `R18`):** a segunda linha com mesmo número de operação (Observação `"reprocessada"`, `Spread R$ 821,88`) é descartada do cálculo e incluída em `pendencias.csv` na lista para a Ponte corrigir o relatório (`R18`).
-    * **4 Operações com Spread Negativo (`PC-0926-0210`, `PC-0926-0326`, `PC-0926-0491`, `PC-0926-0545`, soma `Spread R$ = -R$ 1.834,05` — `R12`, `P02`):** decorrentes de `"Taxa travada no pedido (D-1)"` vencida (trava contratual vale 2 horas). Ficam fora da comissão e da NF, e entram em `divergencias_taxa.csv` (diferença contra o spread contratado de cada lojista: `1,50%` para Ponte Aérea, Canguru e Dublin Hub; **`1,40%` para Novo Horizonte**) e em `pendencias.csv` para contestação.
-  * **Critério de Tolerância de Arredondamento PTAX (`0,01 p.p.` — `P01`, `R15`):** Oscilações inferiores a `0,01 p.p.` entre o `Spread %` reportado e a taxa contratada (ex.: `1,4984%` a `1,5015%` para `1,50%`) decorrem do arredondamento da taxa final de câmbio em 4 casas decimais e não são reportadas como divergência.
-  * **Resolução do `CONFLITO C1` e Prova Matemática dos `R$ 0,56 / R$ 0,57` (`R18` — respostas da Helena às `22h33/22h34`):**
-    * Conforme a resposta da Helena ao Lucca Landeiro e à Insper AI (`R18`): *"Ainda não contestei nada... Considerem que estamos dentro do prazo... Não sei ainda como a Ponte vai pagar, porque a contestação nem foi aberta. Não conte que ela vai descontar nada do repasse. Conferir o TED quando ele cair é uma pendência boa. Fica comigo."*
-    * Portanto, **não supomos desconto no repasse de outubro**: registramos em `pendencias.csv` as contestações com seus valores e códigos de operação (Mundo Aberto `23` ops `R$ 1.418,85`, 4 spreads negativos `-R$ 1.834,05` e duplicata `PC-0926-0162` `R$ 821,88`) e a pendência para a Helena **conferir o TED de outubro quando cair**.
-    * **Explicação matemática da diferença de `R$ 0,56 / R$ 0,57` apontada na branch `origin/pix`:**
-      * Soma do `Spread R$` das `228` operações válidas = `R$ 79.085,76`.
-      * Se calculássemos `50%` sobre a soma total (`79.085,76 × 0,50`), daria `R$ 39.542,88`.
-      * Porém, aplicando a regra `R11` da Helena (`50%` arredondado `ROUND_HALF_UP` **operação por operação**), existem `114` operações com centavo ímpar no `Spread R$` (cujo meio centavo `0,005` arredonda para `+0,01`), totalizando exatamente **`R$ 39.543,45`** (`39.543,45 − 39.542,88 = +R$ 0,57`). Daí vinha a diferença entre `917,03 − 410,94 = 506,09` e `39.543,45 − 39.036,80 = 506,65`!
+### Checkout (Orbe)
+
+- **R01** — Comissão de checkout = valor_bruto × taxa contratada da planilha, linha a linha. O valor_taxa da Orbe NÃO é a comissão. A nota fiscal vai pela taxa contratada. *(pergunta de Fox AI, resposta da Helena às 20h05)*
+- **R02** — Arredondamento comum para o centavo (meio centavo para longe do zero: -0,005 vira -0,01), linha a linha e depois soma. A Orbe trunca; truncamento não é divergência. *(pergunta de Fox AI, resposta da Helena às 21h13)*
+- **R03** — Divergência de checkout existe só quando a taxa aplicada ≠ contratada. Valor = valor_bruto × (aplicada − contratada). A devolução ao lojista é decisão da Helena, caso a caso. *(pergunta de Fox AI, resposta da Helena às 20h05; pergunta de Fox AI, resposta da Helena às 21h13)*
+- **R04** — Estorno abate a comissão no mês do estorno (inclusive de venda de agosto), pela taxa contratada vigente na data da venda original. *(pergunta de MN AI, resposta da Helena às 20h06)*
+- **R05** — Antecipação entra na mesma nota do lojista; a reversão anula só a taxa da antecipação que ela reverte. *(pergunta de MN AI, resposta da Helena às 20h47)*
+- **R06** — Nota de checkout: uma por lojista por mês. Zero ou negativo não emite nota e vira pendência da Helena (não passa para o mês seguinte). Discriminação simples: serviço + competência. *(pergunta de MN AI, resposta da Helena às 20h47)*
+
+### Cadastro de lojistas
+
+- **R07** — EC 1043300981 = Novo Horizonte Intercâmbio; EC 1043396662 = Horizonte Viagens e Turismo (empresas diferentes); EC 1038867654 = Kiwi Experience. CNPJ e taxas pelas linhas delas na aba vigente. *(pergunta de Fox AI, resposta da Helena às 20h24)*
+- **R08** — Atlas Idiomas (EC 1076801732): começou em 10/09, sem contrato vigente, taxa desconhecida. Não faturar até o comercial confirmar. A aba de 2025 não vale. *(pergunta de Fox AI, resposta da Helena às 20h24)*
+- **R09** — Rota Global: o contrato não mudou em 2026; as taxas acima da planilha são divergência. *(pergunta de Lucca Landeiro, resposta da Helena às 20h49)*
+- **R10** — Casa do Estudante: tarifa zerada no checkout (MDR e antecipação) de setembro a dezembro de 2026, por acordo do comercial. A remessa segue normal. O que a Orbe cobrou é devolvido ao lojista. *(pergunta de Lucca Landeiro, resposta da Helena às 20h49)*
+
+### Remessa (Ponte Câmbio)
+
+- **R11** — Comissão de remessa = 50% do Spread R$ realizado (e-mail da Ponte), arredondado por operação. A competência é a data de contratação. O status de compliance não muda nada. *(pergunta de MN AI, resposta da Helena às 20h48; arredondamento: pergunta de Fox AI, resposta da Helena às 21h13)*
+- **R12** — Spread negativo (trava D-1 vencida, a trava vale 2h): fora da comissão e da nota; a Helena contesta. *(pergunta de MN AI, resposta da Helena às 20h48)*
+- **R13** — Nº de operação é único: a duplicata conta uma vez e entra na lista de correção para a Ponte. *(pergunta de MN AI, resposta da Helena às 20h48; pergunta de Insper AI, resposta da Helena às 22h34)*
+- **R14** — Spread "padrão" ou célula em branco = 1,5% sobre a PTAX de referência. *(pergunta de MN AI, resposta da Helena às 20h48)*
+- **R15** — Divergência de remessa = valor cheio (o que o lojista pagou a mais), não a nossa metade. A tolerância é decisão nossa, escrita com o motivo. *(pergunta de Fox AI, resposta da Helena às 20h58)*
+- **R16** — A nota de remessa sai pelo realizado, inclusive o excesso da Mundo Aberto; o ajuste vem no mês em que a Ponte devolver. Fica como pendência da Helena. *(pergunta de Theo Garcia, resposta da Helena às 21h45)*
+- **R17** — Nota de remessa: uma só, tomadora Ponte Câmbio, pelo total da participação no mês. *(pergunta de MN AI, resposta da Helena às 20h47)*
+- **R18** — Nada foi contestado ainda e o prazo está ok. Pendência de contestação com valor e operações. Não supor desconto no repasse; conferir o TED de outubro é pendência da Helena. *(pergunta de Lucca Landeiro, resposta da Helena às 22h33; pergunta de Insper AI, resposta da Helena às 22h34)*
+
+### Extratos e classificação contábil
+
+- **R19** — conta_codigo = contrapartida do movimento no banco. Folha, ISS, INSS, FGTS e DARFs de agosto e o repasse da Ponte de 04/09 já estavam registrados: baixam passivo ou recebível. Tarifas, aluguel, cloud, assinaturas e serviços entram direto na despesa do mês. Quando o extrato não deixar claro: premissa no HIPOTESES.md. *(pergunta de Fox AI, resposta da Helena às 21h14)*
+- **R20** — PIX de R$ 7.350 sem identificação: não é receita até identificar. Devolução de PIX da Mundo Aberto: repasse que voltou, motivo desconhecido. Transferência de R$ 300 mil: sai do Aurora em 30/09 e cai no Meridiano em 01/10. *(pergunta de Lucca Landeiro, resposta da Helena às 20h49)*
+- **R21** — A Orbe deposita tudo no Aurora. O saldo negativo é a conta garantida. Conciliar Orbe × banco parcela a parcela está fora do escopo: só classificar os créditos. *(pergunta de Insper AI, resposta da Helena às 22h34)*
 
 ---
 
-## 3. Classificação Contábil dos Extratos Bancários (`lancamentos_classificados.csv`)
+## 2. Premissas nossas (com o motivo)
 
-* **H09 — Fluxo Orbe × Aurora, Contrapartida Contábil e Competência (`R19`, `R21`):**
-  * **Fluxo Orbe e Conta Garantida (`R21` — resposta da Helena às `22h34`):** A Orbe deposita tudo no Banco Aurora (Débito e PIX em D+1; Crédito e parcelado ao longo dos meses seguintes conforme as parcelas). O saldo negativo do Aurora é a **conta garantida** usada para pagar lojistas antes da liquidação da Orbe. Conciliar Orbe × banco parcela a parcela está fora do escopo: os `21` créditos de TED da Orbe no Aurora (`R$ 3.557.246,29`) são classificados em `1.1.03.001` (*Recebíveis de adquirente - Orbe*).
-  * **Obrigações e Recebíveis de Agosto Já Provisionados (`R19`):** baixam passivo ou ativo:
-    * Folha `08/2026` (`L15`, `-R$ 184.732,18`) $\rightarrow$ `2.1.04.001` (*Salários a pagar*).
-    * ISS `08/2026` (`L42`, `-R$ 21.877,40`) $\rightarrow$ `2.1.03.003` (*ISS a recolher*).
-    * INSS `08/2026` (`L54`, `-R$ 51.320,66`) $\rightarrow$ `2.1.04.002` (*INSS a recolher*).
-    * FGTS `08/2026` (`L55`, `-R$ 14.778,57`) $\rightarrow$ `2.1.04.003` (*FGTS a recolher*).
-    * IRRF `0561` (`L57`, `-R$ 22.104,35`) $\rightarrow$ `2.1.03.004` (*IRRF a recolher*).
-    * PIS `8109` (`L86`, `-R$ 9.811,20`) $\rightarrow$ `2.1.03.001` (*PIS a recolher*).
-    * COFINS `2172` (`L87`, `-R$ 45.282,46`) $\rightarrow$ `2.1.03.002` (*COFINS a recolher*).
-    * Repasse Ponte Câmbio `08/2026` (`MRD2026090132`, `04/09`, `+R$ 61.884,12`) $\rightarrow$ `1.1.03.002` (*Comissões de intermediação a receber - câmbio*).
-  * **Despesas de Setembro Não Provisionadas (`R19` + premissa para IOF):** entram direto nas contas de despesa (`4.x`):
-    * Tarifas bancárias (`L10`, `L90`, `MRD2026090103`, `MRD2026090696`) $\rightarrow$ `4.2.01` (*Tarifas bancárias*).
-    * Condomínio (`L16`, `-R$ 28.450,00`) $\rightarrow$ `4.2.02` (*Aluguel e condomínio*).
-    * AWS Cloud (`L47`, `-R$ 41.208,77`) $\rightarrow$ `4.2.03` (*Cloud e infraestrutura*).
-    * Google Workspace (`L48`, `-R$ 2.210,00`) $\rightarrow$ `4.2.04` (*Softwares e assinaturas*).
-    * Seguro empresarial (`MRD2026090292`, `12/09`, `-R$ 1.830,44`, parcela `09/12`) $\rightarrow$ `4.2.05` (*Seguros* — premissa: parcela do mês, não provisionada, pois a Helena listou só folha, tributos de agosto e repasse da Ponte como provisionados).
-    * Contabilidade Exata (`L53`, `-R$ 6.800,00`) $\rightarrow$ `4.2.06` (*Serviços contábeis e jurídicos*).
-    * `IOF S/ OPERACAO CREDITO` (`MRD2026090586`, `26/09`, `-R$ 48,21`) $\rightarrow$ `4.3.01` (*IOF* — premissa direta pela natureza da conta `4.3.01` no plano de contas).
-* **H10 — Anomalias Bancárias, Resolução do `CONFLITO C2` e Prova Matemática de `MRD2026090425` (`R20`):**
-  * **Total de linhas do Banco Aurora:** Existem **`84` lançamentos** de movimentação (linhas físicas `9` a `92`, excluindo o cabeçalho na linha `7`, `SALDO ANTERIOR` na linha `8`, `SALDO FINAL` na linha `94` e o rodapé na linha `95`), mais **`100` lançamentos** no OFX do Banco Meridiano = **`184` lançamentos classificados**. Conforme a instrução oficial, o `ref_origem` do Aurora é o número da linha física (`L9` … `L92`) e o do Meridiano é o `FITID`.
-  * **`16/09/2026` (`L50` do Aurora) — `PIX RECEBIDO 38686002000180 SEM IDENTIFICACAO` (`+R$ 7.350,00`):** não é receita até identificar a origem (`R20`) $\rightarrow$ classificado em `1.1.09.002` (*Créditos não identificados*) + `pendencias.csv`.
-  * **Resolução do `CONFLITO C2` — `23/09/2026` (`L65` do Aurora) — `DEVOLUCAO PIX - MUNDO ABERTO INTERC` (`+R$ 12.400,00`):** conforme `R20`, trata-se de *"um Pix de repasse que voltou, e ainda não sei o motivo"*. Sem afirmar "estorno parcial", classificamos a contrapartida contábil em `2.1.01.001` (*Repasses a lojistas a pagar*, pois o recurso destinado ao repasse retornou à conta bancária da Tarvo e permanece como obrigação pendente de regularização com o lojista) + `pendencias.csv` para apurar o motivo da devolução.
-  * **`30/09/2026` (`L92` do Aurora) — `TRANSF ENTRE CONTAS P/ BCO MERIDIANO` (`-R$ 300.000,00`):** saiu do Aurora em `30/09` e compensa no Meridiano em `01/10` (`R20`) $\rightarrow$ classificado em `1.1.09.001` (*Transferências entre contas próprias*) + `pendencias.csv` para conciliação em `01/10`.
-  * **Prova Matemática Exata de `MRD2026090425` (`17/09/2026`, Meridiano) — `PIX RECEB PONTE AEREA ESTUDANTIL L` (`+R$ 18.240,00`):**
-    * No extrato OFX do Banco Meridiano, a `Ponte Aérea Estudantil Ltda` (`CNPJ 95739378000118`) possui **6 créditos de PIX**:
-      1. `MRD2026090082` (`01/09/2026`, terça-feira): `R$ 77.595,09`
-      2. `MRD2026090237` (`08/09/2026`, terça-feira): `R$ 148.766,45`
-      3. `MRD2026090375` (`15/09/2026`, terça-feira): `R$ 183.631,12`
-      4. **`MRD2026090425` (`17/09/2026`, quinta-feira): `R$ 18.240,00`** *(único fora do lote semanal de terça-feira e grafado `PONTE AEREA` sem acento)*
-      5. `MRD2026090495` (`22/09/2026`, terça-feira): `R$ 14.091,03`
-      6. `MRD2026090648` (`29/09/2026`, terça-feira): `R$ 28.165,34`
-    * Na planilha da Ponte Câmbio (`03_email_ponte_cambio_relatorio_set2026.eml`), a `Ponte Aérea Estudantil` possui `15` operações no mês, cuja soma de `Valor R$ (450.536,99) + IOF R$ (1.712,04)` é exatamente **`R$ 452.249,03`**.
-    * Somando apenas os **5 PIX de terça-feira** (`77.595,09 + 148.766,45 + 183.631,12 + 14.091,03 + 28.165,34`), obtém-se **exatamente `R$ 452.249,03` (diferença de `R$ 0,00`)**!
-    * Isso prova matematicamente que o PIX `MRD2026090425` de `17/09/2026` (`+R$ 18.240,00`) é um valor excedente sem operação de câmbio correspondente em setembro $\rightarrow$ classificado em `2.1.02.001` (*Recursos de lojistas para remessas a liquidar*) e registrado em `pendencias.csv`!
+### 2.1 Premissas definidas pelo time
+
+- **P01 — Tolerância de divergência de remessa:** diferença de spread abaixo de 0,01 p.p. não é divergência.
+  - **Motivo:** a Ponte arredonda o spread entre 1,4984% e 1,5015%. A maior oscilação observada é de ±0,002 p.p., e a menor divergência real (Mundo Aberto) é de 0,3 p.p. É a tolerância que R15 deixa a nosso cargo. A Fonte 1 adota o mesmo critério (ver F1-H08).
+- **P02 — Spread negativo também é divergência:** entra em divergencias_taxa.csv, com diferença negativa contra o contratado, e em pendencias.csv como contestação.
+  - **Motivo:** a taxa aplicada é diferente da contratada (R15), e R12 manda contestar. A Fonte 1 faz o mesmo (ver F1-H08). Reforçada em P15.
+- **P03 — Truncamento da Orbe:** a Orbe trunca valor_taxa no centavo (verificado: as 1943 linhas batem com ROUND_DOWN, e 1001 não batem com ROUND_HALF_UP). Por isso a divergência compara taxa aplicada × contratada, nunca valores (R02).
+
+**Remessa (remessa.py)**
+
+- **P04 — CNPJ da Ponte fora da planilha de taxas:** a comissão é calculada mesmo assim (50% do spread realizado, R11) e entra na nota; o CNPJ vira pendência LOJISTA_NAO_CADASTRADO (cadastrar o lojista). Não gera divergência.
+  - **Motivo:** a Ponte paga a participação pelo realizado, com ou sem cadastro nosso (R11, R16). Sem spread contratado, não há com que comparar a taxa aplicada (R15).
+- **P05 — Spread negativo de CNPJ fora da planilha:** é erro e para o fechamento.
+  - **Motivo:** R12 manda contestar e P02 registra a divergência contra o contratado, que nesse caso não existe. Sem regra para o valor da contestação, preferimos parar a inventar um.
+
+**Extratos (bancos.py)**
+
+- **P06 — Devolução de PIX ao Aurora:** contrapartida 2.1.01.001 (Repasses a lojistas a pagar), confiança 0,80, e pendência DEVOLUCAO_PIX com o valor, para apurar o motivo.
+  - **Motivo:** R20 diz só "repasse que voltou, motivo desconhecido". Se o repasse voltou, ele volta a ser devido ao lojista; a conta é premissa nossa (a mesma da Fonte 1, F1-H10), por isso a confiança menor. Ver P16.
+- **P07 — Favorecidos de "PIX ENVIADO" (Aurora):** só é repasse a lojista (2.1.01.001) o favorecido que estiver em config/favorecidos.yaml, com o texto exato do extrato e o CNPJ da aba vigente escrito à mão. A Atlas Idiomas, sem CNPJ na aba vigente, entra pelo EC 1076801732 e marcada "sem contrato" (R08).
+  - Nunca casamento por nome aproximado: favorecido fora da lista não casa a regra e vira lançamento sem regra (P09). "HORIZONTE VIAGENS E TURISM" e "NOVO HORIZONTE INTERCAMBIO" são empresas diferentes (R07).
+  - **Motivo:** pelo CLAUDE.md o nome é só evidência. A lista explícita deixa cada par revisável; a carga falha se o CNPJ não estiver na planilha.
+- **P08 — Pagadores de "PIX RECEB" (Meridiano):** mesmo método de P07, em config/pagadores_meridiano.yaml (texto exato do MEMO → CNPJ). Pagador fora da lista não casa a regra e fica sem regra (P09). O mesmo pagador pode ter mais de uma grafia no MEMO (ex.: "PONTE AÉREA" e "PONTE AEREA"); cada grafia é um par escrito à mão.
+  - **Motivo:** o CNPJ do pagador é a chave da conferência PIX × remessas (P12); sem CNPJ não há conferência.
+- **P09 — Lançamento sem regra:** entra em lancamentos_classificados.csv sem classificação definitiva: conta_codigo "A_CLASSIFICAR", metodo HUMANO, confiança 0,00, e pendência PEN-SEMREGRA-<ref> com o valor do lançamento. Vale para crédito e débito.
+  - **Motivo:** não lançar crédito desconhecido em 1.1.09.002 por regra: R20 cobre um caso conhecido (PIX sem identificação), não qualquer linha que as regras não reconhecem, e para débito não há conta transitória no plano. "A_CLASSIFICAR" não é conta do plano de propósito, para o lançamento não ser importado como definitivo. Esses lançamentos são a entrada do fallback com IA.
+- **P10 — Confiança:** 1,00 para regra confirmada pela Helena (R19 a R21); 0,80 para regra que é premissa nossa: devolução de PIX (P06) e PIX identificado como recurso sem remessa (P12, conta 2.1.02.001 da Fonte 1, F1-H10).
+- **P11 — Ponte × Meridiano (TED de liquidação):** para cada data, a soma das TEDs "LIQ OPERACOES" (com sinal) + a soma de valor_brl + iof_brl das operações únicas da Ponte (R13) contratadas nessa data tem que ser zero. Só entram as datas do período do extrato (DTSTART a DTEND). Diferença vira PEN-TED-LIQ-<data>, valor = operações − TEDs pagas.
+- **P12 — PIX recebidos × remessas, por cliente (CNPJ):** a soma dos PIX do mês tem que ser igual à soma de valor_brl + iof_brl das operações únicas do mês (competência pela data de contratação, R11). Se sobrar diferença e houver exatamente UM PIX do cliente com valor igual a ela, ele vira PEN-PIX-SEMREM-<FITID> (RECURSO_SEM_REMESSA). Senão, a pendência fica no nível do cliente, PEN-PIX-REM-<CNPJ>, valor = PIX − operações.
+- **P13 — Aurora × Meridiano (transferência entre contas):** cada "TRANSF ENTRE CONTAS" do Aurora casa com uma TED "MESMA TITULARIDADE" do Meridiano de mesmo valor, na mesma data ou no dia útil seguinte (segunda a sexta, sem calendário de feriados); cada TED casa uma vez.
+  - Sem par e com o dia útil seguinte depois do fim do extrato do Meridiano: PEN-TRANSF-<ref>, TRANSFERENCIA_EM_TRANSITO, valor positivo em trânsito (R20: cai no Meridiano no dia útil seguinte; conferir no extrato do mês seguinte).
+  - Sem par dentro do período do extrato: PEN-TRANSF-<ref>, TRANSFERENCIA_SEM_PAR.
+  - **Motivo:** R20 descreve a transferência do fim do mês que sai do Aurora e cai no Meridiano no dia seguinte. Uma transferência do meio do mês sem par não está em trânsito, é outra coisa, e o tipo diferente evita esconder isso.
+
+**IA como plano B (ia.py, bancos.py; config/ia.yaml)**
+
+- **P14 — IA só sugere, e só para lançamento de extrato sem regra:**
+  - **Onde atua:** só no lançamento que nenhuma regra de config/bancos.yaml cobre (P09). O modelo sugere a contrapartida (R19) entre as contas analíticas do plano (aceita_lancto = S), com confiança de 0 a 1 e uma frase de justificativa. Recebe como contexto as contas analíticas, o texto de R19 deste arquivo e lançamentos do mesmo extrato já classificados por regra (um por regra).
+    - O item sai com metodo IA, a conta sugerida e a confiança dada pelo modelo (não as confianças de P10).
+    - Sempre há pendência PEN-IA-<ref>, tipo REVISAR_SUGESTAO_IA, com a justificativa no motivo e quem decide "Financeiro". Ela entra no lugar da PEN-SEMREGRA-<ref>.
+    - Abaixo do limiar de config/ia.yaml, o motivo diz "baixa confiança".
+  - **Onde não atua:**
+    - Lançamento que alguma regra casou nunca passa pela IA.
+    - Fica de fora de checkout, remessa, divergências, notas e das conferências cruzadas (P11 a P13). Lançamento com sugestão da IA não tem papel nas conferências.
+    - Não cria regra e não mexe nas listas de favorecidos e pagadores (P07, P08). O nome continua sendo só evidência: um PIX de pagador fora da lista não vira cliente da Ponte por causa da IA.
+    - A sugestão é descartada, e o lançamento volta ao fluxo de P09 (A_CLASSIFICAR, HUMANO, PEN-SEMREGRA), quando a conta não existe no plano ou é sintética, a confiança está fora de 0 a 1, o JSON é inválido, a resposta é cortada ou recusada, ou a chamada falha.
+  - **Desligada:** com habilitada: false, com a flag --sem-ia, ou sem ANTHROPIC_API_KEY e sem a resposta no cache, o resultado é exatamente o de P09. Em setembro, todo lançamento casa uma regra: zero chamadas.
+  - **Reprodutível:** a resposta bruta do modelo fica em cache/ia_sugestoes.json, por hash do lançamento (banco, ref_origem, data, descrição, valor) + modelo, e vai para o git. A mesma entrada dá sempre a mesma saída, sem chave e sem nova chamada. A validação roda de novo a cada leitura.
+  - **Motivo:** pelo CLAUDE.md, regra de negócio só vem deste arquivo, e a Helena não deu à IA autoridade para classificar. A IA só adianta o trabalho de quem classifica. Por isso nenhuma sugestão vira lançamento definitivo sem uma pessoa olhar.
+
+**Escolhas mantidas após a revisão independente das saídas (P15 a P21)**
+
+Uma revisão independente questionou as escolhas abaixo. Todas foram mantidas; o motivo de cada uma fica registrado aqui.
+
+- **P15 — Spread negativo listado também como divergência (reforça P02):** as 4 operações com spread negativo entram em divergencias_taxa.csv, além da contestação em pendencias.csv.
+  - **Motivo:** o docx do desafio define divergência como "taxa contratada ≠ aplicada", e no spread negativo a taxa aplicada é diferente da contratada. R12 tira a operação da comissão e da nota, mas não diz que deixa de ser divergência. Aguardando a confirmação da Helena.
+- **P16 — Devolução de PIX em 2.1.01.001, não em 2.1.01.002 (reforça P06):**
+  - **Motivo:** a Helena disse "PIX de repasse que voltou" (R20). Se o repasse voltou, ele volta a ser devido ao lojista: é Repasses a lojistas a pagar (2.1.01.001). A conta 2.1.01.002 (Devoluções e créditos a lojistas) é para devolução ao lojista, e a Helena não descreveu o caso como devolução ao lojista. Aguardando confirmação.
+- **P17 — Diferença de remessa calculada sobre o Spread % do relatório:** diferenca_brl = (Spread % aplicado − spread contratado) / 100 × PTAX de referência × Valor ME, arredondada por operação.
+  - **Motivo:** assim a coluna diferenca_brl é exatamente reproduzível pelas colunas taxa_contratada_pct e taxa_aplicada_pct do mesmo arquivo. Pelo Spread R$ (Spread R$ − contratado × PTAX × Valor ME), o total da Mundo Aberto seria R$ 1.418,88 em vez de R$ 1.418,85: a diferença vem do arredondamento do Spread % no relatório da Ponte.
+- **P18 — Contestação dos spreads negativos valorada pela diferença contra o contrato:** cada PEN-NEG-REM vale a diferenca_brl da operação (mesmo cálculo de P17), não o Spread R$ negativo.
+  - **Motivo:** coerente com P15. Se o spread negativo é divergência, o que se contesta é a distância até o contratado, o mesmo valor que aparece em divergencias_taxa.csv.
+- **P19 — PEN-DUP valorada pelo Spread R$ da cópia descartada (R$ 821,88 em setembro):**
+  - **Motivo:** é exatamente quanto o total do relatório da Ponte está inflado: o rodapé soma R$ 78.073,59, e as operações únicas somam R$ 77.251,71 (R13). É o valor que a Ponte precisa corrigir no relatório.
+- **P20 — PEN-TRANSF mantida como item de conciliação para outubro:** a transferência de 30/09 continua em pendencias.csv como TRANSFERENCIA_EM_TRANSITO (P13), embora a R20 explique a transferência.
+  - **Motivo:** a R20 explica o fato, mas o crédito no Meridiano só aparece no extrato de outubro. A pendência é o controle de que o dinheiro de fato chegou; ela se encerra na conciliação de outubro.
+- **P21 — Atlas fora de comissoes_por_lojista:**
+  - **Motivo:** o único CNPJ da Atlas está na aba "ANTIGO 2025 - nao usar", que a R08 proíbe ("a aba de 2025 não vale"). Sem CNPJ da aba vigente e sem taxa contratada, não há linha de comissão. O que a Orbe cobrou fica em PEN-SEMCONTRATO, pelo EC (F1-H02).
+
+**Valor das pendências de conferência e de devolução (P22, P23)**
+
+- **P22 — PEN-TED-PONTE tem o valor e o rastro da nota de remessa:** valor = valor da NF-REM; rastro = as mesmas origens da NF-REM (as operações da nota); ref_origem = a lista dessas operações, separada por "|". Sem nota no mês, valor zero e a referência é o relatório da Ponte.
+  - **Motivo:** R18 manda conferir o TED, sem supor desconto. A referência da conferência é a nota de intermediação (R17), que é o que a Ponte paga "mediante recebimento da nota fiscal". Assim a pendência diz quanto conferir, e todo id_saida tem rastro.
+- **P23 — Devolução de checkout com condição especial vigente vale o que a Orbe cobrou:** para lojista com condição especial vigente (config/checkout.yaml, condicoes_especiais), a pendência de devolução vale a soma do valor_taxa efetivamente cobrado pela Orbe, com rastro por transação, e o motivo cita a regra da condição (R10).
+  - **Motivo:** R10 já decidiu a devolução ("o que a Orbe cobrou é devolvido ao lojista"). Para os outros lojistas, a devolução é decisão caso a caso (R03) e o valor continua pela fórmula da R03.
+  - As divergências em divergencias_taxa.csv não mudam: continuam pela fórmula da R03 (ver F1-H03).
+  - Se o mesmo lojista tiver no mês divergências com e sem condição especial, o fechamento para: não há regra para juntar as duas devoluções.
+
+### 2.2 Premissas e achados do HIPOTESES.md do colega (Fonte 1)
+
+O conteúdo da Fonte 1 está reproduzido abaixo. Onde ela contradizia a Helena, o trecho foi ajustado à regra dela, e a versão original ficou registrada em "Conflitos resolvidos" na seção 4. Onde ela diz "confirmado pelo financeiro", a confirmação corresponde às respostas públicas da seção 1, e a regra correspondente está indicada. Os valores numéricos foram calculados pelo colega e **ainda não foram reconferidos pelo nosso código**.
+
+**Mapeamento cadastral, contratos e condições comerciais**
+
+- **F1-H01 — Vínculo dos 3 ECs sem código na aba "Taxas vigentes"** (regra: R07)
+  - EC 1043300981 (HORIZONTE INTERCAMBIO) → Novo Horizonte Intercambio, CNPJ 66564512000199.
+  - EC 1043396662 (HORIZONTE VIAGENS TURISMO) → Horizonte Viagens, CNPJ 78576234000179.
+  - EC 1038867654 (KIWI EXPERIENCE TURISMO) → Kiwi Experience, CNPJ 07752116000126.
+  - **Motivo dado na Fonte 1:** "confirmado pelo financeiro e validado pelo cruzamento de razão social e taxas aplicadas pela Orbe".
+  - **Nota nossa:**
+    - O vínculo vale pela resposta da Helena (R07), não pelo nome. Pelo CLAUDE.md, o nome serve só de evidência.
+    - Conferimos na aba "Taxas vigentes": os 3 CNPJs acima são os das linhas Novo Horizonte Intercambio, Horizonte Viagens e Kiwi Experience. Nessas linhas a coluna "EC Orbe" está vazia, e a da Kiwi tem a observação "EC pendente".
+- **F1-H02 — Atlas Idiomas Ltda (EC 1076801732, CNPJ 39566044000119)** (regra: R08)
+  - Começou a transacionar em 10/09/2026, com 57 transações, R$ 262.138,61 brutos e R$ 7.876,05 de taxa retida pela Orbe. Consta apenas na aba histórica "ANTIGO 2025 - nao usar", sem contrato assinado na aba vigente.
+  - **Decisão da Fonte 1:**
+    - Não emitir NF em notas_a_emitir.csv, conforme a orientação "Não fatura a Atlas até o comercial confirmar".
+    - Não gerar linhas em divergencias_taxa.csv, por não haver taxa contratada confirmada.
+    - Registrar integralmente em pendencias.csv, para validação contratual com o Comercial (Diego).
+  - **Motivo:** R08 diz "taxa desconhecida". Sem taxa contratada, não há como calcular divergência (R03). A Helena não disse explicitamente "não gerar divergência"; isso é premissa.
+- **F1-H03 — Isenção (0,00%) da Casa do Estudante Viagens Ltda (EC 1018325654, CNPJ 00520815000100)** (regras: R10, R04, R06)
+  - **Isenção:** a célula A13 da planilha vigente tem o comentário "conversar com Diego (comercial) sobre condição especial". A tarifa no Checkout (MDR e antecipação) é zerada de setembro a dezembro/2026. Nas remessas de câmbio se mantém o spread contratado normal de 1,50%.
+  - **Cobrança indevida:** como a Orbe não foi parametrizada a tempo, cobrou indevidamente R$ 15.391,27 nas 119 movimentações do mês.
+  - **Estorno TX88445133:** em 07/09/2026, a Orbe estornou um débito de -R$ 369,39, referente a venda de 21/08/2026.
+    - Pela regra de que o estorno usa a taxa vigente na data_venda_original, vale 1,49% (agosto, antes da isenção). O estorno gera comissão contratada de -R$ 5,50 em setembro, sem divergência de taxa.
+    - As demais 118 transações de setembro têm taxa contratada de 0,00%. Elas geram R$ 15.397,42 de divergência a devolver ao lojista, pelo cálculo arredondado linha a linha. *(Corrigido: a Fonte 1 dizia R$ 15.397,32; o valor certo, 15.397,42, foi conferido pelo checkout.py e por uma análise independente.)*
+  - **Consequência:** o saldo líquido de comissão de Checkout de setembro fica negativo (-R$ 5,50). Não se emite NF de Checkout, e o saldo negativo e a devolução das taxas cobradas pela Orbe vão para pendencias.csv.
+  - **Devolução (P23):** a pendência de devolução vale o valor_taxa que a Orbe efetivamente cobrou nas 118 linhas, R$ 15.396,77, com rastro por transação (R10: "o que a Orbe cobrou é devolvido ao lojista"). A divergência em divergencias_taxa.csv continua pela fórmula da R03, R$ 15.397,42. A diferença de R$ 0,65 é o truncamento da Orbe (P03).
+  - **Nota nossa:**
+    - Os dois totais são compatíveis: R$ 15.391,27 é o que a Orbe cobrou nas 119 linhas (inclui os -R$ 5,50 do estorno), e R$ 15.397,42 é a divergência arredondada nas 118 linhas. *(Corrigido: a Fonte 1 dizia R$ 15.397,32; conferido pelo checkout.py e por uma análise independente.)*
+    - A linha da Casa do Estudante na aba vigente tem vigência desde 01/01/2026 e Débito de 1,49%, o que sustenta a taxa de agosto usada no estorno.
+- **F1-H04 — Zeros à esquerda em CNPJs:** ver seção 5.
+
+**Regras de cálculo de comissões, arredondamento e divergências**
+
+- **F1-H05 — ROUND_HALF_UP linha a linha** (regra: R02)
+  - A Orbe trunca os centavos na segunda casa. A Tarvo arredonda para o centavo (0,005 → 0,01 e -0,005 → -0,01) em cada transação/operação, antes da soma por lojista e modalidade.
+- **F1-H06 — Base da comissão e divergências no Checkout** (regras: R01, R03, R09)
+  - **Base:** comissão e NF de Checkout pela taxa contratada: ROUND_HALF_UP(valor_bruto × taxa_contratada_pct / 100, 2).
+  - **Truncamento:** diferenças de R$ 0,01 causadas só pelo truncamento da Orbe não são divergência.
+  - **Quando há divergência:** só quando taxa_aplicada_pct ≠ taxa_contratada_pct. O valor é ROUND_HALF_UP(valor_bruto × (taxa_aplicada_pct − taxa_contratada_pct) / 100, 2).
+  - **Casos encontrados:** 3 lojistas no Checkout.
+    1. **Casa do Estudante (EC 1018325654):** cobrança de MDR e antecipação durante a tarifa 0,00%. São 118 transações de setembro, R$ 15.397,42. *(Corrigido: a Fonte 1 dizia R$ 15.397,32; ver F1-H03.)*
+    2. **Rota Global Intercâmbio Ltda (EC 1074504011):** cobrança indevida de +0,50 p.p. a partir de 12/09/2026, sem reajuste contratual. São 87 transações, com diferença líquida de R$ 1.546,28.
+    3. **Escola Bridge de Idiomas Ltda (EC 1075624862):** cobrança de 2,59% em vez da taxa renegociada de 2,19% (vigente a partir de 15/09/2026) em 5 vendas de Crédito à Vista entre 15/09 e 18/09, somando R$ 29,95.
+  - **Nota nossa:** a planilha confirma a renegociação da Bridge. Há duas linhas com o mesmo CNPJ e EC: Crédito à vista de 2,59% "até 14/09/2026" e de 2,19% "a partir de 15/09/2026" ("só mudou o crédito à vista"). A Helena não comentou a Bridge; o caso decorre de R03 aplicada à planilha.
+- **F1-H07 — Estornos, antecipações e reversões no Checkout** (regras: R04, R05, R06)
+  - **Estornos:** estornos de setembro referentes a vendas de agosto entram em setembro (agosto já está fechado). Eles abatem a comissão pela taxa contratada vigente na data_venda_original.
+  - **Antecipações:** ANTECIPACAO (2,10%, exceto Casa do Estudante a 0,00%) e REVERSAO ANTECIPACAO compõem a base da mesma NF mensal de Checkout do lojista. A reversão anula a taxa da antecipação referenciada em id_referencia.
+  - **Saldo zero ou negativo:** o lojista não tem NF emitida, e o saldo, seja zero ou negativo, vai para pendencias.csv (R06, Helena às 20h47). A Fonte 1 previa pendência só para o saldo negativo; ver C3 em "Conflitos resolvidos" na seção 4.
+- **F1-H08 — Remessas (Ponte Câmbio)** (regras: R11 a R18; premissas P01 e P02)
+  - **Base:** a comissão da Tarvo e a NF única contra a Ponte Câmbio S.A. (CNPJ 75374179000146) são 50% do Spread R$ realizado, arredondado (ROUND_HALF_UP) operação por operação. É diferente do Checkout.
+  - **Spread padrão:** spread em branco ou "padrão" na planilha de taxas = 1,50% sobre a PTAX de referência (PTAX Ref. × Valor ME).
+  - **Incluídas em setembro:** 228 operações válidas, com NF Ponte Câmbio = R$ 39.543,45.
+    - As 6 operações contratadas em 30/09/2026 e liquidadas em 01/10/2026 (PC-0926-0002, PC-0926-0110, PC-0926-0249, PC-0926-0384, PC-0926-0549, PC-0926-0566) entram em setembro, pela data de contratação. *(Corrigido: a Fonte 1 citava 3 operações, PC-0926-0002, -0077 e -0148; conferido no relatório da Ponte, são estas 6.)*
+    - Operações com status "APROVADO C/ RESSALVA" entram normalmente.
+    - **Mundo Aberto (CNPJ 17217888000111):** a Ponte aplicou ~1,50% em vez dos 1,20% renegociados em jul/2026. As 23 operações entram na comissão e na NF de setembro pelo valor realizado, porque compõem o repasse imediato da Ponte.
+      - Em divergencias_taxa.csv entram pelo valor cheio pago a mais pelo lojista: R$ 1.418,85 = (Spread % aplicado − 1,20%) × PTAX × Valor ME.
+      - Também vão para pendencias.csv, para contestação com a Ponte Câmbio.
+  - **Excluídas da comissão e da NF:**
+    - **Duplicidade PC-0926-0162:** a segunda linha com o mesmo número de operação e a observação "Operação reprocessada" (Spread R$ 821,88) é descartada do cálculo e reportada em pendencias.csv.
+    - **4 operações com spread negativo:** PC-0926-0210, PC-0926-0326, PC-0926-0491 e PC-0926-0545, somando Spread R$ = -R$ 1.834,05. Decorrem de "Taxa travada no pedido (D-1)" fora do limite contratual de 2 horas. São excluídas da comissão e da NF e reportadas em divergencias_taxa.csv e pendencias.csv para contestação.
+  - **Tolerância de arredondamento da PTAX (0,01 p.p.):**
+    - Oscilações abaixo de 0,01 p.p. entre o Spread % reportado e a taxa contratada não são divergência; por exemplo, 1,4984% a 1,5015% para a taxa de 1,50%.
+    - Vêm do arredondamento da taxa final de câmbio em 4 casas decimais. É a mesma tolerância de P01.
+  - **TED da Ponte:** não supomos valor nem desconto no repasse (R18). A única pendência é conferir se o TED da Ponte bate com a nota de intermediação; quem decide é a Helena (P22). A projeção da Fonte 1 foi removida; ver C1 em "Conflitos resolvidos" na seção 4.
+
+**Classificação contábil dos extratos (lancamentos_classificados.csv)**
+
+- **F1-H09 — Contrapartida contábil e competência** (regra: R19)
+  - **Conta:** conta_codigo registra a contrapartida contábil analítica (ACEITA_LANCTO = S) da movimentação bancária.
+  - **Obrigações e recebíveis de agosto já provisionados:** baixam os respectivos passivos ou ativos.
+    - Folha 08/2026 → 2.1.04.001.
+    - ISS 08/2026 → 2.1.03.003.
+    - INSS 08/2026 → 2.1.04.002.
+    - FGTS 08/2026 → 2.1.04.003.
+    - DARFs pagos em setembro com fato gerador em agosto:
+      - IRRF 0561 → 2.1.03.004.
+      - PIS 8109 → 2.1.03.001.
+      - COFINS 2172 → 2.1.03.002.
+    - Repasse da Ponte Câmbio recebido em 04/09 (MRD2026090132, R$ 61.884,12, ref. 08/2026) → baixa o ativo 1.1.03.002 (Comissões de intermediação a receber - câmbio).
+  - **Despesas do mês não provisionadas:** vão direto para as contas de resultado (4.x).
+    - Tarifas bancárias → 4.2.01.
+    - Condomínio → 4.2.02.
+    - AWS cloud → 4.2.03.
+    - Google Workspace → 4.2.04.
+    - Contabilidade → 4.2.06.
+    - IOF → 4.3.01.
+  - **Motivo:** R19. Os códigos específicos são o mapeamento do colega para o plano de contas.
+  - **IOF:** não é premissa. É aplicação de R19 (Helena às 21h14: "além desses, nada estava provisionado"). Como não estava provisionado, vai direto para a despesa 4.3.01.
+  - **Nota nossa:** pelo CLAUDE.md, esse mapeamento vai para config/*.yaml, não para o código.
+- **F1-H10 — Anomalias bancárias e de conciliação** (regras: R20, R19)
+  - **16/09/2026 (L50, Aurora)** — "PIX RECEBIDO 38686002000180 SEM IDENTIFICACAO" (+R$ 7.350,00): não é receita até identificar a origem. Vai para a conta transitória 1.1.09.002 (Créditos não identificados) e para pendencias.csv.
+  - **23/09/2026 (L65, Aurora)** — "DEVOLUCAO PIX - MUNDO ABERTO INTERC" (+R$ 12.400,00): repasse que voltou, motivo desconhecido (R20, Helena às 20h49). Vai para 2.1.01.001 (Repasses a lojistas a pagar) e para pendencias.csv, com a pendência de apurar o motivo. Ver C2 em "Conflitos resolvidos" na seção 4.
+  - **30/09/2026 (L92, Aurora)** — "TRANSF ENTRE CONTAS P/ BCO MERIDIANO" (-R$ 300.000,00): saída no último dia do mês, compensada no Banco Meridiano em 01/10/2026. Vai para 1.1.09.001 (Transferências entre contas próprias) e para pendencias.csv.
+  - **17/09/2026 (MRD2026090425, Meridiano)** — "PIX RECEB PONTE AEREA ESTUDANTIL L" (+R$ 18.240,00): recurso recebido na conta de câmbio sem operação correspondente no relatório de setembro da Ponte Câmbio. Vai para 2.1.02.001 (Recursos de lojistas para remessas a liquidar) e para pendencias.csv.
+    - **Verificado:** é o único dos 64 PIX recebidos no Meridiano sem remessa correspondente na Ponte. Continua pendência, aguardando resposta da Helena.
+    - **FITID corrigido:** a Fonte 1 citava MRD2026090364, que não existe no OFX. O lançamento de 17/09 de R$ 18.240,00 tem FITID MRD2026090425, e o MEMO no arquivo é "PONTE AEREA", sem acento.
+  - **Motivo:** para os três primeiros casos, R20 dá o fato e R19 manda escrever a premissa quando o extrato não é claro. O quarto caso é achado do colega, verificado por nós, ainda sem resposta da Helena.
+
+---
+
+## 3. Perguntas feitas pelo nosso time (pergunta | resposta | horário)
+
+A Fonte 1 não registra nenhuma pergunta feita pelo nosso time. As confirmações que ela cita são as respostas públicas da seção 1, dadas a perguntas de outros times.
+
+| pergunta | resposta | horário |
+|----------|----------|---------|
+
+---
+
+## 4. Pendências em aberto
+
+### Pendências abertas
+
+- **TED da Ponte:** conferir se o TED da Ponte bate com a nota de intermediação (R$ 39.543,45, P22). Quem decide é a Helena (R18, 22h33/22h34).
+- **Devolução de PIX da Mundo Aberto (L65, +R$ 12.400,00):** o motivo é desconhecido. Classificada em 2.1.01.001, com a pendência de apurar o motivo (R20, 20h49).
+- **MRD2026090425 (+R$ 18.240,00, PONTE AEREA ESTUDANTIL):** verificado, é o único dos 64 PIX recebidos no Meridiano sem remessa correspondente na Ponte. Aguarda resposta da Helena.
+- **Valores da Fonte 1:** contagens e totais (por exemplo, 228 operações, R$ 39.543,45, R$ 1.546,28 e R$ 1.418,85) ainda precisam ser reconferidos pelo nosso código antes de virar valor de referência nos testes.
+
+### Conflitos resolvidos
+
+Em todos, vale a regra da Helena: ela é a fonte, e a Fonte 1 é a interpretação do colega.
+
+- **C1 — TED da Ponte de outubro**
+  - **Fonte 1 (F1-H08):** supunha que o TED automático da Ponte seria 50% do total do relatório (R$ 78.073,59 → R$ 39.036,80). Registrava preventivamente uma diferença de R$ 506,65 frente à NF (R$ 39.543,45), com data de 06/10 sem origem indicada. Também havia uma discrepância não explicada: 917,03 − 410,94 = 506,09, não 506,65.
+  - **Fonte 2 (R18, 22h33/22h34):** "Não supor desconto no repasse; conferir o TED de outubro é pendência da Helena."
+  - **Decisão:** a projeção, a diferença de R$ 506,65 e a discrepância 506,65 × 506,09 saíram da seção 2. Fica só a pendência "conferir o TED da Ponte quando cair", e quem decide é a Helena.
+  - **Motivo:** a Helena proibiu supor desconto no repasse; a projeção era exatamente essa suposição.
+- **C2 — Devolução de PIX da Mundo Aberto (L65, +R$ 12.400,00)**
+  - **Fonte 1 (F1-H10):** descrevia como "estorno bancário parcial de repasse enviado ao lojista", recompondo a obrigação de repasse.
+  - **Fonte 2 (R20, 20h49):** "repasse que voltou, motivo desconhecido".
+  - **Decisão:** a descrição passa a ser "repasse que voltou, motivo desconhecido". A classificação continua 2.1.01.001, com a pendência do motivo.
+  - **Motivo:** "estorno parcial" afirmava uma causa que a Helena disse não conhecer.
+- **C3 — Saldo zero de comissão de checkout**
+  - **Fonte 1 (F1-H07):** saldo zero ou negativo não emitia NF, mas só o negativo ia para pendencias.csv.
+  - **Fonte 2 (R06, 20h47):** "Zero ou negativo não emite nota e vira pendência da Helena."
+  - **Decisão:** saldo de comissão de checkout zero OU negativo não emite nota e vira pendência.
+  - **Motivo:** é a regra literal da Helena.
+
+### Pendências resolvidas
+
+- **IOF (4.3.01):** deixou de ser premissa do colega. É aplicação de R19 (Helena às 21h14: "além desses, nada estava provisionado") e vai direto para a despesa 4.3.01.
+
+---
+
+## 5. Decisões de formato
+
+### Saída (CLAUDE.md)
+
+- CSV com `;` como separador, ponto decimal, datas AAAA-MM-DD.
+- **Texto sem `;`:** nenhum campo de texto da saída (motivo, discriminacao, descricao, lojista, tomador e os demais) contém `;`. Os módulos trocam `;` por ` - ` ao montar o texto (`texto_saida`). A escrita não altera conteúdo: texto com `;` é erro, não vira campo entre aspas.
+- **CNPJ:** sempre 14 dígitos, sem pontuação, com zeros à esquerda (`zfill(14)`). Isso vem de F1-H04: na planilha de taxas, os CNPJs de Fluente Idiomas Online Ltda (03229837000103) e Campus Global Ltda (08780784000120) estão como inteiros de 13 dígitos. A função `cnpj14` já trata isso.
+- **Campos fixos:**
+  - linha_negocio: CHECKOUT | REMESSA
+  - banco: AURORA | MERIDIANO
+  - metodo: REGRA | IA | HUMANO
+  - confianca: de 0 a 1
+- **Valores:** dinheiro em `Decimal` com 2 casas e ROUND_HALF_UP, linha a linha (R02). Taxas em pontos percentuais.
+
+### Referências de origem (ref_origem)
+
+- ref_origem do Aurora = linha física do arquivo, contando a partir de 1 (primeiro lançamento = L9), sem zeros à esquerda; aguardando confirmação no #hackathon-duvidas.
+  - Conferido contra `ler_aurora`: os 84 lançamentos vão de L9 a L92. As referências antigas por posição (L042, L057, L084) viraram L50, L65 e L92 (posição + 8).
+
+### Encoding dos arquivos de entrada (bytes conferidos em 16/10/2026)
+
+O HIPOTESES.md da Fonte 1 não cita encoding. Quem cita é o CLAUDE.md do colega em `origin/main`: Aurora UTF-8, OFX cp1252, plano de contas cp1252. Conferimos os bytes reais dos arquivos de `dados/2026-09/`:
+
+| arquivo | resultado | encoding a usar |
+|---------|-----------|-----------------|
+| Orbe CSV | só ASCII (0 bytes > 127) | `utf-8` explícito; o resultado é o mesmo em cp1252 |
+| E-mail da Ponte (.eml) | só ASCII; o XLSX está em base64 | `ascii`/`utf-8`; o anexo é binário |
+| Plano de contas CSV | UTF-8 inválido (falha no byte 320); cp1252 válido | `cp1252`, **confirmado** |
+| Extrato Aurora CSV | UTF-8 válido, sem BOM; acentos como pares UTF-8 (ex.: "Jurídica", "Agência", "lançamentos") | `utf-8`, **confirmado** |
+| Extrato Meridiano OFX | o cabeçalho declara `ENCODING:USASCII` e `CHARSET:1252`. UTF-8 inválido (falha no byte 924); cp1252 válido. Os 27 bytes > 127 são 0xC2 = "Â" (INTERCÂMBIO) e 0xC9 = "É" (AÉREA), letras corretas em cp1252. Não há U+FFFD nem sequência de UTF-8 corrompido | `cp1252`, **confirmado** |
+
+- **Correção da descrição inicial do OFX:** a descrição que usamos no começo ("declara CHARSET 1252, mas os bytes são UTF-8 com caracteres já corrompidos") **não se confirma nos bytes**. O arquivo é cp1252 coerente com o cabeçalho.
+- **Campos cortados no OFX:** alguns MEMO terminam no meio da palavra (ex.: "INTERCÂMB"). É corte de tamanho do campo, não problema de encoding.

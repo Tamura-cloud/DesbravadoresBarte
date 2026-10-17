@@ -1,0 +1,30 @@
+# P07: favorecidos de "PIX ENVIADO" do Aurora que são lojistas (repasse -> 2.1.01.001).
+# Chave = texto EXATO do extrato depois de "PIX ENVIADO " (o leitor tira os espaços das pontas).
+# Valor = CNPJ da linha do lojista na aba vigente da planilha de taxas, escrito à mão.
+# Nunca casamento aproximado: favorecido que não estiver aqui não é repasse e vira pendência HUMANO.
+# Atenção: "HORIZONTE VIAGENS E TURISM" e "NOVO HORIZONTE INTERCAMBIO" são empresas diferentes (R07).
+
+favorecidos:
+  "ROTA GLOBAL INTERCAMBIO LT":  {cnpj: "95927868000148"}  # Rota Global Intercâmbio Ltda
+  "NOVO HORIZONTE INTERCAMBIO":  {cnpj: "66564512000199"}  # Novo Horizonte Intercambio
+  "KIWI EXPERIENCE TURISMO LT":  {cnpj: "07752116000126"}  # Kiwi Experience
+  "ANDES EXPEDICÕES LTDA":       {cnpj: "85694108000184"}  # Andes Expedições Ltda (o extrato traz "Õ")
+  "DUBLIN HUB INTERCAMBIO LTD":  {cnpj: "68567965000102"}  # Dublin Hub Intercâmbio Ltda
+  "SOL NASCENTE VIAGENS LTDA":   {cnpj: "89779285000114"}  # Sol Nascente Viagens Ltda
+  "VELA TURISMO EDUCACIONAL L":  {cnpj: "20987545000140"}  # Vela
+  "MUNDO ABERTO INTERCAMBIO L":  {cnpj: "17217888000111"}  # Mundo Aberto
+  "CASA DO ESTUDANTE VIAGENS":   {cnpj: "00520815000100"}  # Casa do Estudante Viagens Ltda
+  "EDU ABROAD CONSULTORIA LTD":  {cnpj: "16181276000153"}  # EduAbroad
+  "OXFORD PREP CURSOS LTDA":     {cnpj: "23109187000161"}  # Oxford Prep Cursos Ltda
+  "BEM-VINDO EXCHANGE LTDA":     {cnpj: "67869675000142"}  # Bem-Vindo Exchange Ltda
+  "ESCOLA BRIDGE DE IDIOMAS L":  {cnpj: "22224579000109"}  # Escola Bridge de Idiomas Ltda
+  "HORIZONTE VIAGENS E TURISM":  {cnpj: "78576234000179"}  # Horizonte Viagens
+  "MAPLE STUDY ASSESSORIA EDU":  {cnpj: "34671260000100"}  # Maple Study Assessoria Educacional Ltda
+  "LISBOA CURSOS E VIAGENS LT":  {cnpj: "61720397000180"}  # Lisboa Cursos e Viagens Ltda
+  "TRILHA JOVEM TURISMO LTDA":   {cnpj: "21394880000106"}  # Trilha Jovem Turismo Ltda
+  "CANGURU INTERCAMBIOS LTDA":   {cnpj: "53857560000123"}  # Canguru
+  "FLUENTE IDIOMAS ONLINE LTD":  {cnpj: "03229837000103"}  # Fluente Idiomas Online Ltda
+  "BAGAGEM LIVRE TURISMO LTDA":  {cnpj: "50900987000179"}  # Bagagem Livre Turismo Ltda
+  "CAMPUS GLOBAL LTDA":          {cnpj: "08780784000120"}  # Campus Global Ltda
+  # R08: Atlas Idiomas não tem CNPJ na aba vigente; identificada pelo EC da Orbe, sem contrato.
+  "ATLAS IDIOMAS LTDA":          {ec: "1076801732", sem_contrato: true}

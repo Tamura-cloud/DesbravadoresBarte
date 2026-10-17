@@ -1,0 +1,4 @@
+# Entradas são lidas byte a byte como vieram: o Git nunca converte fim de linha nem encoding.
+dados/** -text
+# Entregáveis gerados pelo código: preservar os bytes exatamente como escritos.
+saida/** -text
