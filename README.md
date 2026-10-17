@@ -2,6 +2,10 @@
 
 **Time Desbravadores Barte** · Desafio Barte AI, case Tarvo (17/10/2026)
 
+**Em um minuto:** lemos os 6 arquivos do mês como chegam, aplicamos as regras da Helena e entregamos 21 notas
+(R$ 246.588,68), 115 divergências (R$ 2.995,08) e 16 pendências, cada uma com quem decide. Cada número aponta
+para a linha de origem. Um comando fecha o mês.
+
 Fecha o mês da Tarvo a partir dos 6 arquivos do data pack, lidos como vêm (sem edição manual), e gera os
 6 CSVs de `saida/`. Cada número de saída é rastreável até a linha do arquivo de origem pelo `rastro.csv`,
 e a execução falha se algum valor não fechar com o rastro.
@@ -138,7 +142,7 @@ pipeline, e bateram ao centavo. A prova está em três lugares:
   recálculo, feito direto de `dados/`. São 20 notas de checkout = 207045.23, nota da Ponte = 39543.45,
   210 divergências de checkout e 184 lançamentos. Notas e lançamentos continuam iguais na `saida/` atual; as
   divergências de checkout caíram para 92 porque a Helena separou a devolução da Casa do Estudante (118 linhas)
-  das divergências (R38).
+  das divergências (R32, R38).
 - **Transcript `be5d287e`**, em `PROMPTS/sessoes/`: a sessão em que esse recálculo foi feito.
 - **Revisão adversarial:** uma sessão só de leitura, sem importar `src/`, recalculou tudo e questionou 7
   premissas (P15–P21). A decisão sobre cada uma, com o número alternativo, está no `HIPOTESES.md`.
@@ -148,7 +152,7 @@ Essa conferência usou as regras confirmadas até 16/10. As respostas da Helena 
 
 ## Como funciona
 
-Cinco etapas, orquestradas por `src/tarvo/fechamento.py`:
+Seis etapas, orquestradas por `src/tarvo/fechamento.py`:
 
 | etapa | o que faz | código | configuração |
 |-------|-----------|--------|--------------|
@@ -157,6 +161,7 @@ Cinco etapas, orquestradas por `src/tarvo/fechamento.py`:
 | 3. Cálculo por regra | comissão, divergência, nota e pendência do checkout e da remessa; classificação contábil dos extratos. Cada regra cita o seu R## ou P## do `HIPOTESES.md` | `checkout.py`, `remessa.py`, `bancos.py` (e `ia.py`, só para lançamento sem regra) | `config/checkout.yaml`, `remessa.yaml`, `bancos.yaml`, `favorecidos.yaml`, `pagadores_meridiano.yaml`, `ia.yaml` |
 | 4. Conferências cruzadas | Orbe × planilha (EC sem contrato), duplicatas da Ponte (R13), TED de liquidação Ponte × Meridiano (P11), PIX recebidos × remessas por CNPJ (P12), transferência Aurora × Meridiano (P13), TED de repasse × nota de remessa (R18, P22). Toda diferença vira pendência | `checkout.py`, `remessa.py`, `bancos.py` | as mesmas da etapa 3 |
 | 5. Saída com rastro | cada resultado é um `ItemSaida` com as suas origens, e o item não é criado se a soma das origens não fechar com o valor. Grava os 6 CSVs e relê tudo: formato, domínios, id_saida único e soma do rastro por id_saida | `saida.py`, `fechamento.py` | — |
+| 6. Rascunhos de contestação | depois da validação, monta um rascunho de e-mail por contraparte (Orbe e Ponte), com as operações anexadas e uma nota interna para a Helena, e grava em `contestacoes/`, ao lado de `saida/`. Desliga com `--sem-contestacao` | `contestacao.py`, `fechamento.py` | `config/contestacao.yaml` |
 
 Dinheiro é sempre `Decimal` com 2 casas, arredondado linha a linha com ROUND_HALF_UP (R02); a escrita nunca
 arredonda nem troca texto: valor com casas a mais ou texto com `;` é erro.
@@ -247,13 +252,15 @@ O gerador só lê `dados/2026-09`: nada é gravado no repositório. O mesmo ensa
    | `REVISAR_SUGESTAO_IA` | P14 | Financeiro | aceitar ou corrigir a conta sugerida pela IA | 0 |
 
 3. **Resolver** cada pendência com quem decide. O código não decide nenhuma delas.
-4. **Ajustar a configuração**, quando a resolução virar regra:
+4. **Enviar as contestações.** A Helena revisa os rascunhos em `contestacoes/` (`orbe.md` e `ponte.md`, com as
+   operações em CSV), apaga o bloco de notas internas e envia (R29).
+5. **Ajustar a configuração**, quando a resolução virar regra:
    - favorecido ou pagador de PIX que é lojista: cadastrar o texto exato do extrato e o CNPJ da planilha em
      `config/favorecidos.yaml` (Aurora, P07) ou `config/pagadores_meridiano.yaml` (Meridiano, P08);
    - tipo de lançamento novo e recorrente: uma regra em `config/bancos.yaml`, com `fonte` R## ou P##;
    - regra de negócio nova: primeiro entra no `HIPOTESES.md` (R## se veio do financeiro, P## se é premissa,
      com o motivo), depois na configuração ou no código, com teste.
-5. **Rodar de novo.** As pendências resolvidas por configuração somem, e o restante continua listado.
+6. **Rodar de novo.** As pendências resolvidas por configuração somem, e o restante continua listado.
 
 ## Limitações conhecidas
 
@@ -274,7 +281,8 @@ O gerador só lê `dados/2026-09`: nada é gravado no repositório. O mesmo ensa
   sábado e domingo. Uma transferência na véspera de feriado aparece como em trânsito ou sem par.
 - **A conferência de TED de liquidação (P11)** só considera as datas dentro do período do extrato do Meridiano
   (DTSTART a DTEND).
-- **Vigências na configuração.** A condição especial da Casa do Estudante (R10) vale até 2026-12-31 em
+- **Vigências na configuração.** A concessão comercial da Casa do Estudante (R10, R32, R40: isenção para vendas
+  a partir de 01/09; estorno de venda anterior segue a taxa da venda) vale até 2026-12-31 em
   `config/checkout.yaml`; renovações e contratos novos precisam ser atualizados lá e na planilha de taxas.
 - **Nomes fixos de abas e colunas.** A planilha de taxas precisa ter a aba "Taxas vigentes", e o relatório da
   Ponte, a aba "Operações" com a coluna "Nº Operação". Se o formato mudar, a leitura para com erro.
@@ -286,7 +294,6 @@ O gerador só lê `dados/2026-09`: nada é gravado no repositório. O mesmo ensa
   - texto de spread na planilha que não é número nem "padrão" (R14);
   - Nº Operação repetido com valores diferentes além da observação (R13);
   - spread negativo de CNPJ fora da planilha (P05);
-  - lojista com divergências com e sem condição especial no mesmo mês (P23);
   - CNPJ em `favorecidos.yaml` ou `pagadores_meridiano.yaml` que não está na planilha;
   - qualquer saída fora do formato ou que não feche com o rastro.
 
@@ -296,7 +303,13 @@ O gerador só lê `dados/2026-09`: nada é gravado no repositório. O mesmo ensa
 ├── README.md
 ├── HIPOTESES.md              regras (R##) e premissas (P##): a fonte de toda regra de negócio
 ├── CLAUDE.md                 regras para quem (pessoa ou IA) mexe no código
-├── PROMPTS/MOMENTOS.md       momentos em que a IA errou ou ajudou, e o que fizemos
+├── RESULTADOS.md             números do fechamento conferidos contra os testes
+├── PROMPTS/
+│   ├── README.md             como o histórico está organizado e os prompts-chave
+│   ├── MOMENTOS.md           momentos em que a IA errou ou ajudou, e o que fizemos
+│   ├── antigravity_resumo_prompts_16-10.txt  resumo dos prompts do Antigravity (16/10)
+│   └── sessoes/              transcripts das sessões de IA (Claude Code e Antigravity)
+├── scripts/exportar_transcript.py  exporta os transcripts sem e-mails pessoais e chaves
 ├── pyproject.toml            pacote, dependências e configuração do pytest
 ├── requirements.txt          as mesmas dependências, em lista
 ├── config/
