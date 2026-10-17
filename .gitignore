@@ -1,0 +1,23 @@
+# Materiais internos de preparação (preservados localmente e na branch backup-dossies-barte)
+_referencias_internas/
+
+# Ambientes virtuais e cache Python
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Variáveis de ambiente e chaves de API (NUNCA subir chaves no repositório público)
+.env
+.env.*
+!.env.example
+
+# Arquivos de sistema e IDE
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
