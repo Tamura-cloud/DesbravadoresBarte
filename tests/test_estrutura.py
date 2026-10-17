@@ -43,7 +43,7 @@ ACAO_JA_ESCRITA = {
     "remessa.MOTIVO_DUPLICATA": "pedir correção do relatório",
     "remessa.MOTIVO_CONTESTACAO": "a Tarvo contesta com a Ponte",
     "remessa.MOTIVO_AJUSTE_SEM_ORIGINAL": "conferir com a Ponte",
-    "remessa.MOTIVO_TED": "conferir se o TED",
+    "remessa.MOTIVO_TED": "conferir o TED",
     "checkout.MOTIVO_SEM_CONTRATO": "não faturar até o comercial confirmar",
     "checkout.MOTIVO_RETROATIVO": "quando o Comercial confirmar",
     "bancos.MOTIVO_DEVOLUCAO": "apurar o motivo",

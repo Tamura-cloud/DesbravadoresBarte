@@ -54,7 +54,8 @@ MOTIVO_CONCESSAO = (
     "concessão comercial; custo da Tarvo; não é divergência; não se cobra da Orbe ({regra}, R32, R38, R41) - "
     "valor = valor_taxa descontado pela Orbe menos a comissão da Tarvo nas transações da concessão, transação a "
     "transação (R45) - próximo passo: a Helena paga a devolução ao lojista e decide com o Comercial se pede à Orbe "
-    "parametrizar {taxa} daqui em diante (nota interna em {rascunho})"
+    "parametrizar {taxa} daqui em diante e se a isenção será renovada depois de {fim} (Comercial) (nota interna em "
+    "{rascunho})"
 )
 MOTIVO_REPETIDA = (
     "id_transacao {ref} veio em {mantido} (linha física {n_mantida}) e de novo, com a linha igual, em {repetido} "
@@ -253,8 +254,9 @@ def _campo_taxa(linha_orbe: dict, cfg: ConfigCheckout) -> str:
         for de, ate, campo in cfg.faixas_parcelado:
             if parcelas is not None and de <= parcelas <= ate:
                 return campo
+        acima = " - a Tarvo não vende acima de 12x (R50)" if parcelas is not None and parcelas > 12 else ""
         raise ErroDadoCheckout(dep.TAXA, f"{linha_orbe['ref_origem']}: {modalidade} com {parcelas} parcelas fora das "
-                               "faixas de config/checkout.yaml (taxa_parcelado)")
+                               f"faixas de config/checkout.yaml (taxa_parcelado){acima}")
     if modalidade in cfg.taxa_por_modalidade:
         return cfg.taxa_por_modalidade[modalidade]
     raise ErroDadoCheckout(dep.TAXA, f"{linha_orbe['ref_origem']}: tipo {tipo!r} / modalidade {modalidade!r} sem taxa "
@@ -406,6 +408,12 @@ def taxa_concessao(cnpj: str, cfg: ConfigCheckout) -> str:
     return " ou ".join(f"{v.normalize():f}".replace(".", ",") + "%" for v in valores) or "a taxa da concessão"
 
 
+def fim_concessao(cnpj: str, cfg: ConfigCheckout) -> str:
+    """Último dia da concessão do lojista (DD/MM/AAAA), das condições especiais do config."""
+    fim = max(c.fim for c in cfg.condicoes if c.cnpj == cnpj)
+    return fim.strftime("%d/%m/%Y")
+
+
 def _rascunho_orbe() -> str:
     """Onde fica o rascunho de contestação da Orbe (R29), como o motivo da pendência o cita: <pasta>/orbe.md."""
     from tarvo.contestacao import ARQUIVO_ORBE, carregar_config  # import tardio: contestacao importa este módulo
@@ -450,7 +458,8 @@ def _pendencia_concessao(cnpj: str, linhas: list[LinhaCheckout], cfg: ConfigChec
     return ItemSaida(f"PEN-CONCESSAO-CHK-{cnpj}", PENDENCIAS.nome,
                      {"tipo": "DEVOLUCAO_CONCESSAO", "ref_origem": [l.ref_origem for l in linhas],
                       "motivo": texto_saida(MOTIVO_CONCESSAO.format(regra=", ".join(regras), rascunho=_rascunho_orbe(),
-                                                                    taxa=taxa_concessao(cnpj, cfg))),
+                                                                    taxa=taxa_concessao(cnpj, cfg),
+                                                                    fim=fim_concessao(cnpj, cfg))),
                       "quem_decide": cfg.quem_decide["devolucao_concessao"]},
                      _soma(o[2] for o in origens), origens)
 

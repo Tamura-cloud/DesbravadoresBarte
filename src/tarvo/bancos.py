@@ -51,8 +51,8 @@ MESES = ("janeiro", "fevereiro", "março", "abril", "maio", "junho", "julho", "a
          "outubro", "novembro", "dezembro")
 
 MOTIVO_NAO_IDENTIFICADO = (
-    "PIX recebido sem identificação: não é receita até identificar a origem (R20) - próximo passo: o Financeiro "
-    "(Helena) identifica quem mandou o PIX e reclassifica o lançamento"
+    "PIX recebido sem identificação: não é receita até identificar a origem (R20) - próximo passo: o Caio "
+    "(financeiro) identifica o pagador com o banco até o fechamento de outubro"
 )
 MOTIVO_DEVOLUCAO = "devolução de PIX: repasse que voltou, motivo desconhecido (R20) - apurar o motivo (P06)"
 MOTIVO_SEM_REGRA = "nenhuma regra de config/bancos.yaml cobre o lançamento: classificar manualmente (P09)"
@@ -74,7 +74,8 @@ MOTIVO_PIX_DIFERENCA = (
 )
 MOTIVO_TRANSITO = (
     "transferência entre contas sem TED de mesma titularidade no Meridiano até {fim}: pela R20 cai no "
-    "Meridiano em {chegada} - conferir no extrato de {mes}"
+    "Meridiano em {chegada} - conferir no extrato de {mes}; se não aparecer no extrato de {mes}, vira pendência da "
+    "tesouraria (Helena)"
 )
 MOTIVO_SEM_CONFERENCIA = (
     "{conferencia} não feita: a fonte {fontes} está bloqueada ({pendencias}, R44) - valor = {lado} sem conferir - "

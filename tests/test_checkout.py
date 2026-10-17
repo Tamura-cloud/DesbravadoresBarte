@@ -120,14 +120,15 @@ def test_taxa_pela_modalidade_e_faixa_de_parcelas(taxas, cfg):
     assert not any(l.divergente for l in linhas)
 
 
-@pytest.mark.parametrize("parcelas", [1, 13, None])
+@pytest.mark.parametrize("parcelas", [1, 13, 24, None])
 def test_parcelado_fora_de_2_a_12_tira_so_a_transacao(taxas, cfg, parcelas):
     # R44: a transação sem faixa vira PEN-REGRA-TAXA; o resto do lojista fecha, provisório
     itens = _rodar([_orbe("P", EC_B, "100.00", "3.00", modalidade="CREDITO PARCELADO", parcelas=parcelas),
                     _orbe("T1", EC_B, "1000.00", "1.00")], taxas, cfg)
     pen = _por_prefixo(itens, "PEN-REGRA-")["PEN-REGRA-TAXA-CHK-P"]
     assert "parcelas fora das faixas" in pen.campos["motivo"] and pen.valor_reportado == D("3.00")
-    assert pen.campos["quem_decide"] == "Comercial e Financeiro (Helena)"
+    assert ("R50" in pen.campos["motivo"]) == (parcelas == 13 or parcelas == 24)  # R50: não se vende acima de 12x
+    assert pen.campos["quem_decide"] == "Comercial"  # R51
     com = _por_prefixo(itens, "COM-")[f"COM-CHK-{CNPJ_B}"]
     assert com.valor_reportado == D("10.00") and com.campos["situacao"] == "PROVISORIO"
     with pytest.raises(ErroCheckout, match="parcelas"):  # fora do fechamento, calcular_linhas continua estrito
@@ -357,7 +358,7 @@ def test_ec_sem_contrato_so_gera_uma_pendencia_pelo_valor_da_orbe(taxas, cfg):
     assert [i.id_saida for i in itens] == [f"PEN-SEMCONTRATO-{EC_DESCONHECIDO}"]
     pen = itens[0]
     assert pen.valor_reportado == D("2.00") + D("9.99")
-    assert pen.campos["tipo"] == "LOJISTA_SEM_CONTRATO" and pen.campos["quem_decide"] == "Comercial"
+    assert pen.campos["tipo"] == "LOJISTA_SEM_CONTRATO" and pen.campos["quem_decide"] == "Comercial (Diego)"
     assert "R08" in pen.campos["motivo"]
     assert [o.ref_origem for o in pen.origens] == ["X1", "X2"]
 
@@ -492,6 +493,52 @@ def test_set_nenhuma_divergencia_com_taxa_aplicada_abaixo_da_contratada(entradas
     assert (len(negativas), sum(l.diferenca for l in negativas)) == (4, D("-98.44"))
 
 
+def test_orbe_cobrando_menos_que_o_contratado_e_divergencia_negativa(taxas, cfg):
+    # 15h55: "[Orbe cobrando menos] é divergência e eu decido caso a caso." Entra com sinal negativo, sem quebrar.
+    itens = _rodar([_orbe("MENOS", EC_B, "1000.00", "0.80"), _orbe("IGUAL", EC_B, "1000.00", "1.00")], taxas, cfg)
+    div = _por_prefixo(itens, "DIV-CHK-")
+    assert set(div) == {"DIV-CHK-MENOS"} and div["DIV-CHK-MENOS"].valor_reportado == D("-2.00")
+    assert _por_prefixo(itens, "COM-")[f"COM-CHK-{CNPJ_B}"].valor_reportado == D("20.00")  # comissão pelo contrato
+
+
+def test_venda_e_estorno_divergentes_ficam_as_duas_linhas_e_se_anulam(taxas, cfg):
+    # 15h55: "Na lista de divergências ficam as duas linhas, com o estorno em valor negativo. Na cobrança, elas se anulam."
+    itens = _rodar([
+        _orbe("V", EC_B, "1000.00", "1.50", dia=date(2031, 3, 10)),
+        _orbe("E", EC_B, "-1000.00", "1.50", tipo="ESTORNO", id_referencia="V", data_venda_original=date(2031, 3, 10)),
+    ], taxas, cfg)
+    div = _por_prefixo(itens, "DIV-CHK-")
+    assert {k: v.valor_reportado for k, v in div.items()} == {"DIV-CHK-V": D("5.00"), "DIV-CHK-E": D("-5.00")}
+
+
+def test_set_fluente_pix_a_0_79_sem_divergencia_nem_pendencia(entradas, itens):
+    # 15h47: "Fluente: o 0,79% é condição negociada com ela. Não precisa de pendência."
+    cnpj = "03229837000103"
+    pix = [l for l in calcular_linhas(entradas.orbe, entradas.taxas, carregar_config())
+           if l.cnpj == cnpj and l.campo_taxa == "taxa_pix"]
+    assert pix and {l.taxa_aplicada for l in pix} == {D("0.79")} == {l.taxa_contratada for l in pix}
+    assert not [i for i in itens if i.id_saida.startswith(("DIV-", "PEN-")) and
+                (cnpj in i.id_saida or any(o[1] in {l.ref_origem for l in pix} for o in i.origens))]
+
+
+def test_set_casa_antecipacoes_na_concessao_pela_data_da_antecipacao(entradas):
+    # R49 (13h34): "Vale pela data da antecipação [...] Não precisa ir atrás das vendas de origem."
+    cfg = carregar_config()
+    concessao = next(c for c in cfg.condicoes if c.cnpj == CASA_ESTUDANTE)
+    antecipacoes = [l for l in calcular_linhas(entradas.orbe, entradas.taxas, cfg)
+                    if l.cnpj == CASA_ESTUDANTE and l.tipo_lancamento in ("ANTECIPACAO", "REVERSAO ANTECIPACAO")]
+    assert sorted(l.ref_origem for l in antecipacoes) == ["AN88445172", "AN88445486", "AN88445740", "AN88445802"]
+    for l in antecipacoes:
+        assert l.data_referencia == l.data_movimento and concessao.vale_em(l.data_movimento)
+        assert (l.concessao, l.taxa_comissao, l.comissao) == ("R10", D("0"), D("0.00"))
+
+
+def test_set_nenhuma_transacao_acima_de_12_parcelas(entradas):
+    # R50 (11h01): "A gente não vende acima de 12x. Se aparecer, é pendência." Em setembro não aparece.
+    parcelas = [p for p in entradas.orbe["qtd_parcelas"] if p is not None and not pd.isna(p)]
+    assert parcelas and max(parcelas) == 12
+
+
 def test_set_atlas_sem_contrato(itens):
     pen = _por_prefixo(itens, "PEN-SEMCONTRATO-")
     # R39: a Atlas é identificada pelo CNPJ da aba de 2025 (sem usar a taxa dela); era PEN-SEMCONTRATO-<EC>
@@ -500,7 +547,7 @@ def test_set_atlas_sem_contrato(itens):
     assert atlas.campos["motivo"].startswith(f"EC {EC_ATLAS}, CNPJ {CNPJ_ATLAS}")
     assert len(atlas.origens) == 57
     assert atlas.valor_reportado == D("7876.05")
-    assert atlas.campos["tipo"] == "LOJISTA_SEM_CONTRATO" and atlas.campos["quem_decide"] == "Comercial"
+    assert atlas.campos["tipo"] == "LOJISTA_SEM_CONTRATO" and atlas.campos["quem_decide"] == "Comercial (Diego)"
     # R30: 57 transações, R$ 262.138,61 brutos, faturadas em outubro, retroativas à primeira (10/09)
     assert ("as 57 transações do mês (R$ 262138.61 brutos) são faturadas na competência 2026-10, "
             "com a taxa retroativa a 2026-09-10") in atlas.campos["motivo"]

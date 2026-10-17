@@ -228,7 +228,7 @@ def test_caso_a_venda_de_ec_fora_da_planilha_vira_so_pendencia(pack, saida, entr
     assert p["ref_origem"] == caso["ref_origem"]
     assert Decimal(p["valor_brl"]) == caso["valor_taxa"]  # o que a Orbe cobrou
     assert "R08" in p["motivo"] and "não faturar" in p["motivo"]
-    assert p["quem_decide"] == "Comercial"
+    assert p["quem_decide"] == "Comercial (Diego)"
 
 
 @pytest.mark.parametrize("tipo, banco", [("aurora", "AUR"), ("meridiano", "MER")])

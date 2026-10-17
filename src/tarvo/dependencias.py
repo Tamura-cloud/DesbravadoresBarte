@@ -157,7 +157,7 @@ class ConfigBloqueio:
     quem_decide: str
     quem_decide_por_fonte: dict[str, str]
     descricoes: dict[str, str]
-    quem_decide_cadastro: str = "Comercial e Financeiro (Helena)"
+    quem_decide_cadastro: str = "Comercial"
 
     def quem(self, fonte: str) -> str:
         return self.quem_decide_por_fonte.get(fonte, self.quem_decide)

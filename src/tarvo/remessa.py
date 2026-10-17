@@ -70,7 +70,8 @@ MOTIVO_AJUSTE_SEM_ORIGINAL = (
     "ajuste da Ponte (R31) abate a participação do mês, mas a operação original {original} não está no relatório da "
     "competência anterior ({anterior}) nem no deste mês - conferir com a Ponte"
 )
-MOTIVO_TED = "conferir se o TED de repasse da Ponte bate com a nota de intermediação - não supor desconto (R18)"
+MOTIVO_TED = ("conferir o TED de repasse da Ponte quando cair, contra a nota de intermediação - ainda não se sabe como a "
+              "Ponte vai pagar e nenhum desconto no repasse é suposto (R18)")
 
 
 class ErroRemessa(ValueError):
