@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import io
 import unicodedata
+import zipfile
 from email import policy
 from email.message import EmailMessage
 from email.parser import BytesParser
@@ -14,9 +15,11 @@ from pathlib import Path
 
 import openpyxl
 import pandas as pd
+from openpyxl.utils.exceptions import InvalidFileException
 
 from tarvo.leitores.comum import cnpj14, data_br, dinheiro, num_br, pct
 from tarvo.leitores.layout import avisos_layout
+from tarvo.leitores.rejeitadas import LinhaRejeitada
 
 ABA = "Operações"
 CABECALHO_REF = "Nº Operação"
@@ -152,12 +155,14 @@ def _converter(bruto: dict, onde: str) -> dict:
     return reg
 
 
-def ler_ponte(caminho_eml, avisos: list[str] | None = None) -> tuple[pd.DataFrame, dict]:
+def ler_ponte(caminho_eml, avisos: list[str] | None = None,
+              rejeitadas: list[LinhaRejeitada] | None = None) -> tuple[pd.DataFrame, dict]:
     """Lê o .eml da Ponte Câmbio. Devolve (operações, metadados do e-mail e do rodapé).
 
     Cada linha da aba "Operações" entre o cabeçalho e a primeira linha vazia vira uma linha do
     DataFrame, inclusive duplicatas e spreads negativos. O rodapé não é operação: vai para os metadados.
-    avisos (opcional) recebe as colunas a mais ou fora de ordem (a leitura é pelo nome, R44).
+    avisos (opcional) recebe as colunas a mais ou fora de ordem (a leitura é pelo nome, R44). Com rejeitadas, a linha
+    com dado inválido vai para a lista e a leitura segue (R44); sem ela, é erro.
     """
     caminho = Path(caminho_eml)
     with open(caminho, "rb") as f:
@@ -167,7 +172,10 @@ def ler_ponte(caminho_eml, avisos: list[str] | None = None) -> tuple[pd.DataFram
     arquivo_origem = f"{caminho.name}#{nome_anexo}"
 
     # Sem read_only: nele as linhas vazias podem sumir, e precisamos delas para parar e numerar.
-    wb = openpyxl.load_workbook(io.BytesIO(conteudo), data_only=True)
+    try:
+        wb = openpyxl.load_workbook(io.BytesIO(conteudo), data_only=True)
+    except (zipfile.BadZipFile, InvalidFileException, KeyError) as e:  # o anexo não é um xlsx (ou está corrompido)
+        raise ValueError(f"{arquivo_origem}: o anexo não é um xlsx legível ({type(e).__name__}: {e})") from None
     try:
         if ABA not in wb.sheetnames:
             raise ValueError(f"{arquivo_origem}: aba '{ABA}' não encontrada (abas: {wb.sheetnames})")
@@ -185,7 +193,17 @@ def ler_ponte(caminho_eml, avisos: list[str] | None = None) -> tuple[pd.DataFram
         linha = linhas[i]
         linha_planilha = i + 1  # linhas do Excel começam em 1
         bruto = {c: (linha[j] if j < len(linha) else None) for c, j in indices.items()}
-        reg = _converter(bruto, f"{arquivo_origem} linha {linha_planilha}")
+        onde = f"{arquivo_origem} linha {linha_planilha}"
+        try:
+            reg = _converter(bruto, onde)
+        except ValueError as e:
+            if rejeitadas is None:
+                raise
+            erro = str(e) if str(e).startswith(onde) else f"{onde}: {e}"
+            rejeitadas.append(LinhaRejeitada(arquivo_origem, f"linha {linha_planilha}", erro,
+                                             ident=_texto(bruto["ref_origem"]) or None, cnpj=cnpj14(bruto["cnpj"])))
+            i += 1
+            continue
         reg["arquivo_origem"] = arquivo_origem
         reg["linha_planilha"] = linha_planilha
         registros.append(reg)

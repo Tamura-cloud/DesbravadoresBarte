@@ -181,3 +181,19 @@ def test_cli_resumo_pasta_vazia(tmp_path):
     r = subprocess.run([sys.executable, "-m", "tarvo", "resumo", "--saida", str(tmp_path)],
                        capture_output=True, text=True, encoding="utf-8", env=env, cwd=RAIZ)
     assert r.returncode == 2 and "faltam" in r.stderr
+
+
+def test_resumo_traz_o_commit_e_a_branch_atuais(saida):
+    commit = subprocess.run(["git", "rev-parse", "--short", "HEAD"], cwd=RAIZ, capture_output=True, text=True).stdout.strip()
+    branch = subprocess.run(["git", "rev-parse", "--abbrev-ref", "HEAD"], cwd=RAIZ, capture_output=True, text=True).stdout.strip()
+    assert f"Commit do código: {commit} (branch {branch})" in resumir(saida)
+
+
+def test_sem_git_o_resumo_diz_commit_indisponivel(saida, monkeypatch):
+    import tarvo.resumo as resumo
+
+    def sem_git(*_, **__):
+        raise FileNotFoundError("git")
+    monkeypatch.setattr(resumo.subprocess, "run", sem_git)
+    assert "Commit do código: commit indisponível" in resumir(saida)
+    assert resumo.versao_do_codigo(Path("/")) == "commit indisponível"

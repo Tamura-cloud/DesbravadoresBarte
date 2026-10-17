@@ -17,6 +17,7 @@ import pandas as pd
 
 from tarvo.leitores.comum import data_br, dinheiro, num_br
 from tarvo.leitores.layout import avisos_layout
+from tarvo.leitores.rejeitadas import LinhaRejeitada
 
 # Bytes conferidos: só ASCII, sem BOM. utf-8 explícito falha alto se vier byte fora do padrão.
 ENCODING = "utf-8"
@@ -97,8 +98,10 @@ class Repetida(NamedTuple):
     linha_repetida: int
 
 
-def _ler(caminho: Path) -> tuple[list[str], list[tuple[int, dict]]]:
-    """Cabeçalho do arquivo e (linha física, registro convertido) de cada linha."""
+def _ler(caminho: Path, rejeitadas: list[LinhaRejeitada] | None = None) -> tuple[list[str], list[tuple[int, dict]]]:
+    """Cabeçalho do arquivo e (linha física, registro convertido) de cada linha.
+
+    Com rejeitadas, a linha com dado inválido vai para a lista e a leitura segue (R44); sem ela, é erro."""
     with open(caminho, encoding=ENCODING, newline="") as f:
         leitor = csv.DictReader(f, delimiter=";")
         cabecalho = list(leitor.fieldnames or [])
@@ -107,14 +110,23 @@ def _ler(caminho: Path) -> tuple[list[str], list[tuple[int, dict]]]:
             raise ErroArquivoOrbe(f"{caminho.name}: colunas ausentes no cabeçalho: {faltando}", 1)
         registros = []
         for linha in leitor:
-            if None in linha or None in linha.values():
-                raise ErroArquivoOrbe(f"{caminho.name}, linha física {leitor.line_num}: número de campos diferente "
-                                      "do cabeçalho", leitor.line_num)
+            n = leitor.line_num
             try:
-                registros.append((leitor.line_num, _converter(linha, caminho.name)))
+                if None in linha or None in linha.values():
+                    raise ValueError("número de campos diferente do cabeçalho")
+                registros.append((n, _converter(linha, caminho.name)))
             except ValueError as e:
-                raise ErroArquivoOrbe(f"{caminho.name}, linha física {leitor.line_num}: {e}", leitor.line_num) from None
+                mensagem = f"{caminho.name}, linha física {n}: {e}"
+                if rejeitadas is None:
+                    raise ErroArquivoOrbe(mensagem, n) from None
+                rejeitadas.append(LinhaRejeitada(caminho.name, f"L{n}", mensagem,
+                                                 ident=_texto_ou_none(linha.get("id_transacao")),
+                                                 ec=_texto_ou_none(linha.get("cod_estabelecimento"))))
     return cabecalho, registros
+
+
+def _texto_ou_none(v) -> str | None:
+    return v.strip() or None if isinstance(v, str) else None
 
 
 def _quadro(registros: list[dict]) -> pd.DataFrame:
@@ -153,6 +165,7 @@ class LeituraOrbe:
     bloqueados: list[ArquivoBloqueado] = field(default_factory=list)
     avisos: list[str] = field(default_factory=list)
     lidos: list[str] = field(default_factory=list)
+    rejeitadas: list[LinhaRejeitada] = field(default_factory=list)  # linhas com dado inválido (R44)
 
 
 FIM_CONFLITO = ("O fechamento não escolhe qual vale: peça à Orbe a versão correta e deixe na pasta só os arquivos "
@@ -188,7 +201,8 @@ def _linhas_de_dados(caminho: Path) -> int | None:
 def ler_orbe_parcial(caminhos) -> LeituraOrbe:
     """Lê os arquivos da Orbe do mês, em ordem de nome, bloqueando só o arquivo de ajustes com problema (R44).
 
-    O primeiro arquivo (o relatório) é a referência: se ele não pode ser lido, sobe ErroArquivoOrbe e a fonte
+    Linha com dado inválido fica de fora sozinha (LeituraOrbe.rejeitadas, R44).
+    O primeiro arquivo (o relatório) é a referência: se o cabeçalho dele não serve, sobe ErroArquivoOrbe e a fonte
     inteira fica bloqueada. Um arquivo posterior fica bloqueado sozinho (nenhuma linha dele entra) quando não pode
     ser lido, quando o cabeçalho é diferente do do primeiro ou quando traz um id_transacao de arquivo anterior com
     algum campo diferente; os demais são lidos. id repetido com a linha igual conta uma vez (Repetida, P27).
@@ -204,8 +218,9 @@ def ler_orbe_parcial(caminhos) -> LeituraOrbe:
     vistos: dict[str, tuple[int, dict]] = {}
     registros: list[dict] = []
     for caminho in caminhos:
+        rejeitadas: list[LinhaRejeitada] = []
         try:
-            cabecalho, linhas = _ler(caminho)
+            cabecalho, linhas = _ler(caminho, rejeitadas)
         except ErroArquivoOrbe as e:
             if esperado is None:
                 raise
@@ -236,6 +251,7 @@ def ler_orbe_parcial(caminhos) -> LeituraOrbe:
                 n_ant, ant = anterior
                 leitura.repetidas.append(Repetida(r["ref_origem"], ant["arquivo_origem"], n_ant, caminho.name, n))
         leitura.lidos.append(caminho.name)
+        leitura.rejeitadas += rejeitadas
     leitura.quadro = _quadro(registros)
     return leitura
 
@@ -246,9 +262,11 @@ def ler_orbe_arquivos(caminhos) -> tuple[pd.DataFrame, list[Repetida]]:
     Cada linha guarda o próprio arquivo_origem. O cabeçalho de cada arquivo tem de ser idêntico ao do primeiro.
     Um id_transacao que reaparece em outro arquivo com a linha igual conta uma vez (e volta em Repetida); com
     qualquer campo diferente é erro: o leitor não escolhe qual vale. Dentro do mesmo arquivo nada muda.
-    Versão estrita de ler_orbe_parcial: o primeiro arquivo bloqueado vira ValueError.
+    Versão estrita de ler_orbe_parcial: o primeiro arquivo bloqueado ou a primeira linha inválida vira ValueError.
     """
     leitura = ler_orbe_parcial(caminhos)
     if leitura.bloqueados:
         raise ValueError(leitura.bloqueados[0].erro)
+    if leitura.rejeitadas:
+        raise ValueError(leitura.rejeitadas[0].erro)
     return leitura.quadro, leitura.repetidas

@@ -13,7 +13,7 @@ from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, NamedTuple
 
 import pandas as pd
 import yaml
@@ -77,6 +77,17 @@ class ErroRemessa(ValueError):
     """Dado de entrada ou configuração que impede aplicar as regras da remessa."""
 
 
+class ErroDadoRemessa(ErroRemessa, dep.ErroDado):
+    """Dado da Ponte ou da planilha que impede aplicar a regra a um lojista ou a uma operação (R44): no fechamento,
+    vira PEN-REGRA e o resto da remessa fecha."""
+
+
+class ProblemaRemessa(NamedTuple):
+    erro: dep.ErroDado
+    op: dict             # a linha da Ponte, como o leitor devolveu
+    chave: str           # CNPJ do lojista, ou o Nº Operação quando a linha não tem CNPJ
+
+
 # ---------------------------------------------------------------- configuração
 
 @dataclass(frozen=True)
@@ -138,11 +149,13 @@ def carregar_config(caminho=CONFIG_REMESSA) -> ConfigRemessa:
 class Contratos:
     """Por CNPJ, as linhas da planilha vigente e o spread contratado numa data."""
 
-    def __init__(self, taxas: pd.DataFrame, cfg: ConfigRemessa):
+    def __init__(self, taxas: pd.DataFrame, cfg: ConfigRemessa, rejeitadas=()):
         self.cfg = cfg
         self.linhas: dict[str, list[dict]] = defaultdict(list)
         for linha in taxas.to_dict("records"):
             self.linhas[linha["cnpj"]].append(linha)
+        # R44: CNPJ com linha da planilha que o leitor não converteu; as operações dele viram PEN-REGRA-CADASTRO
+        self.cnpj_suspeito = {r.cnpj: r.erro for r in rejeitadas}
 
     def cadastrado(self, cnpj: str) -> bool:
         return cnpj in self.linhas
@@ -159,7 +172,8 @@ class Contratos:
         ]
         if len(vigentes) != 1:
             refs = ", ".join(l["ref_origem"] for l in vigentes) or "nenhuma"
-            raise ErroRemessa(f"CNPJ {cnpj}: esperada 1 linha vigente em {d}, achei {len(vigentes)} ({refs})")
+            raise ErroDadoRemessa(dep.VIGENCIA, f"CNPJ {cnpj}: esperada 1 linha vigente na planilha de taxas em {d}, "
+                                  f"achei {len(vigentes)} ({refs})", do_lojista=True)
         return vigentes[0]
 
     def spread_contratado(self, cnpj: str, d: date) -> tuple[Decimal, str]:
@@ -170,32 +184,54 @@ class Contratos:
         texto = linha["spread_remessa_texto"]
         if texto is None or sem_acento(texto) in self.cfg.textos_padrao:
             return self.cfg.spread_padrao, linha["ref_origem"]
-        raise ErroRemessa(f"CNPJ {cnpj}, {linha['ref_origem']}: spread de remessa {texto!r} não reconhecido")
+        raise ErroDadoRemessa(dep.TAXA, f"CNPJ {cnpj}, {linha['ref_origem']} da planilha de taxas: spread de remessa "
+                              f"{texto!r} não reconhecido", do_lojista=True)
 
 
 # ---------------------------------------------------------------- duplicatas (R13)
 
-def deduplicar(ponte: pd.DataFrame, cfg: ConfigRemessa) -> tuple[list[dict], list[dict]]:
+class Conflito(NamedTuple):
+    """Nº Operação repetido com valores diferentes: todas as cópias ficam de fora (R44)."""
+
+    ref_origem: str
+    copias: list[dict]
+    mensagem: str
+
+
+def deduplicar(ponte: pd.DataFrame, cfg: ConfigRemessa,
+               conflitos: list[Conflito] | None = None) -> tuple[list[dict], list[dict]]:
     """(operações únicas, cópias descartadas). Fica a primeira linha da planilha de cada Nº Operação.
 
-    Cópias com qualquer coluna diferente (fora as de posição e as de duplicata_colunas_ignoradas) são erro:
-    não há regra para escolher uma.
+    Cópias com qualquer coluna diferente (fora as de posição e as de duplicata_colunas_ignoradas) não têm regra para
+    escolher uma: sem conflitos é erro; com a lista (o fechamento, R44), o Nº sai inteiro e vai para conflitos.
     """
     ignorar = set(COLUNAS_POSICAO) | set(cfg.duplicata_ignora)
     unicas: dict[str, dict] = {}
     descartadas: list[dict] = []
+    em_conflito: dict[str, Conflito] = {}
     for op in sorted(ponte.to_dict("records"), key=lambda o: o["linha_planilha"]):
-        primeira = unicas.get(op["ref_origem"])
+        ref = op["ref_origem"]
+        if ref in em_conflito:
+            em_conflito[ref].copias.append(op)
+            continue
+        primeira = unicas.get(ref)
         if primeira is None:
-            unicas[op["ref_origem"]] = op
+            unicas[ref] = op
             continue
         diferentes = sorted(c for c in op if c not in ignorar and op[c] != primeira[c])
         if diferentes:
-            raise ErroRemessa(
-                f"Nº Operação {op['ref_origem']} repetido com valores diferentes nas linhas "
-                f"{primeira['linha_planilha']} e {op['linha_planilha']} (colunas: {', '.join(diferentes)})"
-            )
+            mensagem = (f"Nº Operação {ref} repetido com valores diferentes nas linhas "
+                        f"{primeira['linha_planilha']} e {op['linha_planilha']} (colunas: {', '.join(diferentes)})")
+            if conflitos is None:
+                raise ErroDadoRemessa(dep.DUPLICADA, mensagem)
+            copias = [primeira] + [d for d in descartadas if d["ref_origem"] == ref] + [op]
+            descartadas = [d for d in descartadas if d["ref_origem"] != ref]
+            del unicas[ref]
+            em_conflito[ref] = Conflito(ref, copias, mensagem)
+            continue
         descartadas.append(op)
+    if conflitos is not None:
+        conflitos.extend(em_conflito.values())
     return list(unicas.values()), descartadas
 
 
@@ -224,12 +260,16 @@ class OperacaoRemessa:
 
 def _obrigatorio(op: dict, campo: str):
     if op[campo] is None:
-        raise ErroRemessa(f"{op['ref_origem']}: {campo} vazio")
+        raise ErroDadoRemessa(dep.LINHA, f"operação {op['ref_origem']} (linha {op.get('linha_planilha')} do relatório "
+                              f"da Ponte): {campo} vazio")
     return op[campo]
 
 
 def calcular_operacao(op: dict, contratos: Contratos, cfg: ConfigRemessa) -> OperacaoRemessa:
     cnpj = op["cnpj"]
+    if cnpj in contratos.cnpj_suspeito:
+        raise ErroDadoRemessa(dep.CADASTRO, f"a linha do CNPJ {cnpj} na planilha de taxas não pôde ser lida "
+                              f"({contratos.cnpj_suspeito[cnpj]})", do_lojista=True)
     spread_brl, spread_pct = _obrigatorio(op, "spread_brl"), _obrigatorio(op, "spread_pct")
     data = _obrigatorio(op, "data_contratacao")
     negativa = spread_brl < 0
@@ -245,8 +285,9 @@ def calcular_operacao(op: dict, contratos: Contratos, cfg: ConfigRemessa) -> Ope
             # R15: valor cheio, sobre PTAX de referência × valor em moeda estrangeira
             base = _obrigatorio(op, "ptax_ref") * _obrigatorio(op, "valor_me")
             diferenca = dinheiro(diff_pp / 100 * base)
-    elif negativa:
-        raise ErroRemessa(f"{op['ref_origem']}: spread negativo de CNPJ {cnpj} fora da planilha, sem contratado")
+    elif negativa:  # P05: sem spread contratado não há valor de contestação (R44: não para mais o fechamento)
+        raise ErroDadoRemessa(dep.CADASTRO, f"{op['ref_origem']}: spread negativo de CNPJ {cnpj} fora da planilha de "
+                              "taxas, sem spread contratado para valorar a contestação (P05)")
 
     return OperacaoRemessa(
         arquivo_origem=op["arquivo_origem"], ref_origem=op["ref_origem"], cnpj=cnpj, cadastrado=cadastrado,
@@ -265,15 +306,21 @@ def referencia_ajuste(op: dict, cfg: ConfigRemessa) -> str | None:
     return m.group(1).rstrip(".,;:)") if m else None
 
 
-def separar_ajustes(unicas: list[dict], cfg: ConfigRemessa) -> tuple[list[dict], list[dict]]:
+def separar_ajustes(unicas: list[dict], cfg: ConfigRemessa,
+                    problemas: list[ProblemaRemessa] | None = None) -> tuple[list[dict], list[dict]]:
     """(operações, ajustes). A checagem vem antes de qualquer regra de operação: ajuste nunca é spread negativo,
-    divergência nem operação nova (R31). Linha sem CNPJ só é aceita se for ajuste."""
+    divergência nem operação nova (R31). Linha sem CNPJ só é aceita se for ajuste; senão é erro ou, com problemas
+    (o fechamento, R44), fica de fora e vai para a lista."""
     operacoes, ajustes = [], []
     for op in unicas:
         if referencia_ajuste(op, cfg) is not None:
             ajustes.append(op)
         elif op["cnpj"] is None:
-            raise ErroRemessa(f"{op['ref_origem']}: CNPJ vazio e a observação não casa com o padrão de ajuste")
+            erro = ErroDadoRemessa(dep.LINHA, f"operação {op['ref_origem']} (linha {op.get('linha_planilha')} do "
+                                   "relatório da Ponte): CNPJ vazio e a observação não casa com o padrão de ajuste")
+            if problemas is None:
+                raise erro
+            problemas.append(ProblemaRemessa(erro, op, op["ref_origem"]))
         else:
             operacoes.append(op)
     return operacoes, ajustes
@@ -324,7 +371,8 @@ def calcular_ajuste(op: dict, ref_original: str, operacoes_mes: dict[str, dict],
     return AjusteRemessa(
         arquivo_origem=op["arquivo_origem"], ref_origem=op["ref_origem"], cnpj=cnpj, ref_original=ref_original,
         spread_brl=spread, comissao=dinheiro(spread * cfg.ajuste_participacao),
-        competencia_original=original["data_contratacao"].strftime("%Y-%m") if original is not None else None,
+        competencia_original=(original["data_contratacao"].strftime("%Y-%m")
+                              if original is not None and original["data_contratacao"] is not None else None),
         arquivo_original=original["arquivo_origem"] if onde == "anterior" and original is not None else None,
         sem_original=original is None and anterior is not None,
         contestada=onde == "anterior" and original is not None and ref_original in anterior.contestadas,
@@ -362,10 +410,15 @@ def carregar_anterior(entradas: Entradas, cfg: ConfigRemessa) -> Anterior | None
     except ErroEntrada:
         return None  # pasta sem os arquivos esperados: não há com que conferir
     competencia = competencia_anterior(entradas.competencia)
-    ponte, meta = ler_ponte(arquivos["ponte_eml"])
-    unicas, _ = deduplicar(ponte, cfg)
-    operacoes, _ = separar_ajustes(unicas, cfg)
-    itens = calcular_remessa(ponte, ler_taxas(arquivos["taxas"]), competencia, meta["arquivo_origem"], cfg)
+    try:
+        ponte, meta = ler_ponte(arquivos["ponte_eml"], rejeitadas=[])
+        taxas = ler_taxas(arquivos["taxas"], rejeitadas=[])
+    except (ValueError, OSError) as e:
+        raise ErroDadoRemessa(dep.ANTERIOR, f"relatório da Ponte ou planilha da competência anterior ({pasta.name}) "
+                              f"ilegível: {e}") from None
+    unicas, _ = deduplicar(ponte, cfg, [])
+    operacoes, _ = separar_ajustes(unicas, cfg, [])
+    itens = calcular_remessa(ponte, taxas, competencia, meta["arquivo_origem"], cfg)
     contestadas = frozenset(i.campos["ref_origem"] for i in itens
                             if i.id_saida.startswith(("DIV-REM-", "PEN-NEG-REM-", "PEN-DUP-REM-")))
     return Anterior(competencia, meta["arquivo_origem"], {o["ref_origem"]: o for o in operacoes}, contestadas)
@@ -499,28 +552,116 @@ def gerar_itens(operacoes: list[OperacaoRemessa], descartadas: list[dict], fora:
     return itens
 
 
+EFEITO_LOJISTA = ("as {n} operações do lojista (CNPJ {cnpj}) ficaram fora de comissão, nota da Ponte e divergência; "
+                  "a nota da Ponte saiu PROVISÓRIA - valor = Spread R$ delas")
+EFEITO_OPERACAO = ("a operação ficou fora de comissão, nota da Ponte e divergência; a nota da Ponte saiu PROVISÓRIA - "
+                   "valor = Spread R$ da operação")
+EFEITO_DUPLICADA = ("as {n} cópias ficaram fora de comissão, nota da Ponte, divergência e das conferências P11 e P12; a "
+                    "nota da Ponte saiu PROVISÓRIA - valor 0,00: o fechamento não escolhe qual cópia vale")
+EFEITO_ANTERIOR = ("os ajustes da Ponte (R31) foram conferidos sem a competência anterior: a original de cada ajuste "
+                   "fica como não encontrada - nenhum valor muda")
+ITENS_DA_NOTA = ("NF-REM-", "PEN-NF-REM-", "PEN-TED-PONTE")
+
+
+def _spread(op: dict) -> Decimal:
+    return op["spread_brl"] if op.get("spread_brl") is not None else ZERO
+
+
+def _pendencias_regra(problemas: list[ProblemaRemessa], conflitos: list[Conflito],
+                      fora: dict[str, list[dict]]) -> list[ItemSaida]:
+    """R44: PEN-REGRA-<tipo>-REM-<CNPJ> por lojista com contrato que impede a regra (todas as operações dele),
+    PEN-REGRA-<tipo>-REM-<Nº> por operação e PEN-REGRA-DUPLICADA-REM-<Nº> por Nº repetido com valores diferentes."""
+    itens = []
+    do_lojista: dict[str, list[ProblemaRemessa]] = defaultdict(list)
+    for p in problemas:
+        if p.erro.do_lojista or p.chave in fora:
+            do_lojista[p.chave].append(p)
+            continue
+        itens.append(dep.pendencia_regra(p.erro.tipo, f"REM-{p.op['ref_origem']}", str(p.erro), EFEITO_OPERACAO,
+                                         _spread(p.op), [(p.op["arquivo_origem"], p.op["ref_origem"], _spread(p.op))]))
+    for cnpj, ps in sorted(do_lojista.items()):
+        ops = {o["ref_origem"]: o for o in [p.op for p in ps] + fora.get(cnpj, [])}
+        origens = [(o["arquivo_origem"], o["ref_origem"], _spread(o)) for _, o in sorted(ops.items())]
+        itens.append(dep.pendencia_regra(ps[0].erro.tipo, f"REM-{cnpj}",
+                                         " | ".join(dict.fromkeys(str(p.erro) for p in ps)),
+                                         EFEITO_LOJISTA.format(n=len(origens), cnpj=cnpj),
+                                         _soma(o[2] for o in origens), origens))
+    for c in sorted(conflitos, key=lambda c: c.ref_origem):
+        itens.append(dep.pendencia_regra(dep.DUPLICADA, f"REM-{c.ref_origem}", c.mensagem,
+                                         EFEITO_DUPLICADA.format(n=len(c.copias)), ZERO,
+                                         [(o["arquivo_origem"], o["ref_origem"], ZERO) for o in c.copias]))
+    return itens
+
+
 def calcular_remessa(ponte: pd.DataFrame, taxas: pd.DataFrame, competencia: str, arquivo_ponte: str,
-                     cfg: ConfigRemessa, anterior: Anterior | None = None) -> list[ItemSaida]:
-    contratos = Contratos(taxas, cfg)
-    unicas, descartadas = deduplicar(ponte, cfg)
-    operacoes_todas, ajustes_todos = separar_ajustes(unicas, cfg)  # R31 vem antes da R23
-    no_mes = [op for op in operacoes_todas if na_competencia(op, competencia)]
-    ajustes_mes = [op for op in ajustes_todos if na_competencia(op, competencia)]
-    fora = [op for op in unicas if not na_competencia(op, competencia)]
-    operacoes = [calcular_operacao(op, contratos, cfg) for op in no_mes]
+                     cfg: ConfigRemessa, anterior: Anterior | None = None, rejeitadas_taxas=(),
+                     provisorio: bool = False) -> list[ItemSaida]:
+    """Itens da remessa. Lojista ou operação com dado que impede a regra fica fora e vira PEN-REGRA (R44); aí a nota
+    da Ponte (e a conferência do TED) sai provisória, como quando provisorio=True (linha rejeitada pelo leitor)."""
+    contratos = Contratos(taxas, cfg, rejeitadas_taxas)
+    problemas: list[ProblemaRemessa] = []
+    conflitos: list[Conflito] = []
+    unicas, descartadas = deduplicar(ponte, cfg, conflitos)
+    operacoes_todas, ajustes_todos = separar_ajustes(unicas, cfg, problemas)  # R31 vem antes da R23
+
+    def no_mes(op: dict) -> bool | None:
+        try:
+            return na_competencia(op, competencia)
+        except dep.ErroDado as e:
+            problemas.append(ProblemaRemessa(e, op, op["cnpj"] or op["ref_origem"]))
+            return None
+
+    meses = {op["ref_origem"]: no_mes(op) for op in operacoes_todas + ajustes_todos}
+    validas = [op for op in operacoes_todas if meses[op["ref_origem"]]]
+    ajustes_mes = [op for op in ajustes_todos if meses[op["ref_origem"]]]
+    fora = [op for op in unicas if meses.get(op["ref_origem"]) is False]
+    operacoes = []
+    for op in validas:
+        try:
+            operacoes.append(calcular_operacao(op, contratos, cfg))
+        except dep.ErroDado as e:
+            problemas.append(ProblemaRemessa(e, op, op["cnpj"] or op["ref_origem"]))
     por_ref = {op["ref_origem"]: op for op in operacoes_todas}
-    ajustes = [calcular_ajuste(op, referencia_ajuste(op, cfg), por_ref, cfg, anterior) for op in ajustes_mes]
+    ajustes, ajustes_ok = [], []
+    for op in ajustes_mes:
+        try:
+            ajustes.append(calcular_ajuste(op, referencia_ajuste(op, cfg), por_ref, cfg, anterior))
+            ajustes_ok.append(op)
+        except dep.ErroDado as e:
+            problemas.append(ProblemaRemessa(e, op, op["cnpj"] or op["ref_origem"]))
+
+    lojistas_fora = {p.chave for p in problemas if p.erro.do_lojista}
+    do_lojista_fora: dict[str, list[dict]] = defaultdict(list)
+    for o in operacoes:
+        if o.cnpj in lojistas_fora:
+            do_lojista_fora[o.cnpj].append(por_ref[o.ref_origem])
+    for a, op in zip(ajustes, ajustes_ok):
+        if a.cnpj in lojistas_fora:
+            do_lojista_fora[a.cnpj].append(op)
+    operacoes = [o for o in operacoes if o.cnpj not in lojistas_fora]
+    pares = [(a, op) for a, op in zip(ajustes, ajustes_ok) if a.cnpj not in lojistas_fora]
+    ajustes = [a for a, _ in pares]
 
     nomes = {}
-    for op in no_mes:
-        if contratos.cadastrado(op["cnpj"]):
-            nomes[op["cnpj"]] = contratos.nome(op["cnpj"])
-        else:  # só exibição: o casamento foi pelo CNPJ
-            nomes.setdefault(op["cnpj"], _obrigatorio(op, "cliente"))
-    for a, op in zip(ajustes, ajustes_mes):
+    for o in operacoes:
+        op = por_ref[o.ref_origem]
+        if contratos.cadastrado(o.cnpj):
+            nomes[o.cnpj] = contratos.nome(o.cnpj)
+        else:  # só exibição: o casamento foi pelo CNPJ (sem o nome do cliente, o próprio CNPJ)
+            nomes.setdefault(o.cnpj, op["cliente"] or o.cnpj)
+    for a, op in pares:
         if a.cnpj is not None and a.cnpj not in nomes:
             nomes[a.cnpj] = contratos.nome(a.cnpj) if contratos.cadastrado(a.cnpj) else (op["cliente"] or a.cnpj)
-    return gerar_itens(operacoes, descartadas, fora, nomes, competencia, arquivo_ponte, cfg, ajustes)
+    refs_fora = {p.op["ref_origem"] for p in problemas} | {o["ref_origem"] for ops in do_lojista_fora.values() for o in ops}
+    descartadas = [d for d in descartadas if d["ref_origem"] not in refs_fora]  # a cópia de quem ficou fora não é PEN-DUP
+    itens = gerar_itens(operacoes, descartadas, fora, nomes, competencia, arquivo_ponte, cfg, ajustes)
+    pendencias = _pendencias_regra(problemas, conflitos, {c: do_lojista_fora.get(c, []) for c in lojistas_fora})
+    if pendencias or provisorio:  # a nota da Ponte é uma só: sem uma operação, ela e o TED ficam provisórios
+        cnpjs_linha = {p.chave for p in problemas if p.chave not in lojistas_fora}
+        alvo = [i for i in itens if i.id_saida.startswith(ITENS_DA_NOTA) or i.id_saida.rsplit("-", 1)[-1] in cnpjs_linha]
+        marcados = {i.id_saida: i for i in dep.marcar_provisorio(alvo)}
+        itens = [marcados.get(i.id_saida, i) for i in itens]
+    return itens + pendencias
 
 
 def remessa(entradas: Entradas, config=CONFIG_REMESSA) -> list[ItemSaida]:
@@ -530,6 +671,19 @@ def remessa(entradas: Entradas, config=CONFIG_REMESSA) -> list[ItemSaida]:
     if not dep.gera("remessa", entradas):
         return []
     cfg = carregar_config(config)
+    extra: list[ItemSaida] = []
+    try:
+        anterior = carregar_anterior(entradas, cfg)
+    except dep.ErroDado as e:  # R44: sem a competência anterior, o ajuste é conferido só com o mês
+        anterior = None
+        extra = [dep.pendencia_regra(e.tipo, "REM", str(e), EFEITO_ANTERIOR, ZERO,
+                                     [(entradas.competencia, "competencia anterior", ZERO)])]
+    rejeitadas = entradas.rejeitadas.get("ponte_eml", ())
     itens = calcular_remessa(entradas.ponte, entradas.taxas, entradas.competencia,
-                             entradas.ponte_rodape["arquivo_origem"], cfg, carregar_anterior(entradas, cfg))
+                             entradas.ponte_rodape["arquivo_origem"], cfg, anterior,
+                             entradas.rejeitadas.get("taxas", ()), provisorio=bool(rejeitadas))
+    if rejeitadas:  # R44: a linha rejeitada pelo leitor deixa a comissão do lojista dela provisória
+        cnpjs = {r.cnpj for r in rejeitadas if r.cnpj}
+        itens = [dep.marcar_provisorio([i])[0] if i.id_saida.rsplit("-", 1)[-1] in cnpjs else i for i in itens]
+    itens += extra
     return dep.marcar_provisorio(itens) if dep.provisorio("remessa", entradas) else itens

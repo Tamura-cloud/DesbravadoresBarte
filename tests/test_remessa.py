@@ -156,10 +156,17 @@ def test_spread_padrao_em_branco_ou_texto_e_vigencia_pela_contratacao(taxas, cfg
     assert set(div) == {"DIV-REM-OP-PADRAO", "DIV-REM-OP-BRANCO"}
 
 
-def test_spread_em_texto_desconhecido_gera_erro(cfg):
-    taxas = _df([_taxa("Loja A", CNPJ_A, "linha 4", texto="a combinar")], leitor_taxas.COLUNAS_SAIDA)
-    with pytest.raises(ErroRemessa, match="a combinar"):
-        _calc(taxas, cfg, _op("OP-1", CNPJ_A, "10.00", "1.5000"))
+def test_spread_em_texto_desconhecido_tira_o_lojista_e_vira_pendencia(cfg):
+    # R44: sem spread contratado reconhecível, as operações do lojista saem e a nota da Ponte fica provisória
+    taxas = _df([_taxa("Loja A", CNPJ_A, "linha 4", texto="a combinar"), _taxa("Loja B", CNPJ_B, "linha 5")],
+                leitor_taxas.COLUNAS_SAIDA)
+    itens = _calc(taxas, cfg, _op("OP-1", CNPJ_A, "10.00", "1.5000"), _op("OP-2", CNPJ_B, "20.00", "1.5000"))
+    pen = _por_prefixo(itens, "PEN-REGRA-")[f"PEN-REGRA-TAXA-REM-{CNPJ_A}"]
+    assert "'a combinar' não reconhecido" in pen.campos["motivo"] and pen.valor_reportado == D("10.00")
+    assert pen.campos["quem_decide"] == "Comercial e Financeiro (Helena)"
+    assert set(_por_prefixo(itens, "COM-")) == {f"COM-REM-{CNPJ_B}"}
+    nota = _por_prefixo(itens, "NF-")["NF-REM-75374179000146"]
+    assert (nota.valor_reportado, nota.campos["situacao"]) == (D("10.00"), "PROVISORIO")
 
 
 def test_duplicata_identica_conta_uma_vez_e_gera_pendencia(taxas, cfg):
@@ -180,9 +187,15 @@ def test_duplicata_fica_a_primeira_linha(cfg):
     assert [d["linha_planilha"] for d in descartadas] == [9]
 
 
-def test_duplicata_com_valores_diferentes_gera_erro(taxas, cfg):
-    with pytest.raises(ErroRemessa, match="OP-1.*spread_brl"):
-        _calc(taxas, cfg, _op("OP-1", CNPJ_A, "10.00", "1.2000"), _op("OP-1", CNPJ_A, "10.01", "1.2000"))
+def test_duplicata_com_valores_diferentes_tira_as_copias_e_vira_pendencia(taxas, cfg):
+    itens = _calc(taxas, cfg, _op("OP-1", CNPJ_A, "10.00", "1.2000"), _op("OP-1", CNPJ_A, "10.01", "1.2000"),
+                  _op("OP-2", CNPJ_A, "4.00", "1.2000"))
+    pen = _por_prefixo(itens, "PEN-REGRA-")["PEN-REGRA-DUPLICADA-REM-OP-1"]
+    assert "OP-1 repetido com valores diferentes" in pen.campos["motivo"] and "spread_brl" in pen.campos["motivo"]
+    assert pen.valor_reportado == D("0.00") and len(pen.origens) == 2
+    assert _por_prefixo(itens, "COM-REM-")[f"COM-REM-{CNPJ_A}"].valor_reportado == D("2.00")  # só a OP-2
+    with pytest.raises(ErroRemessa, match="OP-1.*spread_brl"):  # fora do fechamento, deduplicar continua estrito
+        deduplicar(_ponte(_op("OP-1", CNPJ_A, "10.00", "1.2000"), _op("OP-1", CNPJ_A, "10.01", "1.2000")), cfg)
 
 
 def test_fora_da_competencia_nao_entra_e_vira_pendencia(taxas, cfg):
@@ -342,3 +355,10 @@ def test_set_pc_0926_0162_repetida_conta_uma_vez_e_vira_pendencia(entradas, iten
 def test_set_rastro_e_validar_saida_com_checkout(entradas, itens, tmp_path):
     gravar_saida(tmp_path, [*checkout(entradas), *itens])
     assert validar_saida(tmp_path) == []
+
+
+def test_copia_identica_de_operacao_sem_data_nao_vira_pen_dup(taxas, cfg):
+    # R44: a operação sem data sai inteira (PEN-REGRA-LINHA); a cópia dela não é contada como duplicata
+    sem_data = dict(_op("OP-1", CNPJ_A, "10.00", "1.2000", linha=6), data_contratacao=None)
+    itens = _calc(taxas, cfg, sem_data, dict(sem_data, linha_planilha=7, observacao="reprocessada"))
+    assert not _por_prefixo(itens, "PEN-DUP-") and "PEN-REGRA-LINHA-REM-OP-1" in _por_prefixo(itens, "PEN-REGRA-")

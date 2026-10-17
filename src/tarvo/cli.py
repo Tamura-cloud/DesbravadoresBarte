@@ -3,8 +3,9 @@
 e o resumo da saída: python -m tarvo resumo --saida <dir>.
 
 Códigos de saída do fechar (R44): 0 = fechamento completo; 3 = fechamento parcial (alguma fonte bloqueada, ver as
-pendências PEN-BLOQUEIO); 1 = a saída gerada não passou na validação; 2 = erro (entrada inexistente, dado que
-impede aplicar uma regra, erro interno). Com 1 e 2 nada é gravado.
+pendências PEN-BLOQUEIO) ou item fora por erro de dado (PEN-REGRA); 1 = a saída gerada não passou na validação;
+2 = pasta de entrada inexistente, erro de configuração (config/*.yaml) ou erro interno de programa. Com 1 e 2 nada é
+gravado.
 """
 
 from __future__ import annotations
@@ -175,8 +176,9 @@ def cmd_fechar(args: argparse.Namespace) -> int:
         print(f"Erro: a saída gerada não passou na validação. Nada foi gravado: {args.saida} e os rascunhos de "
               f"contestação ficaram como estavam.\nProblemas:\n{e}", file=sys.stderr)
         return 1
-    except ValueError as e:
-        print(f"Erro ao ler as entradas. Nada foi gravado: {args.saida} ficou como estava.\n{e}", file=sys.stderr)
+    except ValueError as e:  # dado de entrada não chega aqui (R44): é configuração ou erro de programa
+        print(f"Erro de configuração ou interno. Nada foi gravado: {args.saida} ficou como estava.\n{e}",
+              file=sys.stderr)
         return 2
 
     print(f"Competência: {args.competencia}")

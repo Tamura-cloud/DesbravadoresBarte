@@ -616,7 +616,8 @@ def gerar_contestacoes(itens: Iterable[ItemSaida], entradas: Entradas, pasta, cf
     pasta.mkdir(parents=True, exist_ok=True)
 
     if dep.gera("contestacao_orbe", entradas):
-        ck = mod_checkout.Contratos(entradas.taxas, cfg_checkout)
+        ck = mod_checkout.Contratos(entradas.taxas, cfg_checkout, estrito=False,
+                                    rejeitadas=entradas.rejeitadas.get("taxas", ()))
         devolucoes = {i.id_saida.removeprefix("PEN-DEVOL-CHK-"): i.valor_reportado
                       for i in _por_prefixo(itens, "PEN-DEVOL-CHK-")}
         orbe = _linhas_orbe(itens, entradas, ck, cfg)

@@ -15,6 +15,7 @@ import pytest
 
 from tarvo.checkout import (
     CondicaoEspecial,
+    Contratos,
     ErroCheckout,
     calcular_checkout,
     calcular_linhas,
@@ -120,9 +121,18 @@ def test_taxa_pela_modalidade_e_faixa_de_parcelas(taxas, cfg):
 
 
 @pytest.mark.parametrize("parcelas", [1, 13, None])
-def test_parcelado_fora_de_2_a_12_gera_erro(taxas, cfg, parcelas):
-    with pytest.raises(ErroCheckout, match="parcelas"):
-        _rodar([_orbe("P", EC_B, "100.00", "3.00", modalidade="CREDITO PARCELADO", parcelas=parcelas)], taxas, cfg)
+def test_parcelado_fora_de_2_a_12_tira_so_a_transacao(taxas, cfg, parcelas):
+    # R44: a transação sem faixa vira PEN-REGRA-TAXA; o resto do lojista fecha, provisório
+    itens = _rodar([_orbe("P", EC_B, "100.00", "3.00", modalidade="CREDITO PARCELADO", parcelas=parcelas),
+                    _orbe("T1", EC_B, "1000.00", "1.00")], taxas, cfg)
+    pen = _por_prefixo(itens, "PEN-REGRA-")["PEN-REGRA-TAXA-CHK-P"]
+    assert "parcelas fora das faixas" in pen.campos["motivo"] and pen.valor_reportado == D("3.00")
+    assert pen.campos["quem_decide"] == "Comercial e Financeiro (Helena)"
+    com = _por_prefixo(itens, "COM-")[f"COM-CHK-{CNPJ_B}"]
+    assert com.valor_reportado == D("10.00") and com.campos["situacao"] == "PROVISORIO"
+    with pytest.raises(ErroCheckout, match="parcelas"):  # fora do fechamento, calcular_linhas continua estrito
+        calcular_linhas(_df([_orbe("P", EC_B, "100.00", "3.00", modalidade="CREDITO PARCELADO", parcelas=parcelas)],
+                            leitor_orbe.COLUNAS_SAIDA), taxas, cfg)
 
 
 def test_arredondamento_half_up_para_longe_do_zero_e_truncamento_nao_e_divergencia(taxas, cfg):
@@ -161,11 +171,18 @@ def test_vigencia_pela_data_da_venda_original(taxas, cfg):
     assert por_ref["V3"].diferenca == D("5.00")
 
 
-def test_sem_linha_vigente_gera_erro(taxas, cfg):
+def test_sem_linha_vigente_tira_o_lojista_e_vira_pendencia(taxas, cfg):
+    # R44: sem contrato vigente na data, todas as transações do lojista saem (comissão, nota, divergência)
     taxas = taxas.copy()
     taxas.loc[taxas["cnpj"] == CNPJ_B, "vigencia_inicio"] = date(2031, 4, 1)
+    itens = _rodar([_orbe("T1", EC_B, "100.00", "1.00"), _orbe("T2", EC_B, "200.00", "2.00"),
+                    _orbe("A1", EC_A, "100.00", "1.00")], taxas, cfg)
+    assert set(_por_prefixo(itens, "COM-")) == {f"COM-CHK-{CNPJ_A}"} and not _por_prefixo(itens, "DIV-")
+    pen = _por_prefixo(itens, "PEN-REGRA-")[f"PEN-REGRA-VIGENCIA-CHK-{CNPJ_B}"]
+    assert (pen.valor_reportado, pen.campos["ref_origem"]) == (D("5.00"), ["T1", "T2"])  # 1,00 + 4,00 cobrados
+    assert "esperada 1 linha vigente na planilha de taxas em 2031-03-10, achei 0" in pen.campos["motivo"]
     with pytest.raises(ErroCheckout, match="linha vigente"):
-        _rodar([_orbe("T1", EC_B, "100.00", "1.00")], taxas, cfg)
+        calcular_linhas(_df([_orbe("T1", EC_B, "100.00", "1.00")], leitor_orbe.COLUNAS_SAIDA), taxas, cfg)
 
 
 def test_concessao_zera_a_comissao_mas_a_divergencia_e_contra_o_contrato(taxas, cfg):
@@ -361,10 +378,23 @@ def test_ec_com_faturamento_retroativo_cita_qtd_bruto_data_e_competencia_seguint
     assert "competência 2032-01" in motivo and "retroativa a 2031-12-10" in motivo
 
 
-def test_ec_sem_codigo_com_cnpj_fora_da_planilha_gera_erro(taxas, cfg):
+def test_ec_sem_codigo_com_cnpj_fora_da_planilha_vira_pendencia_do_ec(taxas, cfg):
     cfg = replace(cfg, ec_sem_codigo={EC_SEM_COD: "12312312000112"})
+    itens = _rodar([_orbe("S1", EC_SEM_COD, "100.00", "1.00"), _orbe("A1", EC_A, "100.00", "1.00")], taxas, cfg)
+    pen = _por_prefixo(itens, "PEN-REGRA-")[f"PEN-REGRA-CADASTRO-CHK-{EC_SEM_COD}"]
+    assert "CNPJ 12312312000112 de ec_sem_codigo não está na planilha" in pen.campos["motivo"]
+    assert f"as 1 transações do lojista (EC {EC_SEM_COD})" in pen.campos["motivo"]
+    assert set(_por_prefixo(itens, "COM-")) == {f"COM-CHK-{CNPJ_A}"}
     with pytest.raises(ErroCheckout, match="não está na planilha"):
-        _rodar([], taxas, cfg)
+        Contratos(taxas, cfg)  # estrito fora do fechamento
+
+
+def test_ec_com_dois_cnpjs_na_planilha_vira_pendencia_do_ec(taxas, cfg):
+    taxas = pd.concat([taxas, _df([_taxa("Outra", "77666555000144", EC_A, "linha 9")], leitor_taxas.COLUNAS_SAIDA)])
+    itens = _rodar([_orbe("A1", EC_A, "100.00", "1.00"), _orbe("B1", EC_B, "100.00", "1.00")], taxas, cfg)
+    pen = _por_prefixo(itens, "PEN-REGRA-")[f"PEN-REGRA-CADASTRO-CHK-{EC_A}"]
+    assert f"EC {EC_A} aparece com dois CNPJs na planilha" in pen.campos["motivo"]
+    assert set(_por_prefixo(itens, "COM-")) == {f"COM-CHK-{CNPJ_B}"}
 
 
 # ================================================================ setembro/2026 (referência)

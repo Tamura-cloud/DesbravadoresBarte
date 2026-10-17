@@ -26,6 +26,8 @@ SEPARADOR = ";"
 FIM_DE_LINHA = "\n"
 SEPARADOR_REFS = "|"  # várias ref_origem numa célula de pendencias.csv: aceito pela Organização (O03)
 CASAS_TAXA = Decimal("0.0001")
+# Colunas extras que vão sempre por último, depois das outras extras: a marca de item provisório (R44).
+EXTRAS_NO_FIM = ("situacao",)
 
 LINHAS_NEGOCIO = ("CHECKOUT", "REMESSA")
 BANCOS = ("AURORA", "MERIDIANO")
@@ -362,6 +364,7 @@ def gravar_saida(pasta, itens: Iterable[ItemSaida]) -> dict[str, Path]:
     gravados: dict[str, Path] = {}
     for espec in ARQUIVOS_ITENS:
         extras = list(dict.fromkeys(nome for _, ex in formatados[espec.nome] for nome in ex))
+        extras = [n for n in extras if n not in EXTRAS_NO_FIM] + [n for n in EXTRAS_NO_FIM if n in extras]
         linhas = [obrig + [ex.get(nome, "") for nome in extras] for obrig, ex in formatados[espec.nome]]
         gravados[espec.nome] = pasta / espec.nome
         _gravar_csv(gravados[espec.nome], list(espec.nomes) + extras, linhas)

@@ -35,6 +35,7 @@ from tarvo.remessa import (
     carregar_config,
     competencia_anterior,
     pasta_anterior,
+    separar_ajustes,
 )
 from tarvo.saida import gravar_saida, validar_saida
 
@@ -322,9 +323,14 @@ def test_ajuste_sem_cnpj_e_sem_original_nao_abate_e_vira_pendencia(taxas, cfg, t
     assert validar_saida(tmp_path) == []
 
 
-def test_linha_sem_cnpj_que_nao_e_ajuste_para_o_fechamento(taxas, cfg):
-    with pytest.raises(ErroRemessa, match="CNPJ vazio"):
-        _calc(taxas, cfg, _op("OP-1", None, "10.00"))
+def test_linha_sem_cnpj_que_nao_e_ajuste_vira_pendencia(taxas, cfg):
+    # R44: a linha sai e vira PEN-REGRA-LINHA; antes ela parava o fechamento
+    itens = _calc(taxas, cfg, _op("OP-1", None, "10.00"))
+    pen = _pref(itens, "PEN-REGRA-")["PEN-REGRA-LINHA-REM-OP-1"]
+    assert "CNPJ vazio e a observação não casa com o padrão de ajuste" in pen.campos["motivo"]
+    assert pen.valor_reportado == D("10.00") and not _pref(itens, "COM-REM-")
+    with pytest.raises(ErroRemessa, match="CNPJ vazio"):  # separar_ajustes sem a lista continua estrito
+        separar_ajustes([_op("OP-1", None, "10.00")], cfg)
 
 
 def _anterior(contestadas=("PC-FEV",)):

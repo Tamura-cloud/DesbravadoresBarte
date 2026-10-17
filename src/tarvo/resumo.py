@@ -7,6 +7,7 @@ Cada número do resumo é soma ou contagem de linhas dos CSVs, e a última seç�
 from __future__ import annotations
 
 import csv
+import subprocess
 from collections import defaultdict
 from dataclasses import dataclass
 from decimal import Decimal
@@ -30,7 +31,9 @@ from tarvo.saida import (
 
 ZERO = Decimal("0.00")
 MAIORES = 5
-TIPOS_BLOQUEIO = ("FONTE_BLOQUEADA", "ARQUIVO_BLOQUEADO")  # pendências PEN-BLOQUEIO (R44)
+RAIZ_REPOSITORIO = Path(__file__).resolve().parents[2]
+SEM_COMMIT = "commit indisponível"
+TIPOS_BLOQUEIO = ("FONTE_BLOQUEADA", "ARQUIVO_BLOQUEADO", "ITEM_BLOQUEADO")  # PEN-BLOQUEIO e PEN-REGRA (R44)
 COLUNA_SITUACAO = "situacao"  # coluna extra dos itens provisórios (R44)
 
 
@@ -123,6 +126,23 @@ def _nomes_por_cnpj(lidos) -> dict[tuple[str, str], str]:
 
 # ---------------------------------------------------------------- seções
 
+def _git(*args: str, raiz: Path) -> str | None:
+    try:
+        r = subprocess.run(["git", *args], cwd=raiz, capture_output=True, text=True, encoding="utf-8", timeout=10)
+    except (OSError, subprocess.SubprocessError):  # sem git instalado ou sem resposta
+        return None
+    return r.stdout.strip() or None if r.returncode == 0 else None
+
+
+def versao_do_codigo(raiz: Path = RAIZ_REPOSITORIO) -> str:
+    """Commit atual (git rev-parse --short HEAD) e branch do código que gerou o resumo; sem git, "commit indisponível"."""
+    commit = _git("rev-parse", "--short", "HEAD", raiz=raiz)
+    if commit is None:
+        return SEM_COMMIT
+    branch = _git("rev-parse", "--abbrev-ref", "HEAD", raiz=raiz)
+    return f"{commit} (branch {branch})" if branch else commit
+
+
 def status(lidos) -> tuple[str, list[str], int]:
     """("COMPLETO" ou "PARCIAL", id das pendências de bloqueio, itens provisórios), pelos próprios CSVs (R44)."""
     bloqueios = [l["id_saida"] for l in lidos[PENDENCIAS.nome] if l["tipo"] in TIPOS_BLOQUEIO]
@@ -134,10 +154,16 @@ def _secao_status(lidos) -> list[str]:
     situacao, bloqueios, provisorios = status(lidos)
     if situacao == "COMPLETO":
         return ["**Status do fechamento: COMPLETO** — nenhuma fonte bloqueada."]
-    texto = f"**Status do fechamento: PARCIAL** — fontes bloqueadas: {', '.join(bloqueios)}."
+    fontes = [b for b in bloqueios if b.startswith("PEN-BLOQUEIO")]
+    itens = [b for b in bloqueios if not b.startswith("PEN-BLOQUEIO")]
+    texto = "**Status do fechamento: PARCIAL** —"
+    if fontes:
+        texto += f" fontes bloqueadas: {', '.join(fontes)}."
+    if itens:
+        texto += f" Itens fora por erro de dado: {', '.join(itens)}."
     if provisorios:
         texto += f" Itens provisórios (coluna situacao): {provisorios}."
-    return [texto + " O que não foi gerado e o próximo passo estão no motivo de cada PEN-BLOQUEIO."]
+    return [texto + " O que não foi gerado e o próximo passo estão no motivo de cada pendência."]
 
 
 def _secao_comissoes(lidos) -> list[str]:
@@ -280,7 +306,7 @@ def resumir(pasta) -> str:
     lidos = ler_saida(pasta)
     problemas = validar_saida(pasta)
     secoes = [
-        [f"# Resumo da saída — {pasta.name or pasta}", ""],
+        [f"# Resumo da saída — {pasta.name or pasta}", "", f"Commit do código: {versao_do_codigo()}"],
         _secao_status(lidos),
         _secao_comissoes(lidos),
         _secao_notas(lidos),

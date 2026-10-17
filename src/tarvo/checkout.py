@@ -12,7 +12,7 @@ from dataclasses import dataclass, field
 from datetime import date
 from decimal import Decimal
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, NamedTuple
 
 import pandas as pd
 import yaml
@@ -77,6 +77,17 @@ TEXTO_ALERTA_SEM_REVERSAO = "nenhuma reversão no mês"
 
 class ErroCheckout(ValueError):
     """Dado de entrada ou configuração que impede aplicar as regras do checkout."""
+
+
+class ErroDadoCheckout(ErroCheckout, dep.ErroDado):
+    """Dado da Orbe ou da planilha que impede aplicar a regra a um lojista ou a uma transação (R44): no fechamento,
+    vira PEN-REGRA e o resto do checkout fecha."""
+
+
+class ProblemaCheckout(NamedTuple):
+    erro: dep.ErroDado
+    linha: dict          # a linha da Orbe, como o leitor devolveu
+    chave: str           # CNPJ do lojista, ou o EC quando não dá para saber o CNPJ
 
 
 # ---------------------------------------------------------------- configuração
@@ -157,25 +168,44 @@ def carregar_config(caminho=CONFIG_CHECKOUT) -> ConfigCheckout:
 # ---------------------------------------------------------------- planilha de taxas
 
 class Contratos:
-    """EC -> CNPJ e, por CNPJ, a linha da planilha vigente numa data."""
+    """EC -> CNPJ e, por CNPJ, a linha da planilha vigente numa data.
 
-    def __init__(self, taxas: pd.DataFrame, cfg: ConfigCheckout):
+    estrito (padrão): cadastro inconsistente é erro. Sem estrito (o fechamento, R44), o EC com cadastro inconsistente
+    fica em problemas_ec e o CNPJ com linha da planilha ilegível (rejeitadas do leitor) fica em cnpj_suspeito: as
+    transações deles viram PEN-REGRA-CADASTRO em vez de parar o checkout.
+    """
+
+    def __init__(self, taxas: pd.DataFrame, cfg: ConfigCheckout, estrito: bool = True, rejeitadas=()):
         self.linhas: dict[str, list[dict]] = defaultdict(list)
         self.ec_cnpj: dict[str, str] = {}
+        self.problemas_ec: dict[str, str] = {}
+        self.cnpj_suspeito: dict[str, str] = {}
+
+        def problema(ec: str, mensagem: str) -> None:
+            if estrito:
+                raise ErroDadoCheckout(dep.CADASTRO, mensagem, do_lojista=True)
+            self.problemas_ec.setdefault(ec, mensagem)
+
         for linha in taxas.to_dict("records"):
             self.linhas[linha["cnpj"]].append(linha)
             ec = linha["ec"]
             if ec is None:
                 continue
             if self.ec_cnpj.get(ec, linha["cnpj"]) != linha["cnpj"]:
-                raise ErroCheckout(f"EC {ec} aparece com dois CNPJs na planilha ({self.ec_cnpj[ec]} e {linha['cnpj']})")
-            self.ec_cnpj[ec] = linha["cnpj"]
+                problema(ec, f"EC {ec} aparece com dois CNPJs na planilha ({self.ec_cnpj[ec]} e {linha['cnpj']})")
+            self.ec_cnpj.setdefault(ec, linha["cnpj"])
         for ec, cnpj in cfg.ec_sem_codigo.items():
             if ec in self.ec_cnpj and self.ec_cnpj[ec] != cnpj:
-                raise ErroCheckout(f"EC {ec}: ec_sem_codigo diz {cnpj}, a planilha diz {self.ec_cnpj[ec]}")
-            if cnpj not in self.linhas:
-                raise ErroCheckout(f"EC {ec}: CNPJ {cnpj} de ec_sem_codigo não está na planilha")
-            self.ec_cnpj[ec] = cnpj
+                problema(ec, f"EC {ec}: ec_sem_codigo diz {cnpj}, a planilha diz {self.ec_cnpj[ec]}")
+            elif cnpj not in self.linhas and cnpj not in {r.cnpj for r in rejeitadas}:
+                problema(ec, f"EC {ec}: CNPJ {cnpj} de ec_sem_codigo não está na planilha")
+            self.ec_cnpj.setdefault(ec, cnpj)
+        for r in rejeitadas:  # linha da planilha que o leitor não converteu: o lojista dela fica sob suspeita
+            self.cnpj_suspeito.setdefault(r.cnpj, r.erro)
+            if r.ec:
+                self.ec_cnpj.setdefault(r.ec, r.cnpj)
+        for ec in self.problemas_ec:
+            self.ec_cnpj.pop(ec, None)
 
     def nome(self, cnpj: str) -> str:
         """Nome do lojista = o da primeira linha da planilha com esse CNPJ."""
@@ -189,7 +219,8 @@ class Contratos:
         ]
         if len(vigentes) != 1:
             refs = ", ".join(l["ref_origem"] for l in vigentes) or "nenhuma"
-            raise ErroCheckout(f"CNPJ {cnpj}: esperada 1 linha vigente em {d}, achei {len(vigentes)} ({refs})")
+            raise ErroDadoCheckout(dep.VIGENCIA, f"CNPJ {cnpj}: esperada 1 linha vigente na planilha de taxas em {d}, "
+                                   f"achei {len(vigentes)} ({refs})", do_lojista=True)
         return vigentes[0]
 
 
@@ -201,10 +232,12 @@ def _campo_taxa(linha_orbe: dict, cfg: ConfigCheckout) -> str:
         for de, ate, campo in cfg.faixas_parcelado:
             if parcelas is not None and de <= parcelas <= ate:
                 return campo
-        raise ErroCheckout(f"{linha_orbe['ref_origem']}: {modalidade} com {parcelas} parcelas fora das faixas da config")
+        raise ErroDadoCheckout(dep.TAXA, f"{linha_orbe['ref_origem']}: {modalidade} com {parcelas} parcelas fora das "
+                               "faixas de config/checkout.yaml (taxa_parcelado)")
     if modalidade in cfg.taxa_por_modalidade:
         return cfg.taxa_por_modalidade[modalidade]
-    raise ErroCheckout(f"{linha_orbe['ref_origem']}: tipo {tipo!r} / modalidade {modalidade!r} sem taxa na config")
+    raise ErroDadoCheckout(dep.TAXA, f"{linha_orbe['ref_origem']}: tipo {tipo!r} / modalidade {modalidade!r} sem taxa "
+                           "em config/checkout.yaml")
 
 
 # ---------------------------------------------------------------- cálculo linha a linha
@@ -234,43 +267,62 @@ class LinhaCheckout:
         return self.diferenca is not None
 
 
-def calcular_linhas(orbe: pd.DataFrame, taxas: pd.DataFrame, cfg: ConfigCheckout) -> list[LinhaCheckout]:
-    contratos = Contratos(taxas, cfg)
+def calcular_linhas(orbe: pd.DataFrame, taxas: pd.DataFrame, cfg: ConfigCheckout,
+                    problemas: list[ProblemaCheckout] | None = None, rejeitadas_taxas=()) -> list[LinhaCheckout]:
+    """Uma LinhaCheckout por linha da Orbe. Com problemas (o fechamento, R44), a linha cujo dado impede a regra vai
+    para a lista (ErroDado) e fica de fora; sem a lista, é erro."""
+    contratos = Contratos(taxas, cfg, estrito=problemas is None, rejeitadas=rejeitadas_taxas)
     resultado = []
     for l in orbe.to_dict("records"):
-        # R04/R05: estorno e reversão usam a taxa vigente na data da venda (ou antecipação) original
-        data_ref = l["data_venda_original"] or l["data_movimento"]
-        base = dict(
-            arquivo_origem=l["arquivo_origem"], ref_origem=l["ref_origem"], ec=l["cod_estabelecimento"],
-            tipo_lancamento=l["tipo_lancamento"], id_referencia=l["id_referencia"], data_referencia=data_ref,
-            valor_bruto=l["valor_bruto"], valor_taxa_orbe=l["valor_taxa"], taxa_aplicada=l["taxa_aplicada_pct"],
-            data_movimento=l["data_movimento"],
-        )
-        cnpj = contratos.ec_cnpj.get(l["cod_estabelecimento"])
-        if cnpj is None:  # R08
-            resultado.append(LinhaCheckout(**base, cnpj=None, taxa_contratada=None, origem_taxa=None,
-                                           comissao=None, diferenca=None, taxa_comissao=None))
-            continue
-
-        # R35: a faixa (modalidade, parcelas) sai da própria linha, inclusive a do estorno
-        campo = _campo_taxa(l, cfg)
-        linha_taxa = contratos.vigente(cnpj, data_ref)
-        contratada, origem_taxa = linha_taxa[campo], linha_taxa["ref_origem"]
-        if contratada is None:
-            raise ErroCheckout(f"{l['ref_origem']}: CNPJ {cnpj} sem {campo} na {origem_taxa} da planilha")
-        # R10, R32, R40: a concessão comercial muda só a comissão (a Tarvo abre mão da receita); o contrato continua
-        # sendo a planilha, e é contra ele que se mede a divergência
-        condicao = next((c for c in cfg.condicoes if c.cnpj == cnpj and c.vale_em(data_ref) and campo in c.taxas), None)
-        taxa_comissao = condicao.taxas[campo] if condicao is not None else contratada
-
-        comissao = dinheiro(l["valor_bruto"] * taxa_comissao / 100)  # R01, R02
-        diferenca = None
-        if l["taxa_aplicada_pct"] != contratada:  # R03, R37: compara taxas, nunca valores (P03); estorno entra com sinal
-            diferenca = dinheiro(l["valor_bruto"] * (l["taxa_aplicada_pct"] - contratada) / 100)
-        resultado.append(LinhaCheckout(**base, cnpj=cnpj, taxa_contratada=contratada, origem_taxa=origem_taxa,
-                                       comissao=comissao, diferenca=diferenca, taxa_comissao=taxa_comissao,
-                                       concessao=condicao.regra if condicao is not None else None))
+        try:
+            resultado.append(_calcular_linha(l, contratos, cfg))
+        except dep.ErroDado as e:
+            if problemas is None:
+                raise
+            ec = l["cod_estabelecimento"]
+            problemas.append(ProblemaCheckout(e, l, contratos.ec_cnpj.get(ec) or ec))
     return resultado
+
+
+def _calcular_linha(l: dict, contratos: Contratos, cfg: ConfigCheckout) -> LinhaCheckout:
+    # R04/R05: estorno e reversão usam a taxa vigente na data da venda (ou antecipação) original
+    data_ref = l["data_venda_original"] or l["data_movimento"]
+    base = dict(
+        arquivo_origem=l["arquivo_origem"], ref_origem=l["ref_origem"], ec=l["cod_estabelecimento"],
+        tipo_lancamento=l["tipo_lancamento"], id_referencia=l["id_referencia"], data_referencia=data_ref,
+        valor_bruto=l["valor_bruto"], valor_taxa_orbe=l["valor_taxa"], taxa_aplicada=l["taxa_aplicada_pct"],
+        data_movimento=l["data_movimento"],
+    )
+    ec = l["cod_estabelecimento"]
+    if ec in contratos.problemas_ec:
+        raise ErroDadoCheckout(dep.CADASTRO, contratos.problemas_ec[ec], do_lojista=True)
+    cnpj = contratos.ec_cnpj.get(ec)
+    if cnpj is None:  # R08
+        return LinhaCheckout(**base, cnpj=None, taxa_contratada=None, origem_taxa=None,
+                             comissao=None, diferenca=None, taxa_comissao=None)
+    if cnpj in contratos.cnpj_suspeito:
+        raise ErroDadoCheckout(dep.CADASTRO, f"a linha do CNPJ {cnpj} na planilha de taxas não pôde ser lida "
+                               f"({contratos.cnpj_suspeito[cnpj]})", do_lojista=True)
+
+    # R35: a faixa (modalidade, parcelas) sai da própria linha, inclusive a do estorno
+    campo = _campo_taxa(l, cfg)
+    linha_taxa = contratos.vigente(cnpj, data_ref)
+    contratada, origem_taxa = linha_taxa[campo], linha_taxa["ref_origem"]
+    if contratada is None:
+        raise ErroDadoCheckout(dep.TAXA, f"{l['ref_origem']}: CNPJ {cnpj} sem {campo} na {origem_taxa} da "
+                               "planilha de taxas", do_lojista=True)
+    # R10, R32, R40: a concessão comercial muda só a comissão (a Tarvo abre mão da receita); o contrato continua
+    # sendo a planilha, e é contra ele que se mede a divergência
+    condicao = next((c for c in cfg.condicoes if c.cnpj == cnpj and c.vale_em(data_ref) and campo in c.taxas), None)
+    taxa_comissao = condicao.taxas[campo] if condicao is not None else contratada
+
+    comissao = dinheiro(l["valor_bruto"] * taxa_comissao / 100)  # R01, R02
+    diferenca = None
+    if l["taxa_aplicada_pct"] != contratada:  # R03, R37: compara taxas, nunca valores (P03); estorno entra com sinal
+        diferenca = dinheiro(l["valor_bruto"] * (l["taxa_aplicada_pct"] - contratada) / 100)
+    return LinhaCheckout(**base, cnpj=cnpj, taxa_contratada=contratada, origem_taxa=origem_taxa,
+                         comissao=comissao, diferenca=diferenca, taxa_comissao=taxa_comissao,
+                         concessao=condicao.regra if condicao is not None else None)
 
 
 # ---------------------------------------------------------------- itens de saída
@@ -470,16 +522,66 @@ def gerar_itens(linhas: list[LinhaCheckout], contratos_nome, competencia: str, c
     return itens
 
 
+EFEITO_ANTERIOR = ("o alerta de antecipação (P26) usou o histórico do próprio mês, sem a competência anterior - "
+                   "nenhum valor muda")
+EFEITO_LOJISTA = ("as {n} transações do lojista ({quem}) ficaram fora de comissão, nota e divergência - valor = taxa "
+                  "cobrada pela Orbe nelas")
+EFEITO_TRANSACAO = ("a transação ficou fora de comissão, nota e divergência; o checkout do lojista (CNPJ {cnpj}) saiu "
+                    "PROVISÓRIO - valor = taxa cobrada pela Orbe na transação")
+
+
+def _pendencias_regra(orbe: pd.DataFrame, problemas: list[ProblemaCheckout],
+                      fora: dict[str, list[str]]) -> list[ItemSaida]:
+    """R44: PEN-REGRA-<tipo>-CHK-<CNPJ ou EC> por lojista com cadastro ou contrato que impede a regra (todas as
+    transações dele) e PEN-REGRA-<tipo>-CHK-<id_transacao> por transação com dado que impede a regra."""
+    por_ref = {(l["arquivo_origem"], l["ref_origem"]): l for l in orbe.to_dict("records")}
+    do_lojista: dict[str, list[ProblemaCheckout]] = defaultdict(list)
+    itens = []
+    for p in problemas:
+        if p.erro.do_lojista or p.chave in fora:
+            do_lojista[p.chave].append(p)
+            continue
+        l = p.linha
+        itens.append(dep.pendencia_regra(
+            p.erro.tipo, f"CHK-{l['ref_origem']}", str(p.erro), EFEITO_TRANSACAO.format(cnpj=p.chave), l["valor_taxa"],
+            [(l["arquivo_origem"], l["ref_origem"], l["valor_taxa"])]))
+    for chave, ps in sorted(do_lojista.items()):
+        refs = {(p.linha["arquivo_origem"], p.linha["ref_origem"]) for p in ps} | set(fora.get(chave, ()))
+        origens = [(a, r, por_ref[(a, r)]["valor_taxa"]) for a, r in por_ref if (a, r) in refs]
+        quem = f"CNPJ {chave}" if len(chave) == 14 else f"EC {chave}"
+        dado = " | ".join(dict.fromkeys(str(p.erro) for p in ps))
+        itens.append(dep.pendencia_regra(ps[0].erro.tipo, f"CHK-{chave}", dado,
+                                         EFEITO_LOJISTA.format(n=len(origens), quem=quem),
+                                         _soma(o[2] for o in origens), origens))
+    return itens
+
+
 def calcular_checkout(orbe: pd.DataFrame, taxas: pd.DataFrame, competencia: str,
-                      cfg: ConfigCheckout, ecs_anteriores: frozenset[str] | None = None) -> list[ItemSaida]:
-    contratos = Contratos(taxas, cfg)
-    return gerar_itens(calcular_linhas(orbe, taxas, cfg), contratos.nome, competencia, cfg, contratos, ecs_anteriores)
+                      cfg: ConfigCheckout, ecs_anteriores: frozenset[str] | None = None,
+                      rejeitadas_taxas=()) -> list[ItemSaida]:
+    """Itens do checkout. Lojista ou transação com dado que impede a regra fica fora e vira PEN-REGRA (R44)."""
+    problemas: list[ProblemaCheckout] = []
+    linhas = calcular_linhas(orbe, taxas, cfg, problemas, rejeitadas_taxas)
+    contratos = Contratos(taxas, cfg, estrito=False, rejeitadas=rejeitadas_taxas)
+    lojistas_fora = {p.chave for p in problemas if p.erro.do_lojista}
+    fora: dict[str, list[tuple[str, str]]] = defaultdict(list)
+    for l in linhas:
+        if (l.cnpj or l.ec) in lojistas_fora:
+            fora[l.cnpj or l.ec].append((l.arquivo_origem, l.ref_origem))
+    validas = [l for l in linhas if (l.cnpj or l.ec) not in lojistas_fora]
+    itens = gerar_itens(validas, contratos.nome, competencia, cfg, contratos, ecs_anteriores)
+    provisorios = {p.chave for p in problemas if p.chave not in lojistas_fora}
+    if provisorios:
+        itens = dep.marcar_provisorio(itens, provisorios)
+    return itens + _pendencias_regra(orbe, problemas, {c: fora.get(c, []) for c in lojistas_fora})
 
 
 def ecs_competencia_anterior(entradas: Entradas) -> frozenset[str] | None:
-    """ECs com transação nos arquivos da Orbe da competência anterior, se a pasta dela existir ao lado desta (P26)."""
+    """ECs com transação nos arquivos da Orbe da competência anterior, se a pasta dela existir ao lado desta (P26).
+
+    Linha ilegível da competência anterior ainda conta o EC dela; arquivo ilegível é ErroDadoCheckout (ANTERIOR)."""
     from tarvo.cli import ErroEntrada, localizar_pela_config
-    from tarvo.leitores.orbe import ler_orbe_arquivos
+    from tarvo.leitores.orbe import ler_orbe_parcial
     from tarvo.remessa import pasta_anterior
 
     orbe = entradas.arquivos["orbe"]
@@ -490,7 +592,11 @@ def ecs_competencia_anterior(entradas: Entradas) -> frozenset[str] | None:
         arquivos = localizar_pela_config(pasta)
     except ErroEntrada:
         return None
-    return frozenset(ler_orbe_arquivos(arquivos["orbe"])[0]["cod_estabelecimento"])
+    try:
+        leitura = ler_orbe_parcial(arquivos["orbe"])
+    except (ValueError, OSError) as e:
+        raise ErroDadoCheckout(dep.ANTERIOR, f"Orbe da competência anterior ({pasta.name}) ilegível: {e}") from None
+    return frozenset(leitura.quadro["cod_estabelecimento"]) | {r.ec for r in leitura.rejeitadas if r.ec}
 
 
 def pendencias_arquivos_orbe(orbe: pd.DataFrame, repetidas, competencia: str, cfg: ConfigCheckout) -> list[ItemSaida]:
@@ -531,6 +637,24 @@ def checkout(entradas: Entradas, config=CONFIG_CHECKOUT) -> list[ItemSaida]:
     if not dep.gera("checkout", entradas):
         return []
     cfg = carregar_config(config)
-    itens = (calcular_checkout(entradas.orbe, entradas.taxas, entradas.competencia, cfg, ecs_competencia_anterior(entradas))
-             + pendencias_arquivos_orbe(entradas.orbe, entradas.orbe_repetidas, entradas.competencia, cfg))
-    return dep.marcar_provisorio(itens) if dep.provisorio("checkout", entradas) else itens
+    rejeitadas_taxas = entradas.rejeitadas.get("taxas", ())
+    anterior: list[ItemSaida] = []
+    try:
+        ecs_anteriores = ecs_competencia_anterior(entradas)
+    except dep.ErroDado as e:  # R44: sem a competência anterior, o alerta usa a heurística do mês (P26)
+        ecs_anteriores = None
+        anterior = [dep.pendencia_regra(e.tipo, "CHK", str(e), EFEITO_ANTERIOR, ZERO,
+                                        [(entradas.competencia, "competencia anterior", ZERO)])]
+    itens = (calcular_checkout(entradas.orbe, entradas.taxas, entradas.competencia, cfg, ecs_anteriores,
+                               rejeitadas_taxas)
+             + pendencias_arquivos_orbe(entradas.orbe, entradas.orbe_repetidas, entradas.competencia, cfg) + anterior)
+    if dep.provisorio("checkout", entradas):
+        return dep.marcar_provisorio(itens)
+    # R44: transação da Orbe que o leitor não converteu deixa o checkout do lojista dela provisório
+    ecs = {r.ec for r in entradas.rejeitadas.get("orbe", ()) if r.ec}
+    if ecs:
+        mapa = Contratos(entradas.taxas, cfg, estrito=False, rejeitadas=rejeitadas_taxas).ec_cnpj
+        cnpjs = {mapa[ec] for ec in ecs if ec in mapa}
+        if cnpjs:
+            itens = dep.marcar_provisorio(itens, cnpjs)
+    return itens
