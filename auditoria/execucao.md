@@ -4,8 +4,8 @@
 
 | campo | valor |
 |---|---|
-| data e hora | 2026-10-17T16:25:38-03:00 |
-| commit do código | 7e4f53f (regras-helena-2) |
+| data e hora | 2026-10-17T17:02:18-03:00 |
+| commit do código | e071606 (regras-helena-2) |
 | competência | 2026-09 |
 | comando | `python -m tarvo fechar --competencia 2026-09 --entrada "dados/2026-09" --saida "saida"` |
 | pasta de entrada | dados/2026-09 |
@@ -54,11 +54,11 @@ Nenhuma.
 |---|---|---|
 | orbe.md | 51 | `c4aee7707ad68ad81b1710ecc80c10d8ed037f0555605a3c9328952bec7c57fb` |
 | orbe_operacoes.csv | 93 | `e7596fbd393fb30f6969982c8f1ae17981e1108235c337a87ba8e40170bcda0c` |
-| ponte.md | 55 | `e91240d9e91690730ba3967d451cd522ba26f3b0ce347fa6c04fb4b2ed3e5291` |
-| ponte_operacoes.csv | 29 | `81b17d9c5b7e00b24c86785fe74c5678beb863159a20627db85cc2f9d0cfd193` |
+| ponte.md | 55 | `6176c996a15074a2615befc6f7be6e6e863bdd68dd65c02800e4b5bad8c77355` |
+| ponte_operacoes.csv | 29 | `b040ee2c28de8098940f3c0ea7c667317d025286fe37529a0335c9806472167d` |
 
 ## Como refazer qualquer número
 
 1. Confira o SHA-256 de cada arquivo de entrada (`certutil -hashfile <arquivo> SHA256` no Windows, `sha256sum <arquivo>` no Linux): igual ao da tabela, é o mesmo arquivo.
-2. Faça checkout do commit `7e4f53f` e rode o comando acima.
+2. Faça checkout do commit `e071606` e rode o comando acima.
 3. Cada número da saída tem as linhas de origem no rastro.csv (id_saida; arquivo_origem; ref_origem; valor; regra; detalhe): a soma de valor por id_saida é o número reportado, e a regra e o detalhe dizem a taxa, a isenção ou a venda original usada em cada linha (HIPOTESES.md).

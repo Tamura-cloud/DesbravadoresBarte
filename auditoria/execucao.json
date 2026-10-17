@@ -1,7 +1,7 @@
 {
-  "data_hora": "2026-10-17T16:25:38-03:00",
+  "data_hora": "2026-10-17T17:02:18-03:00",
   "codigo": {
-    "commit": "7e4f53f",
+    "commit": "e071606",
     "branch": "regras-helena-2",
     "alteracoes_locais_em_src_config": false
   },
@@ -154,12 +154,12 @@
     {
       "arquivo": "ponte.md",
       "linhas": 55,
-      "sha256": "e91240d9e91690730ba3967d451cd522ba26f3b0ce347fa6c04fb4b2ed3e5291"
+      "sha256": "6176c996a15074a2615befc6f7be6e6e863bdd68dd65c02800e4b5bad8c77355"
     },
     {
       "arquivo": "ponte_operacoes.csv",
       "linhas": 29,
-      "sha256": "81b17d9c5b7e00b24c86785fe74c5678beb863159a20627db85cc2f9d0cfd193"
+      "sha256": "b040ee2c28de8098940f3c0ea7c667317d025286fe37529a0335c9806472167d"
     }
   ]
 }
