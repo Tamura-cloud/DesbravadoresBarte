@@ -190,6 +190,9 @@ def test_concessao_zera_a_comissao_mas_a_divergencia_e_contra_o_contrato(taxas, 
     assert conc.campos["motivo"].startswith(
         "concessão comercial - custo da Tarvo - não é divergência - não se cobra da Orbe (RX, R32, R38)")
     assert "R25" not in conc.campos["motivo"]
+    # O04 e R32: próximo passo da Helena com o Comercial, que decide a parametrização na Orbe
+    assert "próximo passo: a Helena paga a devolução ao lojista e decide com o Comercial" in conc.campos["motivo"]
+    assert conc.campos["quem_decide"] == "Financeiro (Helena) e Comercial"
 
 
 def test_concessao_devolve_o_valor_taxa_cobrado_truncado(taxas, cfg):
@@ -218,8 +221,9 @@ def test_devolucao_sem_condicao_continua_pela_formula_da_r03(taxas, cfg):
     itens = _rodar([_orbe("T1", EC_B, "1000.55", "2.00")], taxas, cfg)
     devol = _por_prefixo(itens, "PEN-DEVOL-")[f"PEN-DEVOL-CHK-{CNPJ_B}"]
     assert devol.valor_reportado == D("10.01")
-    assert devol.campos["motivo"].endswith("(R03, R25, R32)")
+    assert devol.campos["motivo"].endswith("(R03, R25, R29, R32)")
     assert "a devolver ao lojista" in devol.campos["motivo"]  # R25
+    assert "próximo passo: a Helena devolve o valor ao lojista e contesta com a Orbe" in devol.campos["motivo"]  # O04
 
 
 def test_estorno_usa_a_data_da_venda_original_e_a_faixa_da_propria_linha(taxas, cfg):

@@ -285,8 +285,7 @@ def _perfil_orbe(ls: list[dict], todas_do_lojista: list[dict], condicoes: list[C
 
 
 def _taxa_concessao(cnpj: str, cfg_ck) -> str:
-    valores = sorted({v for c in cfg_ck.condicoes if c.cnpj == cnpj for v in c.taxas.values()})
-    return " ou ".join(f"{v.normalize():f}".replace(".", ",") + "%" for v in valores) or "a taxa da concessão"
+    return mod_checkout.taxa_concessao(cnpj, cfg_ck)
 
 
 def _notas_concessao(concessoes, contratos, cfg, cfg_ck) -> list[str]:

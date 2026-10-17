@@ -37,6 +37,8 @@ from pathlib import Path
 import openpyxl
 
 CENTAVO = Decimal("0.01")
+RAIZ = Path(__file__).resolve().parents[1]
+PROTEGIDAS = (RAIZ / "dados", RAIZ / "saida", RAIZ / "contestacoes")  # nunca recebem o pack simulado
 
 # (a) Orbe: venda de crédito à vista de um EC fora da planilha e fora de ec_sem_codigo.
 CASO_ORBE = {
@@ -432,6 +434,10 @@ def gerar(origem, destino) -> dict:
     origem, destino = Path(origem), Path(destino)
     if origem.resolve() == destino.resolve():
         raise ValueError("destino não pode ser a pasta de origem")
+    for protegida in PROTEGIDAS:
+        if destino.resolve().is_relative_to(protegida):
+            raise ValueError(f"destino {destino} está dentro de {protegida}: o outubro simulado vai para uma "
+                             "pasta temporária, fora do repositório (dados/ é só leitura e saida/ é só setembro)")
     destino.mkdir(parents=True, exist_ok=True)
     casos: dict = {}
     for padrao, (tipo, gerador) in GERADORES.items():

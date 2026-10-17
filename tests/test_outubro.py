@@ -20,6 +20,7 @@ from pathlib import Path
 import pytest
 
 from gerar_outubro import deslocar, deslocar_texto, gerar, mes_seguinte
+from tarvo import ia
 from tarvo.checkout import calcular_linhas
 from tarvo.checkout import carregar_config as carregar_config_checkout
 from tarvo.fechamento import fechar, ler_entradas
@@ -264,6 +265,7 @@ def test_caso_d_operacao_de_cnpj_fora_da_planilha(pack, saida, entradas):
     naocad = pend[f"PEN-NAOCAD-REM-{cnpj}"]
     assert (naocad["tipo"], naocad["ref_origem"], Decimal(naocad["valor_brl"])) == ("LOJISTA_NAO_CADASTRADO", ref, comissao)
     assert "cadastrar" in naocad["motivo"]
+    assert naocad["quem_decide"] == "Comercial"  # P04: pendência de cadastro para o Comercial (spread é taxa, R28)
     # o resto do dia fecha com as TEDs: a diferença é exatamente a operação nova, sem TED paga
     assert pend[id_ted]["tipo"] == "DIVERGENCIA_TED_LIQUIDACAO" and Decimal(pend[id_ted]["valor_brl"]) == total
     pix = pend[f"PEN-PIX-REM-{cnpj}"]
@@ -309,3 +311,26 @@ def test_bridge_vendas_de_outubro_na_taxa_nova(saida, entradas):
     div = {d["ref_origem"]: d for d in _ler(saida, "divergencias_taxa.csv") if d["cnpj"] == CNPJ_BRIDGE}
     vendas_div = [div[l.ref_origem] for l in linhas if l.ref_origem in div]
     assert vendas_div and all(d["taxa_contratada_pct"] == "2.1900" for d in vendas_div)
+
+
+def test_sem_chave_e_sem_sem_ia_lancamento_novo_vira_pendencia(pack, saida, tmp_path, monkeypatch):
+    """O01: a banca roda sem ANTHROPIC_API_KEY e sem --sem-ia. Lançamento que nenhuma regra nem o cache cobrem vira
+    pendência LANCAMENTO_SEM_REGRA (P09), sem erro, sem gravar no cache e com a mesma saída do --sem-ia."""
+    monkeypatch.delenv(ia.VARIAVEL_CHAVE, raising=False)
+    cache = ia.carregar_config().cache
+    antes = cache.read_bytes() if cache.exists() else None
+    assert ia.carregar_config().habilitada
+    sem_chave = tmp_path / "saida"
+    fechar(pack["pasta"], sem_chave, COMPETENCIA, contestacoes=False)  # usar_ia=True, o padrão
+    for tipo in ("aurora", "meridiano"):
+        pen = _por_id(sem_chave, "pendencias.csv")[f"PEN-SEMREGRA-{pack['casos'][tipo]['ref_origem']}"]
+        assert "P09" in pen["motivo"] and pen["quem_decide"]
+    assert _hashes(sem_chave) == _hashes(saida)
+    assert (cache.read_bytes() if cache.exists() else None) == antes
+
+
+@pytest.mark.parametrize("pasta", ["dados", "saida", "contestacoes"])
+def test_gerador_recusa_gravar_o_simulado_no_repositorio(pasta):
+    with pytest.raises(ValueError, match="pasta temporária"):
+        gerar(SETEMBRO, RAIZ / pasta / COMPETENCIA)
+    assert not (RAIZ / pasta / COMPETENCIA).exists()

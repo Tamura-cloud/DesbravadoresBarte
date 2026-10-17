@@ -33,10 +33,14 @@ ZERO = Decimal("0.00")
 COLUNAS_POSICAO = ("arquivo_origem", "linha_planilha")
 
 MOTIVO_DUPLICATA = "o relatório da Ponte soma a operação duas vezes - pedir correção do relatório"
-MOTIVO_FORA_COMPETENCIA = "operação contratada fora da competência {competencia}: não entra no mês (R11)"
+MOTIVO_FORA_COMPETENCIA = (
+    "operação contratada fora da competência {competencia}: não entra no mês (R11) - próximo passo: a Helena decide "
+    "em que fechamento a operação entra, pela data de contratação (R11)"
+)
 MOTIVO_NAO_CADASTRADO = (
     "CNPJ da Ponte fora da planilha de taxas: comissão calculada mesmo assim (a Ponte paga), "
-    "sem spread contratado para conferir divergência - cadastrar o lojista"
+    "sem spread contratado para conferir divergência - próximo passo: o Comercial confirma o spread contratado para "
+    "cadastrar o lojista na planilha de taxas (P04, R28)"
 )
 MOTIVO_CONTESTACAO = (
     "spread aplicado acima do contratado - divergência de contrato: a Tarvo contesta com a Ponte e o lojista é "
@@ -46,16 +50,20 @@ MOTIVO_CONTESTACAO = (
 MOTIVO_NEGATIVO = (
     "spread negativo com trava D-1 vencida, fora da comissão (R12, R34) - spread do relatório: {spread} (o que "
     "aconteceu) - diferença até o spread contratado: {diferenca} (o que se pede à Ponte; a trava D-1 deveria ter "
-    "sido honrada)"
+    "sido honrada) - próximo passo: a Helena contesta com a Ponte, pelo rascunho de e-mail em {rascunho} (R12, R29)"
 )
-MOTIVO_NOTA_NAO_EMITIDA = "comissão de remessa do mês zero ou negativa: não emite nota (R17)"
+MOTIVO_NOTA_NAO_EMITIDA = (
+    "comissão de remessa do mês zero ou negativa: não emite nota (R17) - próximo passo: a Helena decide o tratamento "
+    "do saldo (R06, R17)"
+)
 MOTIVO_NOTA_NAO_EMITIDA_AJUSTE = (
     "comissão de remessa do mês zero ou negativa depois de abater ajuste(s) da Ponte (R31): não emite nota, "
-    "vale a regra de nota zerada ou negativa (R06, R17) e a decisão é da Helena"
+    "vale a regra de nota zerada ou negativa (R06, R17) - próximo passo: a Helena decide o tratamento do saldo"
 )
 MOTIVO_AJUSTE_SEM_LOJISTA = (
     "ajuste da Ponte (R31) sem CNPJ e sem a operação original {original} - não abatido, porque não há lojista para "
-    "a comissão - AJUSTE REF {original} - decisão da Helena"
+    "a comissão - AJUSTE REF {original} - próximo passo: a Helena confere com a Ponte a operação original e o lojista "
+    "do ajuste e decide o abatimento (R31)"
 )
 MOTIVO_AJUSTE_SEM_ORIGINAL = (
     "ajuste da Ponte (R31) abate a participação do mês, mas a operação original {original} não está no relatório da "
@@ -81,6 +89,7 @@ class ConfigRemessa:
     tomador_nome: str
     discriminacao_nota: str
     quem_decide: str
+    quem_decide_cadastro: str | None = None   # P04: pendência de cadastro (LOJISTA_NAO_CADASTRADO); None = quem_decide
     ajuste_padrao: re.Pattern | None = None   # R31: observação que identifica a linha de ajuste
     ajuste_participacao: Decimal = Decimal("0.5")  # P25: participação aplicada ao Spread R$ do ajuste
 
@@ -117,6 +126,8 @@ def carregar_config(caminho=CONFIG_REMESSA) -> ConfigRemessa:
         tomador_nome=_str_cfg(bruto["tomador_nota"]["nome"], "tomador_nota.nome"),
         discriminacao_nota=_str_cfg(bruto["discriminacao_nota"], "discriminacao_nota"),
         quem_decide=_str_cfg(bruto["quem_decide"], "quem_decide"),
+        quem_decide_cadastro=_str_cfg(bruto["quem_decide_cadastro"], "quem_decide_cadastro")
+        if "quem_decide_cadastro" in bruto else None,
         ajuste_padrao=padrao, ajuste_participacao=participacao_ajuste,
     )
 
@@ -374,10 +385,18 @@ def _rs(v: Decimal) -> str:
     return f"{'-' if v < 0 else ''}R$ {brl(abs(v))}"
 
 
-def _pendencia(id_saida: str, tipo: str, refs, motivo: str, valor: Decimal, origens, cfg: ConfigRemessa) -> ItemSaida:
+def _pendencia(id_saida: str, tipo: str, refs, motivo: str, valor: Decimal, origens, cfg: ConfigRemessa,
+               quem_decide: str | None = None) -> ItemSaida:
     return ItemSaida(id_saida, PENDENCIAS.nome,
-                     {"tipo": tipo, "ref_origem": refs, "motivo": texto_saida(motivo), "quem_decide": cfg.quem_decide},
+                     {"tipo": tipo, "ref_origem": refs, "motivo": texto_saida(motivo),
+                      "quem_decide": quem_decide or cfg.quem_decide},
                      valor, origens)
+
+
+def _rascunho_ponte() -> str:
+    """Onde fica o rascunho de contestação da Ponte (R29), como o motivo da pendência o cita: <pasta>/ponte.md."""
+    from tarvo.contestacao import ARQUIVO_PONTE, carregar_config  # import tardio: contestacao importa este módulo
+    return f"{carregar_config().pasta}/{ARQUIVO_PONTE[0]}"
 
 
 def gerar_itens(operacoes: list[OperacaoRemessa], descartadas: list[dict], fora: list[dict],
@@ -413,7 +432,7 @@ def gerar_itens(operacoes: list[OperacaoRemessa], descartadas: list[dict], fora:
         if doc and not doc[0].cadastrado and com_comissao:
             itens.append(_pendencia(f"PEN-NAOCAD-REM-{cnpj}", "LOJISTA_NAO_CADASTRADO",
                                     [o.ref_origem for o in com_comissao], MOTIVO_NAO_CADASTRADO,
-                                    _soma(o.comissao for o in com_comissao), rastro, cfg))
+                                    _soma(o.comissao for o in com_comissao), rastro, cfg, cfg.quem_decide_cadastro))
 
         # R23: spread negativo não é divergência (o lojista não pagou a mais); fica só na PEN-NEG abaixo
         for o in (o for o in doc if o.divergente and not o.negativa):  # R15, P01
@@ -430,7 +449,8 @@ def gerar_itens(operacoes: list[OperacaoRemessa], descartadas: list[dict], fora:
                                     [(o.arquivo_origem, o.ref_origem, o.diferenca) for o in acima], cfg))
 
         for o in (o for o in doc if o.negativa):  # R12, R18, R23, R34, P18: o valor é a diferença até o contrato
-            motivo = MOTIVO_NEGATIVO.format(spread=_rs(o.spread_brl), diferenca=_rs(o.diferenca))
+            motivo = MOTIVO_NEGATIVO.format(spread=_rs(o.spread_brl), diferenca=_rs(o.diferenca),
+                                            rascunho=_rascunho_ponte())
             itens.append(_pendencia(f"PEN-NEG-REM-{o.ref_origem}", "CONTESTACAO_PONTE", o.ref_origem,
                                     motivo, o.diferenca, [(o.arquivo_origem, o.ref_origem, o.diferenca)], cfg))
 

@@ -6,9 +6,14 @@
 | Commit do código | branch `regras-helena-2`, sobre `2692243` (R31). Esta rodada aplica R32 a R40 e P26: os números de setembro mudam (ver abaixo, regra por regra) |
 | Fechamento | `python -m tarvo fechar --competencia 2026-09 --entrada dados/2026-09 --saida saida/` (IA conforme `config/ia.yaml`; em setembro todo lançamento casa uma regra, então a IA não é chamada nenhuma vez, P14) |
 | Resumo | `python -m tarvo resumo --saida saida` |
-| pytest | **374 passed** (`python -m pytest -q`, 21,9 s) |
+| pytest | **387 passed** (`python -m pytest -q`, 26,1 s) |
 | `validar_saida(saida/)` | `[]`, **sem problemas** |
 | Rastro | 371 de 371 itens com soma do rastro por id_saida = valor reportado |
+
+**O01 a O04 (Organização, 17/10, canal de Logística): nenhum número mudou.** Linhas e totais dos 6 CSVs iguais aos de antes; `rastro.csv`, os 5 outros CSVs e os 4 arquivos de `contestacoes/` idênticos byte a byte. Em `pendencias.csv` mudaram só textos:
+- **motivo (O04, toda pendência com próximo passo):** PEN-NF-CHK, PEN-CONCESSAO-CHK, as 2 PEN-DEVOL-CHK, PEN-ALERTA-ANTEC, as 4 PEN-NEG-REM e PEN-NAOID-L50 ganharam "próximo passo: <quem faz o quê>". As outras 6 já traziam a ação e não mudaram.
+- **quem_decide:** PEN-CONCESSAO-CHK-00520815000100 passou de "Financeiro (Helena)" para "Financeiro (Helena) e Comercial" (R32: a Helena paga a devolução; parametrizar a Orbe é com o Comercial, R28).
+- **Execução (O01):** o fechamento grava numa pasta temporária, valida e só então substitui `saida/` e `contestacoes/`; entrada ambígua ou faltando para com a instrução do que fazer; arquivo que não casa nenhum padrão só gera aviso. Testes: 374 → 387.
 
 **R32 a R40 e P26 (Helena, 17/10, 11h37 a 11h41): os números de setembro mudam.**
 
@@ -355,8 +360,8 @@ As 5 são estornos de checkout de vendas que já tinham sido cobradas acima do c
 | quem_decide | pendências | soma |
 |---|---:|---:|
 | Comercial | 1 | 7.876,05 |
-| Financeiro (Helena) | 14 | 374.935,70 |
-| Financeiro (Helena) e Comercial | 1 | 0,00 |
+| Financeiro (Helena) | 13 | 359.538,93 |
+| Financeiro (Helena) e Comercial | 2 | 15.396,77 |
 
 Nenhum teste fixa os agregados por tipo ou por quem decide. As 16 pendências estão conferidas uma a uma abaixo.
 
@@ -365,7 +370,7 @@ Nenhum teste fixa os agregados por tipo ou por quem decide. As 16 pendências es
 | id_saida | tipo | refs | valor | quem decide | Esperado | teste de origem | |
 |---|---|---:|---:|---|---|---|:-:|
 | PEN-NF-CHK-00520815000100 | NOTA_NAO_EMITIDA | 119 | -5,50 | Financeiro (Helena) | NOTA_NAO_EMITIDA · -5,50 | `test_checkout.py::test_set_notas` | ✓ |
-| PEN-CONCESSAO-CHK-00520815000100 | DEVOLUCAO_CONCESSAO | 118 | 15.396,77 | Financeiro (Helena) | 118 · 15.396,77 · DEVOLUCAO_CONCESSAO; motivo sem a R25 (R32, R38) | `test_checkout.py::test_set_casa_concessao_separada_das_divergencias` | ✓ |
+| PEN-CONCESSAO-CHK-00520815000100 | DEVOLUCAO_CONCESSAO | 118 | 15.396,77 | Financeiro (Helena) e Comercial | 118 · 15.396,77 · DEVOLUCAO_CONCESSAO; motivo sem a R25 (R32, R38) | `test_checkout.py::test_set_casa_concessao_separada_das_divergencias` | ✓ |
 | PEN-DEVOL-CHK-22224579000109 | DEVOLUCAO_LOJISTA | 5 | 29,95 | Financeiro (Helena) | 5 · 29,95 | `test_checkout.py::test_set_divergencias` | ✓ |
 | PEN-DEVOL-CHK-95927868000148 | DEVOLUCAO_LOJISTA | 87 | 1.546,28 | Financeiro (Helena) | 87 · 1.546,28 | `test_checkout.py::test_set_divergencias` | ✓ |
 | PEN-SEMCONTRATO-39566044000119 | LOJISTA_SEM_CONTRATO | 57 | 7.876,05 | Comercial | 57 · 7.876,05 · LOJISTA_SEM_CONTRATO · Comercial; id pelo CNPJ da aba de 2025 (R39); motivo com 57 transações, 262138.61 brutos, competência 2026-10 e retroativa a 2026-09-10 (R30) | `test_checkout.py::test_set_atlas_sem_contrato` | ✓ |
@@ -460,8 +465,8 @@ Os valores alternativos **não são valores de teste**. P16, P19 e P20 são cont
 | **P18** | contestação do spread negativo pela diferença contra o contrato (mesmo cálculo de P17) | 4 PEN-NEG-REM: PC-0926-0210 · 0326 · 0491 · 0545 | -1.351,87 · -1.001,30 · -574,90 · -637,91 = **-3.565,98** | pelo Spread R$ negativo da operação | -687,52 · -509,22 · -292,28 · -345,03 = **-1.834,05** |
 | | | CONTESTACAO_PONTE (5 pendências) · total de pendencias.csv | -2.147,13 · 382.811,75 | | -415,20 · 384.543,68 |
 | **P19** | PEN-DUP pelo Spread R$ da cópia descartada | PEN-DUP-REM-PC-0926-0162 | 821,88 (o quanto o rodapé de 78.073,59 está inflado) | pela parte da Tarvo na cópia (50%, R11) | **410,94** |
-| **P20** | transferência de 30/09 mantida como pendência até a conciliação de outubro | pendencias.csv: quantidade · soma | 15 · 382.811,75 | sem a PEN-TRANSF-L92, já que a R20 explica a transferência | **14 · 82.811,75** |
-| | | "Financeiro (Helena)" | 14 · 374.935,70 | | 13 · 74.935,70 |
+| **P20** | transferência de 30/09 mantida como pendência até a conciliação de outubro | pendencias.csv: quantidade · soma | 16 · 382.811,75 | sem a PEN-TRANSF-L92, já que a R20 explica a transferência | **15 · 82.811,75** |
+| | | "Financeiro (Helena)" | 13 · 359.538,93 | | 12 · 59.538,93 |
 | **P21** | Atlas (EC 1076801732) fora de comissoes_por_lojista; o que a Orbe cobrou fica em PEN-SEMCONTRATO | comissões CHECKOUT: lojistas · soma | 21 · 207.039,73 | faturar a Atlas pela aba "ANTIGO 2025 - nao usar" (CNPJ 39566044000119; débito 1,69%, crédito à vista 2,99%, parcelado 3,49%, Pix 0,99%) | **22 · 211.417,02** (+4.377,29 em 50 linhas; as 7 de antecipação e reversão ficam sem taxa, porque a aba de 2025 não tem antecipação) |
 | | | notas CHECKOUT | 20 | | 21 |
 | | | divergências da Atlas | 0 | | 41 linhas · 827,22 (a Orbe aplicou taxas diferentes das de 2025) |

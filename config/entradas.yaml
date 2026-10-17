@@ -7,3 +7,12 @@ arquivos:
   plano_de_contas: "*plano_de_contas*.csv"
   aurora: "*aurora*.csv"
   meridiano: "*.ofx"
+
+# Como cada tipo aparece nas mensagens de erro e aviso do fechamento (o que a pessoa procura na pasta).
+descricoes:
+  orbe: "relatório de transações da Orbe, CSV"
+  taxas: "planilha de taxas contratadas, XLSX"
+  ponte_eml: "e-mail da Ponte Câmbio com o relatório anexo, EML"
+  plano_de_contas: "plano de contas do ERP, CSV"
+  aurora: "extrato do Banco Aurora, CSV"
+  meridiano: "extrato do Banco Meridiano, OFX"

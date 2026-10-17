@@ -24,7 +24,7 @@ from tarvo.leitores.comum import CENTAVO
 ENCODING = "utf-8"
 SEPARADOR = ";"
 FIM_DE_LINHA = "\n"
-SEPARADOR_REFS = "|"
+SEPARADOR_REFS = "|"  # várias ref_origem numa célula de pendencias.csv: aceito pela Organização (O03)
 CASAS_TAXA = Decimal("0.0001")
 
 LINHAS_NEGOCIO = ("CHECKOUT", "REMESSA")

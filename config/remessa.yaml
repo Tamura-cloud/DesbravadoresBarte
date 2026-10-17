@@ -25,6 +25,8 @@ discriminacao_nota: "Intermediação de câmbio - participação no spread - com
 
 # Quem decide as pendências da remessa (R12, R13, R16, R18).
 quem_decide: "Financeiro (Helena)"
+# P04: CNPJ da Ponte fora da planilha vira pendência de cadastro para o Comercial (spread é condição comercial, R28).
+quem_decide_cadastro: "Comercial"
 
 # R31: a Ponte manda o ajuste como linha nova, com Nº de Operação próprio e Spread R$ negativo; a observação traz
 # "AJUSTE REF PC-..." (o grupo é o Nº da operação original). Sem diferenciar maiúsculas. A linha de ajuste é checada

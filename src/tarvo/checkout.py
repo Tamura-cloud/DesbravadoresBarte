@@ -28,7 +28,10 @@ LINHA_NEGOCIO = "CHECKOUT"
 ZERO = Decimal("0.00")
 VENDA, ANTECIPACAO, REVERSAO = "VENDA", "ANTECIPACAO", "REVERSAO ANTECIPACAO"  # tipos da Orbe (P26)
 
-MOTIVO_NOTA_NAO_EMITIDA = "comissão de checkout do mês zero ou negativa: não emite nota e não passa para o mês seguinte (R06)"
+MOTIVO_NOTA_NAO_EMITIDA = (
+    "comissão de checkout do mês zero ou negativa: não emite nota e não passa para o mês seguinte - próximo passo: "
+    "a Helena decide o tratamento do saldo (R06)"
+)
 MOTIVO_SEM_CONTRATO = (
     "EC sem taxa contratada na aba vigente nem em ec_sem_codigo: não faturar até o comercial confirmar (R08) - "
     "valor = taxa cobrada pela Orbe"
@@ -40,16 +43,19 @@ MOTIVO_RETROATIVO = (
 )
 MOTIVO_DEVOLUCAO = (
     "taxa aplicada pela Orbe diferente da contratada - a nota documenta só a taxa contratada e o que a Orbe "
-    "cobrou a mais é valor a devolver ao lojista - valor = diferença pela taxa contratada (R03, R25, R32)"
+    "cobrou a mais é valor a devolver ao lojista - valor = diferença pela taxa contratada - próximo passo: a Helena "
+    "devolve o valor ao lojista e contesta com a Orbe, pelo rascunho de e-mail em {rascunho} (R03, R25, R29, R32)"
 )
 MOTIVO_CONCESSAO = (
     "concessão comercial; custo da Tarvo; não é divergência; não se cobra da Orbe ({regra}, R32, R38) - "
-    "valor = taxa cobrada pela Orbe nas transações da concessão"
+    "valor = taxa cobrada pela Orbe nas transações da concessão - próximo passo: a Helena paga a devolução ao lojista "
+    "e decide com o Comercial se pede à Orbe parametrizar {taxa} daqui em diante (nota interna em {rascunho})"
 )
 MOTIVO_IDENTIFICACAO = "EC {ec}, CNPJ {cnpj} (identificado pela aba de 2025, sem usar a taxa dela - R39) - "
 MOTIVO_ALERTA = (
     "alerta informativo (P26, R33): lojista sem histórico ({historico}) antecipou R$ {antecipado} brutos "
-    "(R$ {liquido} líquidos das reversões) contra R$ {vendido} de vendas no mês - não muda nenhum valor"
+    "(R$ {liquido} líquidos das reversões) contra R$ {vendido} de vendas no mês - não muda nenhum valor - "
+    "próximo passo: a Helena e o Comercial avaliam o risco do lojista (R33)"
 )
 
 
@@ -263,12 +269,25 @@ def _competencia_seguinte(competencia: str) -> str:
     return f"{ano + mes // 12:04d}-{mes % 12 + 1:02d}"
 
 
+def taxa_concessao(cnpj: str, cfg: ConfigCheckout) -> str:
+    """Taxa(s) da concessão do lojista como texto ("0%"), das condições especiais do config."""
+    valores = sorted({v for c in cfg.condicoes if c.cnpj == cnpj for v in c.taxas.values()})
+    return " ou ".join(f"{v.normalize():f}".replace(".", ",") + "%" for v in valores) or "a taxa da concessão"
+
+
+def _rascunho_orbe() -> str:
+    """Onde fica o rascunho de contestação da Orbe (R29), como o motivo da pendência o cita: <pasta>/orbe.md."""
+    from tarvo.contestacao import ARQUIVO_ORBE, carregar_config  # import tardio: contestacao importa este módulo
+    return f"{carregar_config().pasta}/{ARQUIVO_ORBE[0]}"
+
+
 def _pendencia_devolucao(cnpj: str, divergentes: list[LinhaCheckout], cfg: ConfigCheckout) -> ItemSaida:
     """R03, R25, R32: a contraparte cobrou diferente do contrato; o lojista é ressarcido pela diferença."""
     origens = [(l.arquivo_origem, l.ref_origem, l.diferenca) for l in divergentes]
     return ItemSaida(f"PEN-DEVOL-CHK-{cnpj}", PENDENCIAS.nome,
                      {"tipo": "DEVOLUCAO_LOJISTA", "ref_origem": [l.ref_origem for l in divergentes],
-                      "motivo": texto_saida(MOTIVO_DEVOLUCAO), "quem_decide": cfg.quem_decide["devolucao_lojista"]},
+                      "motivo": texto_saida(MOTIVO_DEVOLUCAO.format(rascunho=_rascunho_orbe())),
+                      "quem_decide": cfg.quem_decide["devolucao_lojista"]},
                      _soma(o[2] for o in origens), origens)
 
 
@@ -280,8 +299,9 @@ def _pendencia_concessao(cnpj: str, linhas: list[LinhaCheckout], cfg: ConfigChec
     origens = [(l.arquivo_origem, l.ref_origem, l.valor_taxa_orbe - (l.diferenca or ZERO)) for l in linhas]
     return ItemSaida(f"PEN-CONCESSAO-CHK-{cnpj}", PENDENCIAS.nome,
                      {"tipo": "DEVOLUCAO_CONCESSAO", "ref_origem": [l.ref_origem for l in linhas],
-                      "motivo": texto_saida(MOTIVO_CONCESSAO.format(regra=", ".join(regras))),
-                      "quem_decide": cfg.quem_decide["devolucao_lojista"]},
+                      "motivo": texto_saida(MOTIVO_CONCESSAO.format(regra=", ".join(regras), rascunho=_rascunho_orbe(),
+                                                                    taxa=taxa_concessao(cnpj, cfg))),
+                      "quem_decide": cfg.quem_decide["devolucao_concessao"]},
                      _soma(o[2] for o in origens), origens)
 
 

@@ -47,7 +47,10 @@ PAPEIS = ("transferencia_enviada", "transferencia_recebida", "ted_liquidacao", "
 MESES = ("janeiro", "fevereiro", "março", "abril", "maio", "junho", "julho", "agosto", "setembro",
          "outubro", "novembro", "dezembro")
 
-MOTIVO_NAO_IDENTIFICADO = "PIX recebido sem identificação: não é receita até identificar a origem (R20)"
+MOTIVO_NAO_IDENTIFICADO = (
+    "PIX recebido sem identificação: não é receita até identificar a origem (R20) - próximo passo: o Financeiro "
+    "(Helena) identifica quem mandou o PIX e reclassifica o lançamento"
+)
 MOTIVO_DEVOLUCAO = "devolução de PIX: repasse que voltou, motivo desconhecido (R20) - apurar o motivo (P06)"
 MOTIVO_SEM_REGRA = "nenhuma regra de config/bancos.yaml cobre o lançamento: classificar manualmente (P09)"
 MOTIVO_IA = (
@@ -58,11 +61,13 @@ NIVEL_IA = "confiança"
 NIVEL_IA_BAIXO = "baixa confiança, abaixo do limiar {limiar}:"
 MOTIVO_TED_LIQ = (
     "TEDs LIQ OPERACOES do dia diferentes de valor_brl + iof_brl das operações únicas da Ponte contratadas "
-    "no dia (P11) - valor = operações - TEDs pagas"
+    "no dia (P11) - valor = operações - TEDs pagas - próximo passo: a Helena confere as TEDs do dia com as operações "
+    "da Ponte e apura a diferença (P11)"
 )
 MOTIVO_PIX_DIFERENCA = (
     "soma dos PIX do cliente no mês menor que valor_brl + iof_brl das operações únicas da Ponte no mês: "
-    "remessa sem o dinheiro do cliente (P12) - valor = PIX - operações"
+    "remessa sem o dinheiro do cliente (P12) - valor = PIX - operações - próximo passo: a Helena apura de onde veio "
+    "o dinheiro dessas remessas (P12)"
 )
 MOTIVO_TRANSITO = (
     "transferência entre contas sem TED de mesma titularidade no Meridiano até {fim}: pela R20 cai no "
@@ -70,7 +75,7 @@ MOTIVO_TRANSITO = (
 )
 MOTIVO_SEM_PAR = (
     "transferência entre contas sem TED de mesma titularidade e mesmo valor no Meridiano na mesma data "
-    "nem no dia útil seguinte (P13)"
+    "nem no dia útil seguinte (P13) - próximo passo: a Helena localiza nos extratos a outra ponta da transferência"
 )
 
 
