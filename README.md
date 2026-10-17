@@ -123,6 +123,21 @@ Por linha de negócio:
 - **ref_origem:** `id_transacao` (Orbe), Nº Operação (Ponte), `L<n>` = número da linha física no arquivo (Aurora),
   FITID (Meridiano).
 
+## Verificação independente
+
+Os números de setembro foram conferidos por um **recálculo independente em script**, feito sem o código do
+pipeline, e bateram ao centavo. A prova está em três lugares:
+
+- **Commit `d588ad9`** (16/10, 23h43), no histórico do `main`: os testes daquele commit guardam os valores do
+  recálculo, feito direto de `dados/`. São 20 notas de checkout = 207045.23, nota da Ponte = 39543.45,
+  210 divergências de checkout e 184 lançamentos, os mesmos quatro números da `saida/` atual.
+- **Transcript `be5d287e`**, em `PROMPTS/sessoes/`: a sessão em que esse recálculo foi feito.
+- **Revisão adversarial:** uma sessão só de leitura, sem importar `src/`, recalculou tudo e questionou 7
+  premissas (P15–P21). A decisão sobre cada uma, com o número alternativo, está no `HIPOTESES.md`.
+
+Essa conferência usou as regras confirmadas até 16/10. As respostas da Helena que vieram depois estão no
+`HIPOTESES.md`, e os números que elas mudaram são conferidos pelos testes em `tests/` e no `RESULTADOS.md`.
+
 ## Como funciona
 
 Cinco etapas, orquestradas por `src/tarvo/fechamento.py`:
@@ -131,7 +146,7 @@ Cinco etapas, orquestradas por `src/tarvo/fechamento.py`:
 |-------|-----------|--------|--------------|
 | 1. Leitura | acha os 6 arquivos pelo padrão de nome e lê cada um com o encoding explícito; cada linha sai com `arquivo_origem` e `ref_origem` | `cli.py`, `leitores/orbe.py`, `taxas.py`, `ponte.py`, `plano_contas.py`, `aurora.py`, `meridiano.py` | `config/entradas.yaml` |
 | 2. Normalização | número brasileiro → `Decimal`, data → `datetime.date`, CNPJ → 14 dígitos, taxa → pontos percentuais. Os leitores só convertem tipos, sem regra de negócio | `leitores/comum.py` e os leitores | — |
-| 3. Cálculo por regra | comissão, divergência, nota e pendência do checkout (R01–R10) e da remessa (R11–R18); classificação contábil dos extratos (R19–R21) | `checkout.py`, `remessa.py`, `bancos.py` (e `ia.py`, só para lançamento sem regra) | `config/checkout.yaml`, `remessa.yaml`, `bancos.yaml`, `favorecidos.yaml`, `pagadores_meridiano.yaml`, `ia.yaml` |
+| 3. Cálculo por regra | comissão, divergência, nota e pendência do checkout e da remessa; classificação contábil dos extratos. Cada regra cita o seu R## ou P## do `HIPOTESES.md` | `checkout.py`, `remessa.py`, `bancos.py` (e `ia.py`, só para lançamento sem regra) | `config/checkout.yaml`, `remessa.yaml`, `bancos.yaml`, `favorecidos.yaml`, `pagadores_meridiano.yaml`, `ia.yaml` |
 | 4. Conferências cruzadas | Orbe × planilha (EC sem contrato), duplicatas da Ponte (R13), TED de liquidação Ponte × Meridiano (P11), PIX recebidos × remessas por CNPJ (P12), transferência Aurora × Meridiano (P13), TED de repasse × nota de remessa (R18, P22). Toda diferença vira pendência | `checkout.py`, `remessa.py`, `bancos.py` | as mesmas da etapa 3 |
 | 5. Saída com rastro | cada resultado é um `ItemSaida` com as suas origens, e o item não é criado se a soma das origens não fechar com o valor. Grava os 6 CSVs e relê tudo: formato, domínios, id_saida único e soma do rastro por id_saida | `saida.py`, `fechamento.py` | — |
 
@@ -141,8 +156,8 @@ arredonda nem troca texto: valor com casas a mais ou texto com `;` é erro.
 ## Onde estão as regras
 
 - **`HIPOTESES.md`:** a fonte de toda regra de negócio.
-  - **R01–R21:** confirmadas pelo financeiro da Tarvo (Helena, no Slack), com o horário de cada resposta.
-  - **P01–P23:** premissas nossas, cada uma com o motivo. Inclui as escolhas mantidas após a revisão independente (P15–P21).
+  - **R##:** regras confirmadas pela Helena (financeiro da Tarvo, no Slack), com o horário de cada resposta. A lista completa e atual fica só no `HIPOTESES.md`.
+  - **P##:** premissas nossas, cada uma com o motivo. Inclui as escolhas mantidas após a revisão independente (P15–P21).
   - Também traz as pendências em aberto, os conflitos resolvidos e as decisões de formato e encoding.
 - **`config/*.yaml`:** os parâmetros e mapeamentos das regras: taxas especiais, ECs sem código, participação de
   50%, spread padrão, tolerância, regras de classificação por extrato, listas de favorecidos e pagadores.
@@ -204,7 +219,7 @@ O mesmo ensaio roda dentro de `python -m pytest tests/test_outubro.py`, em pasta
    | `DEVOLUCAO_LOJISTA` | R03, R10, P23 | Financeiro (Helena) | devolver ao lojista o que foi cobrado acima do contrato | 3 |
    | `LOJISTA_SEM_CONTRATO` | R08 | Comercial | EC da Orbe sem taxa contratada: confirmar o contrato antes de faturar | 1 |
    | `LOJISTA_NAO_CADASTRADO` | P04 | Financeiro (Helena) | CNPJ da Ponte fora da planilha: cadastrar (a comissão já entrou na nota) | 0 |
-   | `CONTESTACAO_PONTE` | R12, R15, R16, R18, P02 | Financeiro (Helena) | contestar com a Ponte o spread acima do contrato ou negativo | 5 |
+   | `CONTESTACAO_PONTE` | R12, R15, R16, R18, R23 | Financeiro (Helena) | contestar com a Ponte o spread acima do contrato ou negativo | 5 |
    | `OPERACAO_DUPLICADA` | R13, P19 | Financeiro (Helena) | pedir à Ponte a correção do relatório | 1 |
    | `OPERACAO_FORA_DA_COMPETENCIA` | R11 | Financeiro (Helena) | operação contratada em outro mês: conferir | 0 |
    | `CONFERENCIA_REPASSE` | R18, P22 | Financeiro (Helena) | conferir o TED de repasse da Ponte contra a nota de remessa quando cair | 1 |
@@ -272,9 +287,9 @@ O mesmo ensaio roda dentro de `python -m pytest tests/test_outubro.py`, em pasta
 ├── requirements.txt          as mesmas dependências, em lista
 ├── config/
 │   ├── entradas.yaml         padrões de nome dos 6 arquivos
-│   ├── checkout.yaml         ECs sem código, condição especial, taxa por modalidade (R01–R10)
-│   ├── remessa.yaml          participação, spread padrão, tolerância, tomador da nota (R11–R18, P01)
-│   ├── bancos.yaml           regras de classificação dos extratos, em ordem (R19–R21, P06–P13)
+│   ├── checkout.yaml         ECs sem código, condição especial, taxa por modalidade
+│   ├── remessa.yaml          participação, spread padrão, tolerância, tomador da nota
+│   ├── bancos.yaml           regras de classificação dos extratos, em ordem
 │   ├── favorecidos.yaml      PIX enviados do Aurora que são repasse a lojista (P07)
 │   ├── pagadores_meridiano.yaml  PIX recebidos no Meridiano de clientes da remessa (P08)
 │   └── ia.yaml               modelo, limiar e cache da IA (P14)
