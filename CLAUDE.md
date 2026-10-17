@@ -12,3 +12,5 @@
 - Datas são datetime.date.
 - Todo arquivo é aberto com encoding explícito. Nunca use o encoding padrão do sistema (estamos no Windows).
 - Cada pessoa trabalha na própria branch e só mexe nos próprios arquivos. Arquivos compartilhados (comum.py, cli.py, CLAUDE.md) só mudam com o time avisado.
+- Prompt que muda regra de negócio, número ou arquitetura, ou que corrige a IA, ganha uma linha na tabela "Prompts-chave" de PROMPTS/README.md (quando, quem, prompt, o que a IA fez, o que decidimos, commit).
+- Transcripts: python scripts/exportar_transcript.py --autor "pessoa-x" (remove e-mails pessoais e chaves).

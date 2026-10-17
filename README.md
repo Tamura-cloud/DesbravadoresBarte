@@ -1,8 +1,18 @@
 # Fechamento mensal — Tarvo Pagamentos
 
+**Time Desbravadores Barte** · Desafio Barte AI, case Tarvo (17/10/2026)
+
 Fecha o mês da Tarvo a partir dos 6 arquivos do data pack, lidos como vêm (sem edição manual), e gera os
 6 CSVs de `saida/`. Cada número de saída é rastreável até a linha do arquivo de origem pelo `rastro.csv`,
 e a execução falha se algum valor não fechar com o rastro.
+
+## Histórico de IA
+
+O histórico completo das sessões de IA, de preparação e de construção, está em [`PROMPTS/`](PROMPTS/), sem
+edição além da remoção de chaves e e-mails pessoais. Em [`PROMPTS/MOMENTOS.md`](PROMPTS/MOMENTOS.md) estão os
+momentos que mudaram o projeto, inclusive os erros da IA que corrigimos. A tabela de prompts-chave de
+[`PROMPTS/README.md`](PROMPTS/README.md) lista cada prompt que mudou uma regra, um número ou a arquitetura, com
+o commit que ele gerou.
 
 ## Rodar do zero
 
