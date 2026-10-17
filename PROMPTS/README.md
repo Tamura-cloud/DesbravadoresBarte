@@ -30,6 +30,44 @@ O script lê os transcripts da própria máquina, remove e-mails pessoais e chav
 | #16 | Orbe paga o parcelado em "D+30" | "ao longo dos meses seguintes, conforme as parcelas" (Helena) |
 | #17 | uso de IA vale 15% | vale 20% (15% é causa raiz) |
 
+## Linha do tempo completa (desde o primeiro prompt)
+
+Todos os pedidos feitos à IA, na ordem. O texto integral de cada um está nos transcripts de `sessoes/`.
+
+| Quando | Ferramenta | O que pedimos |
+|---|---|---|
+| 16/10 16:54 | Antigravity | Preparar o computador (VS Code, Python, Claude, Git) e pesquisar tudo sobre a Barte, seus produtos, a área de AI Services, vídeos, notícias e cases; gerar os dossiês |
+| 16/10 16:56 | Antigravity (subagente de pesquisa) | Buscas na web disparadas pelo pedido anterior: site, sitemap, notícias e cases da Barte |
+| 16/10 17:55 | Antigravity | Destravar o push para o GitHub |
+| 16/10 18:02 | Antigravity | Qual o papel de Jev e Laya neste case |
+| 16/10 18:05 | Antigravity | Escrever uma proposta de projeto com Jev ou Laya |
+| 16/10 19:34 | Antigravity | Ler as instruções e o data pack do case, sem alterar nada |
+| 16/10 19:58 | Antigravity | Analisar o relatório do colega e as 14 dúvidas, sem tomá-lo como fio condutor |
+| 16/10 21:32 | Antigravity | Avaliar o Graphify |
+| 16/10 21:35 | Antigravity | Decidir não usar o Graphify |
+| 16/10 21:39 | Antigravity | Criar o `CLAUDE.md` e avaliar se os dossiês atrapalham |
+| 16/10 21:44 | Antigravity | Isolar os dossiês sem perder nada e montar o esqueleto do repositório |
+| 16/10 21:54 | Antigravity | Como acompanhar as dúvidas do Slack |
+| 16/10 21:59 | Antigravity | Ler a primeira cópia do Slack |
+| 16/10 22:15 | Antigravity | Analisar perguntas e respostas do Slack com senso crítico |
+| 16/10 22:26 | Antigravity | Conferir as regras nos dados com 100% de certeza |
+| 16/10 22:57 | Antigravity | Analisar a branch `pix` do colega |
+| 16/10 23:02 | Antigravity | Incorporar as respostas finais da Helena e publicar |
+| 16/10 23:13 | Claude Code | Acesso ao GitHub a partir do app |
+| 16/10 23:16 | Claude Code | Ler todos os arquivos e apontar erros de relação |
+| 16/10 23:21 | Claude Code | Corrigir `CLAUDE.md`, `HIPOTESES.md` e o guia de pitch |
+| 16/10 23:28 | Claude Code | Conferir o arquivo do Slack |
+| 16/10 23:30 | Claude Code | Avaliar a organização e planejar o dia 17 |
+| 16/10 23:35 | Claude Code | Organizar o trabalho do trio a partir de uma imagem de arquitetura |
+| 17/10 06:05 | Claude Code | Verificar o que o case exige do histórico de prompts |
+| 17/10 06:13 | Claude Code | Analisar a branch `pix`, os prints e as anotações, e gerar um PDF por pessoa |
+| 17/10 06:33 | Claude Code | Refazer a divisão para trabalho em paralelo |
+| 17/10 08:20 | Antigravity | Gerar o resumo dos prompts desde o início (`antigravity_resumo_prompts_16-10.txt`) |
+| 17/10 08:35 | Claude Code | Incluir o histórico do Antigravity no `PROMPTS/` |
+| 17/10 08:36 | Antigravity | Ler os PDFs de orientação do time para tirar dúvidas ao longo do dia |
+
+Pedidos curtos de execução (commit, push, "pode", dúvidas de comando) ficam só nos transcripts.
+
 ## Prompts-chave (o que mudou o projeto)
 
 Regra: entra aqui todo prompt que mudou uma regra de negócio, um número, a arquitetura ou corrigiu a IA. Uma linha, com o commit.

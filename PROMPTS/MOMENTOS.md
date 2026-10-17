@@ -1,37 +1,37 @@
-# MOMENTOS.md — Registro de Interações Decisivas com a IA (critério "Uso de IA", 20% da avaliação)
+# Momentos que importaram
 
-> **Instrução do Edital:** Marque de 2 a 4 momentos que importaram durante a preparação e construção. Para cada um, descreva em uma ou duas frases: **o que você pediu**, **o que a IA devolveu** e **o que você fez com isso**. **Obrigatório incluir pelo menos um momento em que a IA errou ou tentou te levar para o lugar errado e você corrigiu.**
-
----
-
-## Momento 1 — Correção Crítica: A Armadilha do "Fuzzy Matching" de Nomes nos Dois "Horizonte" (Erro da IA Corrigido pelo Time)
-
-* **O que pedimos:** Durante a preparação inicial e análise dos casos anteriores da Barte (como o case público da Buser), pedimos à IA para propor uma estratégia de conciliação e amarração cadastral entre o relatório da adquirente (`01_orbe_relatorio_comissoes_set2026.csv`) e a planilha comercial (`02_tabela_taxas_contratadas.xlsx`).
-* **O que a IA devolveu (Onde a IA errou / induziu ao erro):** Inicialmente, a IA sugeriu aplicar *fuzzy matching* (similaridade textual de nomes) e usar arquiteturas complexas de modelos de decisão/fine-tuning para casar os nomes dos estabelecimentos quando o código EC estivesse vazio na planilha.
-* **O que nós fizemos com isso (Nossa intervenção):** Ao inspecionarmos os dados reais da Tarvo, percebemos que o *fuzzy matching* por nome causaria um erro grave: o EC `1043300981` chama-se `"HORIZONTE INTERCAMBIO"` na Orbe, mas aplica as taxas de `2,39%` e `2,89%`, que pertencem contratualmente à **Novo Horizonte Intercâmbio** (`CNPJ 66.564.512/0001-99`), e não à **Horizonte Viagens e Turismo** (`CNPJ 78.576.234/0001-79`, que usa `1043396662`). Rejeitamos o casamento aproximado por nome, bloqueamos o contexto prévio para não enviesar o Claude Code e travamos a regra determinística por `cod_estabelecimento` + evidência de taxa contratada.
+Quatro momentos, em ordem. Dois são erros da IA que pegamos, dois são decisões nossas que mudaram o rumo. Cada um aponta para o transcript onde dá para conferir.
 
 ---
 
-## Momento 2 — Cruzamento Entre Fontes para Provar a Duplicata da Ponte Câmbio (`PC-0926-0162`)
+## 1. Os dossiês de pesquisa iam contaminar o case: isolamos (decisão do time)
 
-* **O que pedimos:** Pedimos à IA para auditar a consistência entre o anexo do e-mail da Ponte Câmbio (`PonteCambio_Relatorio_TARVO_092026.xlsx`) e o extrato OFX do Banco Meridiano (`05b_extrato_banco_meridiano_cc90233_set2026.ofx`).
-* **O que a IA devolveu:** A análise identificou que a operação `PC-0926-0162` (Bagagem Livre) aparecia duas vezes na planilha da Ponte (a segunda como `"reprocessada"`), e provou matematicamente que a soma diária de `Valor R$ + IOF R$` das 232 operações únicas (`R$ 5.611.447,12`) bate ao centavo com as 21 TEDs `"LIQ OPERACOES"` do extrato do Banco Meridiano — enquanto incluir a duplicata quebrava a conciliação bancária.
-* **O que nós fizemos com isso:** Transformamos essa prova cruzada (Relatório de Câmbio × Extrato Bancário) em uma regra de deduplicação auditável que descarta a cópia do cálculo de comissão/NF e a envia automaticamente para `saida/pendencias.csv` com a evidência do extrato bancário.
+- **Pedimos:** no Antigravity (16/10, 21h32–21h44), uma avaliação do Graphify e se os 5 dossiês de pesquisa sobre a Barte atrapalhariam a construção.
+- **A IA devolveu:** que o Graphify não compensa num projeto deste tamanho, e que os dossiês traziam a receita do case Buser (casar cliente por nome aproximado), que aplicada aqui misturaria os dois "Horizonte" e erraria 233 transações.
+- **Fizemos:** recusamos o Graphify, guardamos os dossiês numa branch de backup, tiramos do contexto da IA e travamos a regra "casar só por EC e CNPJ" (commit `7d06117`).
+- **Fonte:** `sessoes/2026-10-16_pessoa-3_antigravity_40ab3010`, 16/10 21:32–21:44.
+
+## 2. "Faça se tiver 100% de certeza": trocamos teoria por varredura dos dados (decisão do time)
+
+- **Pedimos:** que nenhuma regra entrasse no `CLAUDE.md` sem conferência linha a linha nos arquivos reais.
+- **A IA devolveu:** a varredura em Python achou o que ninguém tinha visto: dois arquivos em cp1252, CNPJs com 13 dígitos na planilha, 5 vendas da Bridge na taxa antiga e o estorno de agosto que deixa a Casa do Estudante com comissão negativa.
+- **Fizemos:** essas descobertas viraram regras e, depois, testes (commit `d425cd4`).
+- **Fonte:** `sessoes/2026-10-16_pessoa-3_antigravity_40ab3010`, 16/10 22:26.
+
+## 3. O documento que a IA ajudou a escrever tinha 8 erros (a IA errou)
+
+- **Pedimos:** no Claude Code (16/10, 23h16), que conferisse o `CLAUDE.md` contra os dados, o Slack e as instruções oficiais.
+- **A IA devolveu:** recalculou tudo e achou 8 erros herdados da preparação: aumento de taxa da Rota no débito que não existe, duplicata atribuída à loja errada, 85 lançamentos em vez de 84, R$ 0,10 a menos na Casa do Estudante e 5 arquivos de saída em vez dos 6 oficiais.
+- **Fizemos:** corrigimos (commit `0beccf8`) e mudamos o método: número só vale se vier do código, e os valores conferidos viraram testes.
+- **Fonte:** `sessoes/2026-10-16_pessoa-3_claude_be5d287e`, 16/10 23:16–23:21.
+
+## 4. O status da IA dizia que existiam duas implementações; não existiam (a IA errou)
+
+- **Pedimos:** na manhã de 17/10, que o Claude Code analisasse a branch `pix` e o status escrito pela IA do colega, sem fazer merge.
+- **A IA devolveu:** rodou a `pix` numa cópia isolada (314 testes, saída idêntica byte a byte) e mostrou que o status estava errado: dizia que o `main` tinha "uma segunda implementação completa", mas o `main` só tinha o esqueleto.
+- **Fizemos:** escolhemos entregar o código da `pix`, mudamos a frase do pitch para "recalculamos tudo por fora e bateu ao centavo" e dividimos o dia em 3 papéis paralelos.
+- **Fonte:** `sessoes/2026-10-17_pessoa-3_claude_82f695ad`, 17/10 06:13–06:36.
 
 ---
 
-## Momento 3 — Recalcular em vez de confiar: o CLAUDE.md gerado com IA tinha 8 erros (Erro da IA Corrigido pelo Time)
-
-* **O que pedimos:** Na noite de 16/10, pedimos que a IA lesse um por um os documentos que ela mesma tinha ajudado a escrever (`CLAUDE.md`, `HIPOTESES.md`), o Slack com as respostas da Helena e as instruções oficiais, e dissesse se havia erro de relação com os dados.
-* **O que a IA devolveu:** Além de reler os textos, recalculou tudo em Python sobre `dados/` e achou 8 erros que vinham de números copiados sem recálculo: um aumento de taxa da Rota Global no débito que não existe (herdado de uma pergunta mal rotulada no Slack), a duplicata `PC-0926-0162` atribuída à EduAbroad (é da Bagagem Livre), 3 em vez de 6 operações de 30/09, 85 em vez de 84 lançamentos no Aurora, R$ 0,10 a menos na Casa do Estudante. Mostrou também que os schemas de saída não seguiam a instrução oficial (faltavam `id_saida`, `ref_origem` e o `rastro.csv`).
-* **O que nós fizemos com isso:** Corrigimos os documentos (commit `0beccf8`) e mudamos o método: o número passa a nascer do pipeline, e os valores conferidos viraram testes de aceite em `tests/`, para que nenhum documento volte a ser a fonte da verdade.
-
----
-
-## Momento 4 — Menos ferramenta, mais foco: recusamos o Graphify e isolamos o contexto da IA (Decisão Humana)
-
-* **O que pedimos:** No Antigravity, em 16/10 às 21h32, pedimos uma avaliação da skill Graphify (grafo do código para o Claude Code) e, logo depois, que a IA dissesse se os 5 dossiês de pesquisa sobre a Barte (mais de 40 mil tokens) iriam atrapalhar a construção.
-* **O que a IA devolveu:** Explicou que o Graphify só compensa em repositórios grandes e legados, e que os dossiês (Tap-to-Pay, Buser, cultura) poluiriam o contexto do Claude Code com assuntos fora do case.
-* **O que nós fizemos com isso:** Decidimos não usar o Graphify ("então não vamos usar") e isolar os dossiês: backup na branch `backup-dossies-barte`, pasta `_referencias_internas/` ignorada pelo git e pelo Claude (`.gitignore` e `.claudeignore`), e um `CLAUDE.md` só com as regras da Tarvo (commit `7d06117`). Transcript: `PROMPTS/sessoes/*_antigravity_*`.
-
-> **Candidato reserva:** a revisão adversarial feita na branch `pix`, que questionou 7 premissas (P15–P21) e manteve cada uma com o número alternativo calculado. Pode substituir um dos momentos acima quando o transcript dessa sessão estiver em `PROMPTS/sessoes/`.
+**Reserva:** a duplicata `PC-0926-0162` provada pelo extrato do Meridiano e a revisão adversarial que questionou 7 premissas (P15–P21) aconteceram nas sessões do autor da `pix`. Entram no lugar de um dos momentos acima quando esses transcripts estiverem em `sessoes/`.
