@@ -55,6 +55,32 @@ Pela regra do CLAUDE.md, só entra no código regra de negócio que esteja aqui.
   - **Motivo:** a taxa aplicada é diferente da contratada (R15), e R12 manda contestar. A Fonte 1 faz o mesmo (ver F1-H08).
 - **P03 — Truncamento da Orbe:** a Orbe trunca valor_taxa no centavo (verificado: as 1943 linhas batem com ROUND_DOWN, e 1001 não batem com ROUND_HALF_UP). Por isso a divergência compara taxa aplicada × contratada, nunca valores (R02).
 
+**Remessa (remessa.py)**
+
+- **P04 — CNPJ da Ponte fora da planilha de taxas:** a comissão é calculada mesmo assim (50% do spread realizado, R11) e entra na nota; o CNPJ vira pendência LOJISTA_NAO_CADASTRADO (cadastrar o lojista). Não gera divergência.
+  - **Motivo:** a Ponte paga a participação pelo realizado, com ou sem cadastro nosso (R11, R16). Sem spread contratado, não há com que comparar a taxa aplicada (R15).
+- **P05 — Spread negativo de CNPJ fora da planilha:** é erro e para o fechamento.
+  - **Motivo:** R12 manda contestar e P02 registra a divergência contra o contratado, que nesse caso não existe. Sem regra para o valor da contestação, preferimos parar a inventar um.
+
+**Extratos (bancos.py)**
+
+- **P06 — Devolução de PIX ao Aurora:** contrapartida 2.1.01.001 (Repasses a lojistas a pagar), confiança 0,80, e pendência DEVOLUCAO_PIX com o valor, para apurar o motivo.
+  - **Motivo:** R20 diz só "repasse que voltou, motivo desconhecido". Se o repasse voltou, ele volta a ser devido ao lojista; a conta é premissa nossa (a mesma da Fonte 1, F1-H10), por isso a confiança menor.
+- **P07 — Favorecidos de "PIX ENVIADO" (Aurora):** só é repasse a lojista (2.1.01.001) o favorecido que estiver em config/favorecidos.yaml, com o texto exato do extrato e o CNPJ da aba vigente escrito à mão. A Atlas Idiomas, sem CNPJ na aba vigente, entra pelo EC 1076801732 e marcada "sem contrato" (R08).
+  - Nunca casamento por nome aproximado: favorecido fora da lista não casa a regra e vira lançamento sem regra (P09). "HORIZONTE VIAGENS E TURISM" e "NOVO HORIZONTE INTERCAMBIO" são empresas diferentes (R07).
+  - **Motivo:** pelo CLAUDE.md o nome é só evidência. A lista explícita deixa cada par revisável; a carga falha se o CNPJ não estiver na planilha.
+- **P08 — Pagadores de "PIX RECEB" (Meridiano):** mesmo método de P07, em config/pagadores_meridiano.yaml (texto exato do MEMO → CNPJ). Pagador fora da lista não casa a regra e fica sem regra (P09). O mesmo pagador pode ter mais de uma grafia no MEMO (ex.: "PONTE AÉREA" e "PONTE AEREA"); cada grafia é um par escrito à mão.
+  - **Motivo:** o CNPJ do pagador é a chave da conferência PIX × remessas (P12); sem CNPJ não há conferência.
+- **P09 — Lançamento sem regra:** entra em lancamentos_classificados.csv sem classificação definitiva: conta_codigo "A_CLASSIFICAR", metodo HUMANO, confiança 0,00, e pendência PEN-SEMREGRA-<ref> com o valor do lançamento. Vale para crédito e débito.
+  - **Motivo:** não lançar crédito desconhecido em 1.1.09.002 por regra: R20 cobre um caso conhecido (PIX sem identificação), não qualquer linha que as regras não reconhecem, e para débito não há conta transitória no plano. "A_CLASSIFICAR" não é conta do plano de propósito, para o lançamento não ser importado como definitivo. Esses lançamentos são a entrada do fallback com IA.
+- **P10 — Confiança:** 1,00 para regra confirmada pela Helena (R19 a R21); 0,80 para regra que é premissa nossa: devolução de PIX (P06) e PIX identificado como recurso sem remessa (P12, conta 2.1.02.001 da Fonte 1, F1-H10).
+- **P11 — Ponte × Meridiano (TED de liquidação):** para cada data, a soma das TEDs "LIQ OPERACOES" (com sinal) + a soma de valor_brl + iof_brl das operações únicas da Ponte (R13) contratadas nessa data tem que ser zero. Só entram as datas do período do extrato (DTSTART a DTEND). Diferença vira PEN-TED-LIQ-<data>, valor = operações − TEDs pagas.
+- **P12 — PIX recebidos × remessas, por cliente (CNPJ):** a soma dos PIX do mês tem que ser igual à soma de valor_brl + iof_brl das operações únicas do mês (competência pela data de contratação, R11). Se sobrar diferença e houver exatamente UM PIX do cliente com valor igual a ela, ele vira PEN-PIX-SEMREM-<FITID> (RECURSO_SEM_REMESSA). Senão, a pendência fica no nível do cliente, PEN-PIX-REM-<CNPJ>, valor = PIX − operações.
+- **P13 — Aurora × Meridiano (transferência entre contas):** cada "TRANSF ENTRE CONTAS" do Aurora casa com uma TED "MESMA TITULARIDADE" do Meridiano de mesmo valor, na mesma data ou no dia útil seguinte (segunda a sexta, sem calendário de feriados); cada TED casa uma vez.
+  - Sem par e com o dia útil seguinte depois do fim do extrato do Meridiano: PEN-TRANSF-<ref>, TRANSFERENCIA_EM_TRANSITO, valor positivo em trânsito (R20: cai no Meridiano no dia útil seguinte; conferir no extrato do mês seguinte).
+  - Sem par dentro do período do extrato: PEN-TRANSF-<ref>, TRANSFERENCIA_SEM_PAR.
+  - **Motivo:** R20 descreve a transferência do fim do mês que sai do Aurora e cai no Meridiano no dia seguinte. Uma transferência do meio do mês sem par não está em trânsito, é outra coisa, e o tipo diferente evita esconder isso.
+
 ### 2.2 Premissas e achados do HIPOTESES.md do colega (Fonte 1)
 
 O conteúdo da Fonte 1 está reproduzido abaixo. Onde ela contradizia a Helena, o trecho foi ajustado à regra dela, e a versão original ficou registrada em "Conflitos resolvidos" na seção 4. Onde ela diz "confirmado pelo financeiro", a confirmação corresponde às respostas públicas da seção 1, e a regra correspondente está indicada. Os valores numéricos foram calculados pelo colega e **ainda não foram reconferidos pelo nosso código**.

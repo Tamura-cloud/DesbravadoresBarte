@@ -5,6 +5,7 @@ from pathlib import Path
 
 import pytest
 
+from tarvo.bancos import bancos
 from tarvo.checkout import checkout
 from tarvo.fechamento import MODULOS, Entradas, fechar
 from tarvo.remessa import remessa
@@ -29,7 +30,7 @@ def test_grava_direto_na_pasta_de_saida_sem_subpasta_da_competencia(tmp_path):
 
 
 def test_modulos_registrados():
-    assert MODULOS == [checkout, remessa]
+    assert MODULOS == [checkout, remessa, bancos]
 
 
 def test_modulo_recebe_entradas_e_seus_itens_sao_gravados(tmp_path):

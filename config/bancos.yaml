@@ -1,0 +1,169 @@
+# Classificação dos extratos bancários. Cada regra cita a regra de origem no HIPOTESES.md (fonte).
+#
+# Por banco, lista ORDENADA: a primeira regra que casar vence (as específicas vêm antes das genéricas).
+#   padrao:       regex (Python, re.search) sobre o texto do extrato como veio (descrição do Aurora, MEMO do OFX)
+#   sentido:      C (crédito, valor > 0) ou D (débito, valor < 0); a regra só casa no sentido indicado
+#   conta_codigo: contrapartida do movimento no banco (R19); precisa existir no plano e aceitar lançamento
+#   confianca:    1.00 = regra confirmada pela Helena; 0.80 = premissa nossa
+#   lista:        a regra só casa se o grupo (?P<contraparte>...) estiver nessa lista explícita (P07, P08)
+#   papel:        uso do lançamento nas conferências cruzadas e pendências de bancos.py
+# Códigos de conta sempre entre aspas (texto).
+
+regras:
+  AURORA:
+    - padrao: '^TED RECEBIDA .*ORBE ADQUIRENCIA'
+      sentido: C
+      conta_codigo: "1.1.03.001"   # Recebíveis de adquirente - Orbe
+      confianca: "1.00"
+      fonte: R21
+    - padrao: '^PIX ENVIADO CONTABILIDADE'
+      sentido: D
+      conta_codigo: "4.2.06"       # Serviços contábeis e jurídicos (não provisionado)
+      confianca: "1.00"
+      fonte: R19
+    - padrao: '^PIX ENVIADO (?P<contraparte>.+)$'
+      sentido: D
+      lista: favorecidos           # favorecido fora de config/favorecidos.yaml não é repasse
+      conta_codigo: "2.1.01.001"   # Repasses a lojistas a pagar
+      confianca: "1.00"
+      fonte: R19
+    - padrao: '^TRANSF ENTRE CONTAS P/ BCO MERIDIANO'
+      sentido: D
+      conta_codigo: "1.1.09.001"   # Transferências entre contas próprias
+      confianca: "1.00"
+      fonte: R20
+      papel: transferencia_enviada
+    - padrao: '^TAR '
+      sentido: D
+      conta_codigo: "4.2.01"       # Tarifas bancárias
+      confianca: "1.00"
+      fonte: R19
+    - padrao: '^PAGTO SALARIOS - FOLHA'
+      sentido: D
+      conta_codigo: "2.1.04.001"   # Salários a pagar (provisionado no mês anterior)
+      confianca: "1.00"
+      fonte: R19
+    - padrao: '^GPS INSS'
+      sentido: D
+      conta_codigo: "2.1.04.002"   # INSS a recolher
+      confianca: "1.00"
+      fonte: R19
+    - padrao: '^GRF FGTS'
+      sentido: D
+      conta_codigo: "2.1.04.003"   # FGTS a recolher
+      confianca: "1.00"
+      fonte: R19
+    - padrao: '^PAGTO ISS'
+      sentido: D
+      conta_codigo: "2.1.03.003"   # ISS a recolher
+      confianca: "1.00"
+      fonte: R19
+    - padrao: 'DARF 0561'
+      sentido: D
+      conta_codigo: "2.1.03.004"   # IRRF a recolher
+      confianca: "1.00"
+      fonte: R19
+    - padrao: 'DARF 8109'
+      sentido: D
+      conta_codigo: "2.1.03.001"   # PIS a recolher
+      confianca: "1.00"
+      fonte: R19
+    - padrao: 'DARF 2172'
+      sentido: D
+      conta_codigo: "2.1.03.002"   # COFINS a recolher
+      confianca: "1.00"
+      fonte: R19
+    - padrao: 'CONDOMINIO'
+      sentido: D
+      conta_codigo: "4.2.02"       # Aluguel e condomínio
+      confianca: "1.00"
+      fonte: R19
+    - padrao: 'AMAZON WEB SERVICES'
+      sentido: D
+      conta_codigo: "4.2.03"       # Cloud e infraestrutura
+      confianca: "1.00"
+      fonte: R19
+    - padrao: 'GOOGLE WORKSPACE'
+      sentido: D
+      conta_codigo: "4.2.04"       # Softwares e assinaturas
+      confianca: "1.00"
+      fonte: R19
+    - padrao: '^PIX RECEBIDO .*SEM IDENTIFICACAO'
+      sentido: C
+      conta_codigo: "1.1.09.002"   # Créditos não identificados: não é receita até identificar
+      confianca: "1.00"
+      fonte: R20
+      papel: credito_nao_identificado
+    - padrao: '^DEVOLUCAO PIX - '
+      sentido: C
+      conta_codigo: "2.1.01.001"   # o repasse volta a ser devido (premissa nossa)
+      confianca: "0.80"
+      fonte: P06
+      papel: devolucao_pix
+
+  MERIDIANO:
+    - padrao: '^PIX RECEB (?P<contraparte>.+)$'
+      sentido: C
+      lista: pagadores             # pagador fora de config/pagadores_meridiano.yaml fica sem regra
+      conta_codigo: "2.1.02.001"   # Recursos de lojistas para remessas a liquidar
+      confianca: "1.00"
+      fonte: R19
+      papel: pix_cliente
+    - padrao: '^TED ENVIADA PONTE CAMBIO .*LIQ OPERACOES'
+      sentido: D
+      conta_codigo: "2.1.02.001"
+      confianca: "1.00"
+      fonte: R19
+      papel: ted_liquidacao
+    - padrao: '^TED RECEBIDA .*MESMA TITULARIDADE'
+      sentido: C
+      conta_codigo: "1.1.09.001"   # Transferências entre contas próprias
+      confianca: "1.00"
+      fonte: R20
+      papel: transferencia_recebida
+    - padrao: '^TED RECEB PONTE .*REPASSE COMISSAO'
+      sentido: C
+      conta_codigo: "1.1.03.002"   # comissão do mês anterior já registrada como recebível
+      confianca: "1.00"
+      fonte: R19
+    - padrao: '^APLICACAO AUTOMATICA'
+      sentido: D
+      conta_codigo: "1.1.02.001"   # Aplicação automática Meridiano
+      confianca: "1.00"
+      fonte: R19
+    - padrao: '^RESGATE AUTOMATICO CDB'
+      sentido: C
+      conta_codigo: "1.1.02.001"
+      confianca: "1.00"
+      fonte: R19
+    - padrao: '^RENDIMENTO APLIC'
+      sentido: C
+      conta_codigo: "3.2.01"       # Rendimentos de aplicações
+      confianca: "1.00"
+      fonte: R19
+    - padrao: '^IOF'
+      sentido: D
+      conta_codigo: "4.3.01"       # IOF (não provisionado)
+      confianca: "1.00"
+      fonte: R19
+    - padrao: 'SEGURO EMPRESARIAL'
+      sentido: D
+      conta_codigo: "4.2.05"       # Seguros (não provisionado)
+      confianca: "1.00"
+      fonte: R19
+    - padrao: '^TARIFA'
+      sentido: D
+      conta_codigo: "4.2.01"       # Tarifas bancárias (não provisionado)
+      confianca: "1.00"
+      fonte: R19
+
+# P10: PIX de cliente identificado como recurso sem remessa: mesma conta, confiança de premissa.
+confianca_pix_sem_remessa: "0.80"
+
+# P09: lançamento que nenhuma regra cobre fica sem classificação definitiva (metodo HUMANO) + pendência.
+sem_regra:
+  conta_codigo: "A_CLASSIFICAR"
+  confianca: "0.00"
+
+# Quem decide as pendências bancárias (R20 e conferências cruzadas).
+quem_decide: "Financeiro (Helena)"

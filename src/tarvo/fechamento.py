@@ -9,6 +9,7 @@ from typing import Callable, Iterable
 
 import pandas as pd
 
+from tarvo.bancos import bancos
 from tarvo.checkout import checkout
 from tarvo.cli import CONFIG_PADRAO, carregar_padroes, localizar_arquivos
 from tarvo.leitores.aurora import ler_aurora
@@ -43,7 +44,7 @@ class Entradas:
 Modulo = Callable[[Entradas], Iterable[ItemSaida]]
 
 # Módulos que geram itens de saída. Cada um recebe as Entradas e devolve ItemSaida.
-MODULOS: list[Modulo] = [checkout, remessa]
+MODULOS: list[Modulo] = [checkout, remessa, bancos]
 
 
 class ErroFechamento(Exception):

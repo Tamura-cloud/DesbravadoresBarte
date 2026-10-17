@@ -1,0 +1,22 @@
+# P08: pagadores de "PIX RECEB" do Meridiano (recursos de lojistas para remessa -> 2.1.02.001).
+# Chave = texto EXATO do MEMO do OFX depois de "PIX RECEB " (o banco corta o nome no tamanho do campo).
+# Valor = CNPJ da linha do lojista na aba vigente da planilha de taxas, escrito à mão.
+# Nunca casamento aproximado: pagador que não estiver aqui fica sem regra e vira pendência HUMANO.
+
+pagadores:
+  "LISBOA CURSOS E VIAGENS":   {cnpj: "61720397000180"}  # Lisboa Cursos e Viagens Ltda
+  "MUNDO ABERTO INTERCÂMBIO":  {cnpj: "17217888000111"}  # Mundo Aberto
+  "NORDICA EDUCACAO INTERNA":  {cnpj: "14760206000124"}  # Nórdica Educação Internacional Ltda
+  "DUBLIN HUB INTERCÂMBIO L":  {cnpj: "68567965000102"}  # Dublin Hub Intercâmbio Ltda
+  "CASA DO ESTUDANTE VIAGEN":  {cnpj: "00520815000100"}  # Casa do Estudante Viagens Ltda
+  "EDU ABROAD CONSULTORIA L":  {cnpj: "16181276000153"}  # EduAbroad
+  "ROTA GLOBAL INTERCÂMBIO":   {cnpj: "95927868000148"}  # Rota Global Intercâmbio Ltda
+  "KIWI EXPERIENCE TURISMO":   {cnpj: "07752116000126"}  # Kiwi Experience
+  "CANGURU INTERCÂMBIOS LTD":  {cnpj: "53857560000123"}  # Canguru
+  "NOVO HORIZONTE INTERCÂMB":  {cnpj: "66564512000199"}  # Novo Horizonte Intercambio
+  "MAPLE STUDY ASSESSORIA E":  {cnpj: "34671260000100"}  # Maple Study Assessoria Educacional Ltda
+  "PONTE AÉREA ESTUDANTIL L":  {cnpj: "95739378000118"}  # Ponte Aérea Estudantil Ltda
+  # Mesmo pagador grafado sem acento num dos MEMOs; par escrito à mão, não por aproximação.
+  "PONTE AEREA ESTUDANTIL L":  {cnpj: "95739378000118"}  # Ponte Aérea Estudantil Ltda
+  "BAGAGEM LIVRE TURISMO LT":  {cnpj: "50900987000179"}  # Bagagem Livre Turismo Ltda
+  "BEM-VINDO EXCHANGE LTDA":   {cnpj: "67869675000142"}  # Bem-Vindo Exchange Ltda
