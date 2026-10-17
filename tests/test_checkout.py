@@ -83,8 +83,8 @@ def taxas():
     ], leitor_taxas.COLUNAS_SAIDA)
 
 
-def _rodar(linhas_orbe, taxas, cfg):
-    return calcular_checkout(_df(linhas_orbe, leitor_orbe.COLUNAS_SAIDA), taxas, "2031-03", cfg)
+def _rodar(linhas_orbe, taxas, cfg, competencia="2031-03"):
+    return calcular_checkout(_df(linhas_orbe, leitor_orbe.COLUNAS_SAIDA), taxas, competencia, cfg)
 
 
 def test_lojista_casado_pelo_ec_e_nome_vem_da_planilha(taxas, cfg):
@@ -210,7 +210,8 @@ def test_devolucao_sem_condicao_continua_pela_formula_da_r03(taxas, cfg):
     itens = _rodar([_orbe("T1", EC_B, "1000.55", "2.00")], taxas, cfg)
     devol = _por_prefixo(itens, "PEN-DEVOL-")[f"PEN-DEVOL-CHK-{CNPJ_B}"]
     assert devol.valor_reportado == D("10.01")
-    assert devol.campos["motivo"].endswith("(R03)")
+    assert devol.campos["motivo"].endswith("(R03, R25)")
+    assert "a devolver ao lojista" in devol.campos["motivo"]  # R25
 
 
 def test_devolucao_com_e_sem_condicao_no_mesmo_lojista_para(taxas, cfg):
@@ -262,6 +263,22 @@ def test_ec_sem_contrato_so_gera_uma_pendencia_pelo_valor_da_orbe(taxas, cfg):
     assert pen.campos["tipo"] == "LOJISTA_SEM_CONTRATO" and pen.campos["quem_decide"] == "Comercial"
     assert "R08" in pen.campos["motivo"]
     assert [o.ref_origem for o in pen.origens] == ["X1", "X2"]
+
+
+def test_ec_com_faturamento_retroativo_cita_qtd_bruto_data_e_competencia_seguinte(taxas, cfg):
+    # R30: só o texto muda; continua uma pendência pelo valor da Orbe, sem comissão, divergência ou nota
+    cfg = replace(cfg, faturamento_retroativo={EC_DESCONHECIDO: "RX"})
+    itens = _rodar([
+        _orbe("X1", EC_DESCONHECIDO, "100.00", "2.00", dia=date(2031, 12, 12)),
+        _orbe("X2", EC_DESCONHECIDO, "333.33", "3.00", dia=date(2031, 12, 10)),
+    ], taxas, cfg, competencia="2031-12")
+    assert [i.id_saida for i in itens] == [f"PEN-SEMCONTRATO-{EC_DESCONHECIDO}"]
+    pen = itens[0]
+    assert pen.valor_reportado == D("11.99")
+    motivo = pen.campos["motivo"]
+    assert "R08" in motivo and "(RX)" in motivo
+    assert "2 transações do mês (R$ 433.33 brutos)" in motivo
+    assert "competência 2032-01" in motivo and "retroativa a 2031-12-10" in motivo
 
 
 def test_ec_sem_codigo_com_cnpj_fora_da_planilha_gera_erro(taxas, cfg):
@@ -338,6 +355,16 @@ def test_set_divergencias(itens):
     }
 
 
+def test_set_nenhuma_divergencia_com_taxa_aplicada_abaixo_da_contratada(entradas):
+    # auditoria R25: a Orbe nunca cobrou menos que o contratado; as 5 diferenças negativas são estornos
+    # devolvidos pela taxa cobrada (acima da contratada), que reduzem o que se devolve ao lojista
+    linhas = [l for l in calcular_linhas(entradas.orbe, entradas.taxas, carregar_config()) if l.divergente]
+    assert not [l for l in linhas if l.taxa_aplicada < l.taxa_contratada]
+    negativas = [l for l in linhas if l.diferenca < 0]
+    assert {l.tipo_lancamento for l in negativas} == {"ESTORNO"}
+    assert (len(negativas), sum(l.diferenca for l in negativas)) == (5, D("-107.53"))
+
+
 def test_set_atlas_sem_contrato(itens):
     pen = _por_prefixo(itens, "PEN-SEMCONTRATO-")
     assert set(pen) == {f"PEN-SEMCONTRATO-{EC_ATLAS}"}
@@ -345,6 +372,10 @@ def test_set_atlas_sem_contrato(itens):
     assert len(atlas.origens) == 57
     assert atlas.valor_reportado == D("7876.05")
     assert atlas.campos["tipo"] == "LOJISTA_SEM_CONTRATO" and atlas.campos["quem_decide"] == "Comercial"
+    # R30: 57 transações, R$ 262.138,61 brutos, faturadas em outubro, retroativas à primeira (10/09)
+    assert ("as 57 transações do mês (R$ 262138.61 brutos) são faturadas na competência 2026-10, "
+            "com a taxa retroativa a 2026-09-10") in atlas.campos["motivo"]
+    assert "(R30)" in atlas.campos["motivo"]
     # sem comissão, divergência ou nota para os CNPJs que não vieram de contrato
     refs_atlas = {o.ref_origem for o in atlas.origens}
     assert not any(o.ref_origem in refs_atlas for i in itens if not i.id_saida.startswith("PEN-SEMCONTRATO-")

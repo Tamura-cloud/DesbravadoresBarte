@@ -1,6 +1,6 @@
 """Linha CHECKOUT (Orbe): comissão pela taxa contratada, divergências, notas e pendências por lojista.
 
-Regras do HIPOTESES.md, seção 1: R01 a R10. Mapeamentos e condições especiais em config/checkout.yaml.
+Regras do HIPOTESES.md, seção 1: R01 a R10, R25 e R30. Mapeamentos e condições especiais em config/checkout.yaml.
 O lojista é casado só pelo EC (coluna "EC Orbe" da planilha ou ec_sem_codigo da config) e depois pelo CNPJ;
 o nome da Orbe nunca é usado.
 """
@@ -8,7 +8,7 @@ o nome da Orbe nunca é usado.
 from __future__ import annotations
 
 from collections import defaultdict
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date
 from decimal import Decimal
 from pathlib import Path
@@ -32,8 +32,14 @@ MOTIVO_SEM_CONTRATO = (
     "EC sem taxa contratada na aba vigente nem em ec_sem_codigo: não faturar até o comercial confirmar (R08) - "
     "valor = taxa cobrada pela Orbe"
 )
+MOTIVO_RETROATIVO = (
+    "EC sem contrato vigente: não faturar até o Comercial confirmar (R08) - quando o Comercial confirmar, "
+    "as {qtd} transações do mês (R$ {bruto} brutos) são faturadas na competência {seguinte}, com a taxa "
+    "retroativa a {primeira}, data da primeira transação ({regra}) - valor = taxa cobrada pela Orbe"
+)
 MOTIVO_DEVOLUCAO = (
-    "taxa aplicada pela Orbe diferente da contratada - devolução ao lojista e cobrança da Orbe decididas caso a caso (R03)"
+    "taxa aplicada pela Orbe diferente da contratada - a nota documenta só a taxa contratada e o que a Orbe "
+    "cobrou a mais é valor a devolver ao lojista - valor = diferença pela taxa contratada (R03, R25)"
 )
 MOTIVO_DEVOLUCAO_CONDICAO = (
     "tarifa de checkout zerada por condição especial vigente ({regra}) - devolução já decidida pelo financeiro: "
@@ -69,6 +75,7 @@ class ConfigCheckout:
     faixas_parcelado: tuple[tuple[int, int, str], ...]
     discriminacao_nota: str
     quem_decide: dict[str, str]
+    faturamento_retroativo: dict[str, str] = field(default_factory=dict)  # EC -> regra (R30)
 
 
 def _data_cfg(v, campo: str) -> date:
@@ -111,6 +118,8 @@ def carregar_config(caminho=CONFIG_CHECKOUT) -> ConfigCheckout:
         faixas_parcelado=tuple((int(f["de"]), int(f["ate"]), f["taxa"]) for f in parcelado["faixas"]),
         discriminacao_nota=_str_cfg(bruto["discriminacao_nota"], "discriminacao_nota"),
         quem_decide=dict(bruto["quem_decide"]),
+        faturamento_retroativo={_str_cfg(ec, "faturamento_retroativo"): _str_cfg(r, "faturamento_retroativo")
+                                for ec, r in (bruto.get("faturamento_retroativo") or {}).items()},
     )
 
 
@@ -233,6 +242,12 @@ def _soma(valores) -> Decimal:
     return sum(valores, ZERO)
 
 
+def _competencia_seguinte(competencia: str) -> str:
+    """AAAA-MM do mês seguinte."""
+    ano, mes = (int(p) for p in competencia.split("-"))
+    return f"{ano + mes // 12:04d}-{mes % 12 + 1:02d}"
+
+
 def _pendencia_devolucao(cnpj: str, divergentes: list[LinhaCheckout], cfg: ConfigCheckout) -> ItemSaida:
     """R03: valor = diferença pela fórmula. R10: com a condição especial vigente, a devolução já está decidida
     e o valor é a taxa que a Orbe efetivamente cobrou, linha a linha. A divergência continua pela R03."""
@@ -294,9 +309,15 @@ def gerar_itens(linhas: list[LinhaCheckout], contratos_nome, competencia: str, c
 
     for ec in sorted(sem_contrato):  # R08: uma pendência por EC, nada de comissão, divergência ou nota
         doc = sem_contrato[ec]
+        motivo = MOTIVO_SEM_CONTRATO
+        if ec in cfg.faturamento_retroativo:  # R30
+            motivo = MOTIVO_RETROATIVO.format(
+                qtd=len(doc), bruto=_soma(l.valor_bruto for l in doc),
+                primeira=min(l.data_referencia for l in doc).isoformat(),
+                seguinte=_competencia_seguinte(competencia), regra=cfg.faturamento_retroativo[ec])
         itens.append(ItemSaida(f"PEN-SEMCONTRATO-{ec}", PENDENCIAS.nome,
                                {"tipo": "LOJISTA_SEM_CONTRATO", "ref_origem": [l.ref_origem for l in doc],
-                                "motivo": texto_saida(MOTIVO_SEM_CONTRATO), "quem_decide": cfg.quem_decide["lojista_sem_contrato"]},
+                                "motivo": texto_saida(motivo), "quem_decide": cfg.quem_decide["lojista_sem_contrato"]},
                                _soma(l.valor_taxa_orbe for l in doc),
                                [(l.arquivo_origem, l.ref_origem, l.valor_taxa_orbe) for l in doc]))
     return itens

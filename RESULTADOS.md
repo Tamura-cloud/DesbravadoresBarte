@@ -3,21 +3,30 @@
 | | |
 |---|---|
 | Data | 2026-10-17 |
-| Commit do código | branch `regras-helena`, commit da R23 (sobre `db29cf0`, o da R22). Em relação a `db29cf0`, a R23 tirou 4 linhas de divergencias_taxa.csv e as 4 linhas de rastro delas (ver abaixo); comissões, notas, lançamentos e pendências estão idênticos byte a byte |
+| Commit do código | branch `regras-helena-2`, commit das R25 a R30 (sobre `292a3eb`, o da R23). Em relação a `292a3eb`, os 6 CSVs têm as mesmas linhas e os mesmos totais; comissões, divergências, notas, lançamentos e rastro estão idênticos byte a byte. Só mudaram 4 textos de motivo em pendencias.csv (ver abaixo) |
 | Fechamento | `python -m tarvo fechar --competencia 2026-09 --entrada dados/2026-09 --saida saida/` (IA conforme `config/ia.yaml`; em setembro todo lançamento casa uma regra, então a IA não é chamada nenhuma vez, P14) |
 | Resumo | `python -m tarvo resumo --saida saida` |
-| pytest | **318 passed** (`python -m pytest -q`, 13,5 s) |
+| pytest | **323 passed** (`python -m pytest -q`, 14,9 s) |
 | `validar_saida(saida/)` | `[]`, **sem problemas** |
 | Rastro | 488 de 488 itens com soma do rastro por id_saida = valor reportado |
 
-**R23 (Helena, 17/10 às 9h48, citando a resposta à MN AI das 9h44):** divergência é quando o lojista pagou diferente do contrato; no spread negativo o lojista não pagou a mais, então é só pendência de contestação. Decidimos não listar os spreads negativos em divergencias_taxa.csv. Mudou em relação ao fechamento anterior (`db29cf0`):
-- divergencias_taxa.csv: saíram DIV-REM-PC-0926-0210, -0326, -0491 e -0545 (237 → 233 linhas; soma 14.826,52 → 18.392,50, ou seja, menos os -3.565,98 dos 4 negativos);
-- rastro.csv: saíram as 4 linhas de rastro dessas divergências (5.175 → 5.171);
-- pendencias.csv: sem mudança. As 4 PEN-NEG-REM continuam com os mesmos valores (P18).
+**R25 a R30 (Helena, 17/10, respostas a outros times às 9h47, 9h49, 9h53 e 10h44):** nenhum número mudou. Mudaram só 4 textos de motivo em pendencias.csv:
+- PEN-DEVOL-CHK-22224579000109 e PEN-DEVOL-CHK-95927868000148 (R25): o motivo dizia que a devolução era "decidida caso a caso (R03)"; agora diz que o que a Orbe cobrou a mais é valor a devolver ao lojista. A PEN-DEVOL da Casa do Estudante já dizia isso (R10).
+- PEN-CONTEST-REM-17217888000111 (R15, R27): o motivo diz que o valor cheio é o que o lojista pagou a mais e é a devolver, e que o ajuste vem no relatório da Ponte do mês seguinte.
+- PEN-SEMCONTRATO-1076801732 (R30): o motivo diz que as 57 transações (R$ 262.138,61 brutos) serão faturadas na competência 2026-10, com a taxa retroativa a 2026-09-10, quando o Comercial confirmar.
 
-Também às 9h48: a conta da devolução de PIX (2.1.01.001) foi validada (P16), e o provisionamento mensal de folha e impostos foi confirmado (R24). Nenhuma das duas muda a saída.
+Auditoria das regras novas contra este fechamento:
 
-A mudança anterior (R22, 9h45: o PIX de 18.240,00 da Ponte Aérea é adiantamento, não pendência) está no commit `db29cf0`.
+| regra | o que foi conferido | resultado |
+|---|---|---|
+| R25 | notas pela taxa contratada, sem somar divergência; nenhuma taxa aplicada abaixo da contratada (as 5 diferenças negativas são estornos, -107,53) | OK; texto da PEN-DEVOL-CHK corrigido |
+| R26 | os 44 repasses (PIX ENVIADO, Aurora) estão em 2.1.01.001 e saíram entre os dias 08 e 10 ou 22 e 24; o Meridiano não tem repasse a lojista | OK |
+| R27 | o relatório de setembro não tem linha de ajuste de agosto; um ajuste em outubro vira PEN-FORA-REM, sem comissão nem nota, com a referência da operação original (`test_ajuste_ponte.py`) | OK; texto da PEN-CONTEST-REM ajustado |
+| R28 | campo "Aprovado por" em R01 a R30; P01 a P23 aguardando aprovação | registrado no HIPOTESES.md |
+| R29 | o fechamento não gera o rascunho de e-mail por contraparte | **CONFLITO, não corrigido** (ver HIPOTESES.md, seção 4) |
+| R30 | 57 linhas no rastro da PEN-SEMCONTRATO-1076801732, primeira transação em 2026-09-10 | OK; texto corrigido |
+
+A mudança anterior (R23, 9h48: spread negativo só como contestação, fora das divergências) está no commit `292a3eb`.
 
 **Coluna "Esperado":** valor copiado de um assert dos testes, com o teste de origem (`arquivo::função`). Quando o número do relatório é a soma de dois asserts, a conta aparece na coluna. "—" quer dizer que nenhum teste fixa esse número.
 ✓ = bate com o esperado; ✗ = não bate.
@@ -187,6 +196,7 @@ As cinco são da Casa do Estudante: antecipações (AN) e vendas cobradas durant
 | DIV-CHK-TX88446647 | 95927868000148 | 2.9900 | 3.4900 | -11,23 | — | | |
 | DIV-CHK-TX88446763 | 00520815000100 | 0.0000 | 0.8900 | -9,09 | — | | |
 | DIV-CHK-TX88446585 | 95927868000148 | 2.4900 | 2.9900 | -5,13 | — | | |
+| **5 linhas, todas ESTORNO** | | | | **-107,53** | 5 · -107,53; nenhuma taxa aplicada abaixo da contratada | `test_checkout.py::test_set_nenhuma_divergencia_com_taxa_aplicada_abaixo_da_contratada` | ✓ |
 
 As 5 são estornos de checkout de vendas que já tinham sido cobradas acima do contratado: o estorno devolve a diferença, com sinal negativo. Os 4 spreads negativos da remessa, que estavam nesta lista, saíram pela R23.
 
@@ -275,13 +285,13 @@ Nenhum teste fixa os agregados por tipo ou por quem decide. As 15 pendências es
 | PEN-DEVOL-CHK-00520815000100 | DEVOLUCAO_LOJISTA | 118 | 15.396,77 | Financeiro (Helena) | 118 · 15.396,77 | `test_checkout.py::test_set_divergencias` | ✓ |
 | PEN-DEVOL-CHK-22224579000109 | DEVOLUCAO_LOJISTA | 5 | 29,95 | Financeiro (Helena) | 5 · 29,95 | `test_checkout.py::test_set_divergencias` | ✓ |
 | PEN-DEVOL-CHK-95927868000148 | DEVOLUCAO_LOJISTA | 87 | 1.546,28 | Financeiro (Helena) | 87 · 1.546,28 | `test_checkout.py::test_set_divergencias` | ✓ |
-| PEN-SEMCONTRATO-1076801732 | LOJISTA_SEM_CONTRATO | 57 | 7.876,05 | Comercial | 57 · 7.876,05 · LOJISTA_SEM_CONTRATO · Comercial | `test_checkout.py::test_set_atlas_sem_contrato` | ✓ |
+| PEN-SEMCONTRATO-1076801732 | LOJISTA_SEM_CONTRATO | 57 | 7.876,05 | Comercial | 57 · 7.876,05 · LOJISTA_SEM_CONTRATO · Comercial; motivo com 57 transações, 262138.61 brutos, competência 2026-10 e retroativa a 2026-09-10 (R30) | `test_checkout.py::test_set_atlas_sem_contrato` | ✓ |
 | PEN-CONTEST-REM-17217888000111 | CONTESTACAO_PONTE | 23 | 1.418,85 | Financeiro (Helena) | 23 refs · 1.418,85 | `test_remessa.py::test_set_pendencias` | ✓ |
 | PEN-NEG-REM-PC-0926-0326 | CONTESTACAO_PONTE | 1 | -1.001,30 | Financeiro (Helena) | -1.001,30 | `test_remessa.py::test_set_pendencias` | ✓ |
 | PEN-NEG-REM-PC-0926-0545 | CONTESTACAO_PONTE | 1 | -637,91 | Financeiro (Helena) | -637,91 | `test_remessa.py::test_set_pendencias` | ✓ |
 | PEN-NEG-REM-PC-0926-0491 | CONTESTACAO_PONTE | 1 | -574,90 | Financeiro (Helena) | -574,90 | `test_remessa.py::test_set_pendencias` | ✓ |
 | PEN-NEG-REM-PC-0926-0210 | CONTESTACAO_PONTE | 1 | -1.351,87 | Financeiro (Helena) | -1.351,87 | `test_remessa.py::test_set_pendencias` | ✓ |
-| PEN-DUP-REM-PC-0926-0162 | OPERACAO_DUPLICADA | 1 | 821,88 | Financeiro (Helena) | 821,88 | `test_remessa.py::test_set_pendencias` | ✓ |
+| PEN-DUP-REM-PC-0926-0162 | OPERACAO_DUPLICADA | 1 | 821,88 | Financeiro (Helena) | 821,88; a operação entra uma vez só na COM-REM e na NF-REM (410,94) | `test_remessa.py::test_set_pendencias`, `::test_set_pc_0926_0162_repetida_conta_uma_vez_e_vira_pendencia` | ✓ |
 | PEN-TED-PONTE | CONFERENCIA_REPASSE | 228 | 39.543,45 | Financeiro (Helena) | 228 refs · 39.543,45 = NF-REM | `test_remessa.py::test_set_pendencias` | ✓ |
 | PEN-NAOID-L50 | CREDITO_NAO_IDENTIFICADO | 1 | 7.350,00 | Financeiro (Helena) | 7.350,00 · Financeiro (Helena) | `test_bancos.py::test_setembro_pendencias_r20` | ✓ |
 | PEN-DEVOL-PIX-L65 | DEVOLUCAO_PIX | 1 | 12.400,00 | Financeiro (Helena) | 12.400,00 · Financeiro (Helena) | `test_bancos.py::test_setembro_pendencias_r20` | ✓ |
@@ -343,6 +353,7 @@ Os números mudam com o deslocamento das datas, como prevê `test_outubro.py`. N
 
 - **PEN-NF-CHK da Casa do Estudante: 0,00 em vez de -5,50.** O estorno TX88445133 era de venda de 21/08 (taxa de 1,49%). Em outubro a venda original cai em 21/09, dentro da tarifa zerada da R10. A comissão do estorno vira 0,00, e os -5,50 passam para a divergência e para a devolução (PEN-DEVOL-CHK: 119 refs, 15.391,27).
 - **Bridge: 13 divergências e devolução de 108,84, contra 5 e 29,95.** A Orbe cobrou 2,59% em 13 vendas de crédito à vista. Em setembro, 8 delas (de 01 a 13/09) estavam dentro do contrato antigo, que valia até 14/09. Em outubro todas caem depois de 15/09 e passam a valer a taxa renegociada de 2,19%, então as 13 viram divergência (`test_outubro.py::test_bridge_vendas_de_outubro_na_taxa_nova`).
+- **PEN-SEMCONTRATO-1076801732 (R30):** o motivo cita a competência 2026-11 e a data 2026-10-10, porque no pack simulado a Atlas começa em 10/10. O valor (7.876,05) não muda.
 - **PEN-TRANSF-L93:** a transferência do fim do mês passa a cair em 02/11, a conferir no extrato de novembro.
 
 ---

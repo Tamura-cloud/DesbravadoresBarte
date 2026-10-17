@@ -22,6 +22,11 @@ condicoes_especiais:
       taxa_pix: "0"
       taxa_antecipacao: "0"
 
+# R30: EC sem contrato vigente cuja taxa, quando o Comercial confirmar, vale desde a primeira transação;
+# o mês é faturado junto com o mês seguinte. EC -> regra. Continua sem comissão, nota e divergência (R08).
+faturamento_retroativo:
+  "1076801732": R30  # Atlas Idiomas
+
 # R01, R04, R05: coluna da planilha com a taxa contratada de cada lançamento.
 # tipos_lancamento vale antes da modalidade (antecipação e reversão não têm modalidade).
 taxa_por_tipo_lancamento:

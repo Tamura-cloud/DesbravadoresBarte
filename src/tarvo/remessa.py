@@ -1,6 +1,6 @@
 """Linha REMESSA (Ponte Câmbio): comissão sobre o spread realizado, divergências, nota única e pendências.
 
-Regras do HIPOTESES.md, seção 1: R11 a R18 e R23; premissas P01 e P18. Parâmetros em config/remessa.yaml.
+Regras do HIPOTESES.md, seção 1: R11 a R18, R23 e R27; premissas P01 e P18. Parâmetros em config/remessa.yaml.
 O lojista é casado só pelo CNPJ da Ponte com o CNPJ da planilha; o nome do cliente da Ponte nunca é usado
 para casar (só aparece como nome de exibição de CNPJ que não está na planilha).
 """
@@ -37,7 +37,9 @@ MOTIVO_NAO_CADASTRADO = (
     "sem spread contratado para conferir divergência - cadastrar o lojista"
 )
 MOTIVO_CONTESTACAO = (
-    "spread aplicado acima do contratado - a nota sai pelo realizado (R16) e o ajuste vem quando a Ponte devolver"
+    "spread aplicado acima do contratado - valor cheio que o lojista pagou a mais, a devolver ao lojista (R15) - "
+    "a nota sai pelo realizado (R16) e o ajuste vem no relatório da Ponte do mês seguinte, "
+    "registrado no mês em que aparecer (R27)"
 )
 MOTIVO_NEGATIVO = "spread negativo com trava D-1 vencida (R12) - fora da comissão"
 MOTIVO_NOTA_NAO_EMITIDA = "comissão de remessa do mês zero ou negativa: não emite nota (R17)"

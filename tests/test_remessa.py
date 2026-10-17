@@ -325,6 +325,20 @@ def test_set_pendencias(itens):
     assert not [p for p in pen if p.startswith(("PEN-FORA-", "PEN-NAOCAD-", "PEN-NF-"))]
 
 
+def test_set_pc_0926_0162_repetida_conta_uma_vez_e_vira_pendencia(entradas, itens):
+    # auditoria R13/R29: a cópia reprocessada não soma comissão de novo e fica para a correção com a Ponte
+    linhas = entradas.ponte[entradas.ponte["ref_origem"] == "PC-0926-0162"]
+    assert len(linhas) == 2 and list(linhas["observacao"]) == [None, "reprocessada"]
+    nf = _por_prefixo(itens, "NF-")[f"NF-REM-{PONTE}"]
+    com = _por_prefixo(itens, "COM-")[f"COM-REM-{linhas['cnpj'].iloc[0]}"]
+    for item in (nf, com):
+        assert [o.valor for o in item.origens if o.ref_origem == "PC-0926-0162"] == [D("410.94")]
+    dup = _por_prefixo(itens, "PEN-")["PEN-DUP-REM-PC-0926-0162"]
+    assert dup.campos["quem_decide"] == "Financeiro (Helena)"
+    assert [(o.ref_origem, o.valor) for o in dup.origens] == [("PC-0926-0162", D("821.88"))]
+    assert not [i for i in itens if i.id_saida.startswith("DIV-") and i.campos["ref_origem"] == "PC-0926-0162"]
+
+
 def test_set_rastro_e_validar_saida_com_checkout(entradas, itens, tmp_path):
     gravar_saida(tmp_path, [*checkout(entradas), *itens])
     assert validar_saida(tmp_path) == []
