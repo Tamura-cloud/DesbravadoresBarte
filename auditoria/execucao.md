@@ -4,13 +4,13 @@
 
 | campo | valor |
 |---|---|
-| data e hora | 2026-10-17T15:34:30-03:00 |
-| commit do código | 91af1fc (regras-helena-2) |
+| data e hora | 2026-10-17T15:39:27-03:00 |
+| commit do código | 873e0df (regras-helena-2) - com alterações não commitadas em src/ ou config/ |
 | competência | 2026-09 |
-| comando | `python -m tarvo fechar --competencia 2026-09 --entrada "dados\2026-09" --saida "saida"` |
-| pasta de entrada | D:\hackathon barte\repositorio\dados\2026-09 |
-| pasta de saída | D:\hackathon barte\repositorio\saida |
-| pasta dos rascunhos de contestação | D:\hackathon barte\repositorio\contestacoes |
+| comando | `python -m tarvo fechar --competencia 2026-09 --entrada "dados/2026-09" --saida "saida"` |
+| pasta de entrada | dados/2026-09 |
+| pasta de saída | saida |
+| pasta dos rascunhos de contestação | contestacoes |
 | status | **COMPLETO** |
 | código de saída | 0 |
 
@@ -60,5 +60,5 @@ Nenhuma.
 ## Como refazer qualquer número
 
 1. Confira o SHA-256 de cada arquivo de entrada (`certutil -hashfile <arquivo> SHA256` no Windows, `sha256sum <arquivo>` no Linux): igual ao da tabela, é o mesmo arquivo.
-2. Faça checkout do commit `91af1fc` e rode o comando acima.
+2. Faça checkout do commit `873e0df` e rode o comando acima.
 3. Cada número da saída tem as linhas de origem no rastro.csv (id_saida; arquivo_origem; ref_origem; valor; regra; detalhe): a soma de valor por id_saida é o número reportado, e a regra e o detalhe dizem a taxa, a isenção ou a venda original usada em cada linha (HIPOTESES.md).

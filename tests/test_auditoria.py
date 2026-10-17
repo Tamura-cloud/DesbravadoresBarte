@@ -5,6 +5,7 @@ Os valores de setembro (linhas lidas, totais) aparecem aqui só como referência
 import csv
 import hashlib
 import json
+import re
 import shutil
 from decimal import Decimal
 from pathlib import Path
@@ -138,3 +139,47 @@ def test_rastro_de_setembro_toda_linha_tem_regra(completo):
         rastro = list(csv.DictReader(f, delimiter=";"))
     assert [l for l in rastro if not l["regra"] or not l["detalhe"]] == []
     assert not [l for l in rastro if ";" in l["detalhe"]]
+
+
+# ---------------------------------------------------------------- nenhum caminho absoluto (o repositório é público)
+
+CAMINHO_ABSOLUTO = re.compile(r"[A-Za-z]:[\/]|(?<![\w.])/(?:Users|home|tmp|var|private)/")
+
+
+def _achados(texto: str) -> list[str]:
+    import getpass
+    achados = [m.group(0) for m in CAMINHO_ABSOLUTO.finditer(texto)]
+    usuario = getpass.getuser()
+    if usuario and usuario.lower() in texto.lower():
+        achados.append(f"nome de usuário {usuario!r}")
+    return achados
+
+
+def test_registro_sem_caminho_absoluto_nem_nome_de_usuario(completo):
+    raiz, _ = completo  # a execução do teste está fora do repositório (pasta temporária do usuário)
+    for nome in (ARQUIVO_JSON, ARQUIVO_MD):
+        texto = (raiz / "auditoria" / nome).read_text(encoding="utf-8")
+        assert _achados(texto) == [], nome
+    r = _json(raiz / "auditoria")
+    assert r["pasta_entrada"] == "<fora do repositório>/entrada" and r["pasta_saida"] == "<fora do repositório>/saida"
+    assert r["comando"] == ('python -m tarvo fechar --competencia 2026-09 --entrada "<fora do repositório>/entrada" '
+                            '--saida "<fora do repositório>/saida" --sem-ia')
+
+
+def test_erro_de_leitura_com_caminho_absoluto_e_limpo(tmp_path):
+    from tarvo.auditoria import RAIZ, sem_caminho_absoluto
+    BS = chr(92)
+    sujo = {"erro": f"não abriu {RAIZ}{BS}dados{BS}x.csv e {RAIZ.as_posix()}/dados/y.csv", "lista": [str(Path.home())]}
+    limpo = sem_caminho_absoluto(sujo)
+    assert limpo == {"erro": f"não abriu .{BS}dados{BS}x.csv e ./dados/y.csv", "lista": ["~"]}
+
+
+def test_registro_versionado_no_repositorio_sem_caminho_absoluto():
+    pasta = RAIZ / "auditoria"
+    if not (pasta / ARQUIVO_JSON).is_file():
+        pytest.skip("auditoria/ ainda não foi gerada")
+    for nome in (ARQUIVO_JSON, ARQUIVO_MD):
+        assert _achados((pasta / nome).read_text(encoding="utf-8")) == [], nome
+    r = _json(pasta)
+    assert r["pasta_entrada"] == "dados/2026-09" and r["pasta_saida"] == "saida"
+    assert r["pasta_contestacoes"] == "contestacoes"

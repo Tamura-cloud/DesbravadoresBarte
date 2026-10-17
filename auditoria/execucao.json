@@ -1,25 +1,15 @@
 {
-  "data_hora": "2026-10-17T15:34:30-03:00",
+  "data_hora": "2026-10-17T15:39:27-03:00",
   "codigo": {
-    "commit": "91af1fc",
+    "commit": "873e0df",
     "branch": "regras-helena-2",
-    "alteracoes_locais_em_src_config": false
+    "alteracoes_locais_em_src_config": true
   },
   "competencia": "2026-09",
-  "comando": "python -m tarvo fechar --competencia 2026-09 --entrada \"dados\\2026-09\" --saida \"saida\"",
-  "argv": [
-    "D:\\hackathon barte\\repositorio\\src\\tarvo\\__main__.py",
-    "fechar",
-    "--competencia",
-    "2026-09",
-    "--entrada",
-    "dados/2026-09",
-    "--saida",
-    "saida/"
-  ],
-  "pasta_entrada": "D:\\hackathon barte\\repositorio\\dados\\2026-09",
-  "pasta_saida": "D:\\hackathon barte\\repositorio\\saida",
-  "pasta_contestacoes": "D:\\hackathon barte\\repositorio\\contestacoes",
+  "comando": "python -m tarvo fechar --competencia 2026-09 --entrada \"dados/2026-09\" --saida \"saida\"",
+  "pasta_entrada": "dados/2026-09",
+  "pasta_saida": "saida",
+  "pasta_contestacoes": "contestacoes",
   "status": "COMPLETO",
   "codigo_saida": 0,
   "arquivos_entrada": [

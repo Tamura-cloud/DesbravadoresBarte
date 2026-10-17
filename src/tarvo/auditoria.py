@@ -63,6 +63,36 @@ def pasta_padrao(saida, cfg: ConfigAuditoria) -> Path:
     return Path(saida).resolve().parent / cfg.pasta
 
 
+# ---------------------------------------------------------------- caminhos relativos
+
+FORA_DO_REPOSITORIO = "<fora do repositório>"
+
+
+def caminho_relativo(caminho) -> str:
+    """Caminho relativo à raiz do repositório, com "/" (o registro é público e a banca roda em outra máquina).
+    Fora do repositório, só o nome da pasta: nenhum caminho absoluto nem nome de usuário."""
+    p = Path(caminho).resolve()
+    try:
+        return p.relative_to(RAIZ).as_posix()
+    except ValueError:
+        return f"{FORA_DO_REPOSITORIO}/{p.name}"
+
+
+def sem_caminho_absoluto(valor):
+    """Troca, em todo texto do registro, a raiz do repositório por "." e a pasta do usuário por "~" (mensagens de
+    erro dos leitores podem citar caminhos)."""
+    if isinstance(valor, str):
+        for base, troca in ((RAIZ, "."), (Path.home(), "~")):
+            for forma in {str(base), base.as_posix()}:
+                valor = valor.replace(forma, troca)
+        return valor
+    if isinstance(valor, list):
+        return [sem_caminho_absoluto(v) for v in valor]
+    if isinstance(valor, dict):
+        return {k: sem_caminho_absoluto(v) for k, v in valor.items()}
+    return valor
+
+
 # ---------------------------------------------------------------- versão do código
 
 def _git(*args: str) -> str | None:
@@ -168,21 +198,20 @@ def resumo_rascunhos(rascunhos: dict[str, Path]) -> list[dict]:
 
 # ---------------------------------------------------------------- registro
 
-def registro(entradas: Entradas, entrada: Path, saida: Path, comando: str, argv: list[str],
+def registro(entradas: Entradas, entrada: Path, saida: Path, comando: str,
              saida_preparada: Path, rascunhos: dict[str, Path], destino_rascunhos: Path | None,
              ignorados: list[tuple[Path, str]], completo: bool, regras: Iterable[str],
              momento: datetime | None = None) -> dict:
     """Tudo o que a execução usou e gerou. saida_preparada e rascunhos: os arquivos já validados, antes de publicar."""
     status = COMPLETO if completo else PARCIAL
-    return {
+    return sem_caminho_absoluto({
         "data_hora": (momento or datetime.now().astimezone()).isoformat(timespec="seconds"),
         "codigo": versao_do_codigo(),
         "competencia": entradas.competencia,
         "comando": comando,
-        "argv": argv,
-        "pasta_entrada": str(entrada),
-        "pasta_saida": str(saida),
-        "pasta_contestacoes": str(destino_rascunhos) if destino_rascunhos else None,
+        "pasta_entrada": caminho_relativo(entrada),
+        "pasta_saida": caminho_relativo(saida),
+        "pasta_contestacoes": caminho_relativo(destino_rascunhos) if destino_rascunhos else None,
         "status": status,
         "codigo_saida": CODIGO[status],
         "arquivos_entrada": _arquivos_de_entrada(Path(entrada), entradas),
@@ -192,7 +221,7 @@ def registro(entradas: Entradas, entrada: Path, saida: Path, comando: str, argv:
         "itens_fora_por_erro_de_dado": list(regras),
         "saida": resumo_saida(saida_preparada),
         "contestacoes": resumo_rascunhos(rascunhos),
-    }
+    })
 
 
 def _md_celula(v) -> str:

@@ -11,7 +11,6 @@ from __future__ import annotations
 import os
 import re
 import shutil
-import sys
 import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -213,15 +212,17 @@ def _publicar(preparados: dict[str, Path], destino: Path) -> dict[str, Path]:
 
 def comando_equivalente(entrada, saida, competencia: str, config, usar_ia: bool, contestacoes) -> str:
     """A linha de comando da CLI que refaz esta execução (para o registro de execução, O06)."""
-    partes = ["python -m tarvo fechar", f"--competencia {competencia}", f'--entrada "{entrada}"', f'--saida "{saida}"']
+    rel = registro_execucao.caminho_relativo  # caminhos relativos à raiz do repositório (o registro é público)
+    partes = ["python -m tarvo fechar", f"--competencia {competencia}", f'--entrada "{rel(entrada)}"',
+              f'--saida "{rel(saida)}"']
     if Path(config).resolve() != Path(CONFIG_PADRAO).resolve():
-        partes.append(f'--config "{config}"')
+        partes.append(f'--config "{rel(config)}"')
     if not usar_ia:
         partes.append("--sem-ia")
     if contestacoes is False:
         partes.append("--sem-contestacao")
     elif contestacoes:
-        partes.append(f"(rascunhos de contestação em {contestacoes}: só pela função fechar)")
+        partes.append(f"(rascunhos de contestação em {rel(contestacoes)}: só pela função fechar)")
     return " ".join(partes)
 
 
@@ -270,7 +271,7 @@ def fechar(entrada, saida, competencia: str, *, config=CONFIG_PADRAO,
             destino_auditoria = Path(auditoria or registro_execucao.pasta_padrao(
                 saida, registro_execucao.carregar_config())).resolve()
             registro = registro_execucao.registro(
-                entradas, Path(entrada).resolve(), saida, comando, list(sys.argv), preparo / "saida", rascunhos_preparados,
+                entradas, Path(entrada).resolve(), saida, comando, preparo / "saida", rascunhos_preparados,
                 destino_contestacoes, ignorados, not entradas.bloqueios and not regras, regras)
             registro_preparado = registro_execucao.gravar(registro, preparo / "auditoria")
         gravados = _publicar(preparados, saida)
