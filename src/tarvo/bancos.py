@@ -23,7 +23,7 @@ import yaml
 from tarvo import ia
 from tarvo.leitores.comum import dinheiro
 from tarvo.remessa import carregar_config as carregar_config_remessa
-from tarvo.remessa import deduplicar, na_competencia
+from tarvo.remessa import deduplicar, na_competencia, separar_ajustes
 from tarvo.saida import LANCAMENTOS, PENDENCIAS, ItemSaida, texto_saida
 
 if TYPE_CHECKING:
@@ -481,6 +481,7 @@ def calcular_bancos(aurora: pd.DataFrame, meridiano: pd.DataFrame, meridiano_met
         raise ErroBancos("extrato do Meridiano sem DTSTART/DTEND: não há período para as conferências")
 
     unicas, _ = deduplicar(ponte, cfg_remessa)  # R13: a duplicata conta uma vez
+    unicas, _ = separar_ajustes(unicas, cfg_remessa)  # R31: ajuste não é operação (sem TED nem PIX)
     pend_pix = conferir_pix_remessas(mer, [op for op in unicas if na_competencia(op, competencia)], cfg)
 
     sugestoes = sugestoes_ia([aur, mer], fallback) if fallback is not None else {}

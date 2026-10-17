@@ -1,4 +1,4 @@
-"""CLI do fechamento: python -m tarvo fechar --competencia AAAA-MM --entrada <dir> --saida <dir> [--sem-ia]
+"""CLI do fechamento: python -m tarvo fechar --competencia AAAA-MM --entrada <dir> --saida <dir> [--sem-ia] [--sem-contestacao]
 
 e o resumo da saída: python -m tarvo resumo --saida <dir>.
 """
@@ -54,7 +54,7 @@ def cmd_fechar(args: argparse.Namespace) -> int:
         return 2
     try:
         resultado = fechar(entrada, Path(args.saida), args.competencia, config=Path(args.config),
-                           usar_ia=not args.sem_ia)
+                           usar_ia=not args.sem_ia, contestacoes=False if args.sem_contestacao else None)
     except ErroEntrada as e:
         print(f"Erro ao localizar arquivos de entrada:\n{e}", file=sys.stderr)
         return 2
@@ -76,6 +76,12 @@ def cmd_fechar(args: argparse.Namespace) -> int:
     print(f"Arquivos gravados ({len(resultado.arquivos_saida)}), validados sem problemas:")
     for nome in resultado.arquivos_saida:
         print(f"  {nome}")
+    if args.sem_contestacao:
+        print("Rascunhos de contestação: desligados (--sem-contestacao)")
+    else:
+        print(f"Rascunhos de contestação gravados ({len(resultado.arquivos_contestacao)}), a Helena revisa antes de enviar:")
+        for nome, caminho in resultado.arquivos_contestacao.items():
+            print(f"  {nome} ({caminho.parent})")
     return 0
 
 
@@ -102,6 +108,8 @@ def construir_parser() -> argparse.ArgumentParser:
     fechar.add_argument("--config", default=str(CONFIG_PADRAO), help="YAML com os padrões de nome")
     fechar.add_argument("--sem-ia", action="store_true",
                         help="Não usa a IA nos extratos: lançamento sem regra fica A_CLASSIFICAR/HUMANO (P09)")
+    fechar.add_argument("--sem-contestacao", action="store_true",
+                        help="Não grava os rascunhos de contestação (R29) na pasta irmã da saída")
     fechar.set_defaults(func=cmd_fechar)
 
     resumo = sub.add_parser("resumo", help="Imprime em Markdown o resumo dos 6 CSVs de uma pasta de saída")

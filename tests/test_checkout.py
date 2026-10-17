@@ -83,8 +83,8 @@ def taxas():
     ], leitor_taxas.COLUNAS_SAIDA)
 
 
-def _rodar(linhas_orbe, taxas, cfg):
-    return calcular_checkout(_df(linhas_orbe, leitor_orbe.COLUNAS_SAIDA), taxas, "2031-03", cfg)
+def _rodar(linhas_orbe, taxas, cfg, competencia="2031-03"):
+    return calcular_checkout(_df(linhas_orbe, leitor_orbe.COLUNAS_SAIDA), taxas, competencia, cfg)
 
 
 def test_lojista_casado_pelo_ec_e_nome_vem_da_planilha(taxas, cfg):
@@ -167,7 +167,8 @@ def test_sem_linha_vigente_gera_erro(taxas, cfg):
         _rodar([_orbe("T1", EC_B, "100.00", "1.00")], taxas, cfg)
 
 
-def test_condicao_especial_sobrepoe_planilha_na_data_de_referencia(taxas, cfg):
+def test_concessao_zera_a_comissao_mas_a_divergencia_e_contra_o_contrato(taxas, cfg):
+    # R32: a concessão comercial muda só a comissão; a Orbe cobrou o contratado (1,00% no débito, 2,00% na antecipação)
     cfg = replace(cfg, condicoes=(CondicaoEspecial("RX", CNPJ_B, date(2031, 3, 1), date(2031, 3, 31),
                                                    {c: D("0") for c in ("taxa_debito", "taxa_antecipacao")}),))
     itens = _rodar([
@@ -175,51 +176,92 @@ def test_condicao_especial_sobrepoe_planilha_na_data_de_referencia(taxas, cfg):
         _orbe("AN", EC_B, "500.00", "2.00", tipo="ANTECIPACAO"),
         _orbe("E1", EC_B, "-200.00", "1.00", tipo="ESTORNO", id_referencia="V0", data_venda_original=date(2031, 2, 27)),
     ], taxas, cfg)
-    div = _por_prefixo(itens, "DIV-")
-    assert set(div) == {"DIV-CHK-T1", "DIV-CHK-AN"}
-    assert div["DIV-CHK-T1"].valor_reportado == D("10.00")
-    assert div["DIV-CHK-T1"].campos["taxa_contratada_pct"] == D("0")
-    assert div["DIV-CHK-AN"].valor_reportado == D("10.00")
+    assert not _por_prefixo(itens, "DIV-") and not _por_prefixo(itens, "PEN-DEVOL-")
 
     pen = _por_prefixo(itens, "PEN-")
-    # comissão = só o estorno de fevereiro, pela planilha: -2.00 -> sem nota, pendência
+    # comissão = só o estorno de fevereiro (fora da concessão), pela planilha: -2.00 -> sem nota, pendência (R38, R40)
     assert _por_prefixo(itens, "COM-")[f"COM-CHK-{CNPJ_B}"].valor_reportado == D("-2.00")
     assert not _por_prefixo(itens, "NF-")
     nf = pen[f"PEN-NF-CHK-{CNPJ_B}"]
     assert nf.campos["tipo"] == "NOTA_NAO_EMITIDA" and nf.campos["quem_decide"] == "Financeiro (Helena)"
-    devol = pen[f"PEN-DEVOL-CHK-{CNPJ_B}"]
-    assert devol.valor_reportado == D("20.00") and devol.campos["ref_origem"] == ["T1", "AN"]
-    assert devol.campos["tipo"] == "DEVOLUCAO_LOJISTA"
-    assert "(RX)" in devol.campos["motivo"] and "devolvido ao lojista" in devol.campos["motivo"]
+    conc = pen[f"PEN-CONCESSAO-CHK-{CNPJ_B}"]
+    assert conc.valor_reportado == D("20.00") and conc.campos["ref_origem"] == ["T1", "AN"]
+    assert conc.campos["tipo"] == "DEVOLUCAO_CONCESSAO"
+    assert conc.campos["motivo"].startswith(
+        "concessão comercial - custo da Tarvo - não é divergência - não se cobra da Orbe (RX, R32, R38)")
+    assert "R25" not in conc.campos["motivo"]
 
 
-def test_devolucao_com_condicao_especial_vale_a_taxa_cobrada_pela_orbe(taxas, cfg):
-    # R10: com a condição vigente, devolve-se o que a Orbe cobrou (truncado), não a diferença da R03
+def test_concessao_devolve_o_valor_taxa_cobrado_truncado(taxas, cfg):
+    # R10, R38: o lojista recebe de volta o que a Orbe descontou (truncado), linha a linha
     cfg = replace(cfg, condicoes=(CondicaoEspecial("RX", CNPJ_B, date(2031, 3, 1), date(2031, 3, 31),
                                                    {"taxa_debito": D("0")}),))
     itens = _rodar([_orbe("T1", EC_B, "1000.55", "1.00"), _orbe("T2", EC_B, "333.33", "1.00")], taxas, cfg)
-    div = _por_prefixo(itens, "DIV-")
-    assert {k: v.valor_reportado for k, v in div.items()} == {"DIV-CHK-T1": D("10.01"), "DIV-CHK-T2": D("3.33")}
-    devol = _por_prefixo(itens, "PEN-DEVOL-")[f"PEN-DEVOL-CHK-{CNPJ_B}"]
-    assert [(o.ref_origem, o.valor) for o in devol.origens] == [("T1", D("10.00")), ("T2", D("3.33"))]
-    assert devol.valor_reportado == D("13.33")
-    assert devol.campos["motivo"].startswith("tarifa de checkout zerada por condição especial vigente (RX)")
+    assert not _por_prefixo(itens, "DIV-")
+    conc = _por_prefixo(itens, "PEN-CONCESSAO-")[f"PEN-CONCESSAO-CHK-{CNPJ_B}"]
+    assert [(o.ref_origem, o.valor) for o in conc.origens] == [("T1", D("10.00")), ("T2", D("3.33"))]
+    assert conc.valor_reportado == D("13.33")
+
+
+def test_concessao_com_taxa_acima_do_contrato_separa_divergencia_e_concessao(taxas, cfg):
+    # R32: a parte acima do contrato é divergência (a Orbe deve); o resto da taxa cobrada é custo da Tarvo (P23)
+    cfg = replace(cfg, condicoes=(CondicaoEspecial("RX", CNPJ_B, date(2031, 3, 1), date(2031, 3, 31),
+                                                   {"taxa_debito": D("0")}),))
+    itens = _rodar([_orbe("T1", EC_B, "1000.00", "1.50")], taxas, cfg)  # contrato 1,00%, cobrou 1,50%
+    div = _por_prefixo(itens, "DIV-")["DIV-CHK-T1"]
+    assert (div.valor_reportado, div.campos["taxa_contratada_pct"]) == (D("5.00"), D("1.00"))
+    assert _por_prefixo(itens, "PEN-DEVOL-")[f"PEN-DEVOL-CHK-{CNPJ_B}"].valor_reportado == D("5.00")
+    assert _por_prefixo(itens, "PEN-CONCESSAO-")[f"PEN-CONCESSAO-CHK-{CNPJ_B}"].valor_reportado == D("10.00")
 
 
 def test_devolucao_sem_condicao_continua_pela_formula_da_r03(taxas, cfg):
     itens = _rodar([_orbe("T1", EC_B, "1000.55", "2.00")], taxas, cfg)
     devol = _por_prefixo(itens, "PEN-DEVOL-")[f"PEN-DEVOL-CHK-{CNPJ_B}"]
     assert devol.valor_reportado == D("10.01")
-    assert devol.campos["motivo"].endswith("(R03)")
+    assert devol.campos["motivo"].endswith("(R03, R25, R32)")
+    assert "a devolver ao lojista" in devol.campos["motivo"]  # R25
 
 
-def test_devolucao_com_e_sem_condicao_no_mesmo_lojista_para(taxas, cfg):
-    cfg = replace(cfg, condicoes=(CondicaoEspecial("RX", CNPJ_B, date(2031, 3, 1), date(2031, 3, 31),
-                                                   {"taxa_debito": D("0")}),))
-    with pytest.raises(ErroCheckout, match="com e sem condição especial"):
-        _rodar([_orbe("T1", EC_B, "100.00", "1.00"),
-                _orbe("E1", EC_B, "-200.00", "2.00", tipo="ESTORNO", id_referencia="V0",
-                      data_venda_original=date(2031, 2, 27))], taxas, cfg)
+def test_estorno_usa_a_data_da_venda_original_e_a_faixa_da_propria_linha(taxas, cfg):
+    # R35: taxa vigente na data da venda original; a coluna (modalidade, parcelas) vem da linha do estorno.
+    # R37: estorno de venda com taxa errada entra na divergência com valor negativo.
+    linhas = calcular_linhas(_df([
+        _orbe("E1", EC_A, "-1000.00", "4.50", tipo="ESTORNO", modalidade="CREDITO PARCELADO", parcelas=8,
+              id_referencia="V0", data_venda_original=date(2031, 3, 1), dia=date(2031, 3, 20)),
+    ], leitor_orbe.COLUNAS_SAIDA), taxas, cfg)
+    e1 = linhas[0]
+    assert e1.data_referencia == date(2031, 3, 1) and e1.origem_taxa == "linha 4"  # linha vigente em 01/03, não em 20/03
+    assert e1.taxa_contratada == D("4.00")  # taxa_parc_7_12, pelas 8 parcelas do próprio estorno
+    assert e1.diferenca == D("-5.00")
+
+
+def test_alerta_de_antecipacao_so_para_lojista_sem_historico(taxas, cfg):
+    # P26: sem histórico (primeira transação depois do dia 1, nada ligado a venda anterior) e antecipou mais que vendeu
+    novo = [_orbe("V1", EC_B, "100.00", "1.00", dia=date(2031, 3, 5)),
+            _orbe("AN", EC_B, "500.00", "2.00", tipo="ANTECIPACAO", dia=date(2031, 3, 6))]
+    itens = _rodar(novo, taxas, cfg)
+    alerta = _por_prefixo(itens, "PEN-ALERTA-ANTEC-")[f"PEN-ALERTA-ANTEC-{CNPJ_B}"]
+    assert (alerta.campos["tipo"], alerta.valor_reportado, alerta.campos["ref_origem"]) == ("ALERTA_ANTECIPACAO", D("0.00"), ["AN"])
+    assert alerta.campos["quem_decide"] == "Financeiro (Helena) e Comercial"
+    assert "R$ 500.00 brutos" in alerta.campos["motivo"] and "R$ 100.00 de vendas" in alerta.campos["motivo"]
+    # com histórico (uma linha ligada a venda anterior ao mês), não acende
+    com_historico = novo + [_orbe("E1", EC_B, "-10.00", "1.00", tipo="ESTORNO", id_referencia="V0",
+                                  data_venda_original=date(2031, 2, 27), dia=date(2031, 3, 7))]
+    assert not _por_prefixo(_rodar(com_historico, taxas, cfg), "PEN-ALERTA-")
+    # primeira transação no dia 1 e contrato anterior ao mês: não acende
+    no_dia_1 = [_orbe("V1", EC_B, "100.00", "1.00", dia=date(2031, 3, 1)), novo[1]]
+    assert not _por_prefixo(_rodar(no_dia_1, taxas, cfg), "PEN-ALERTA-")
+    # antecipou menos do que vendeu: não acende
+    pouco = [_orbe("V1", EC_B, "1000.00", "1.00", dia=date(2031, 3, 5)), novo[1]]
+    assert not _por_prefixo(_rodar(pouco, taxas, cfg), "PEN-ALERTA-")
+
+
+def test_alerta_usa_a_competencia_anterior_quando_ela_existe(taxas, cfg):
+    novo = [_orbe("V1", EC_B, "100.00", "1.00", dia=date(2031, 3, 5)),
+            _orbe("AN", EC_B, "500.00", "2.00", tipo="ANTECIPACAO", dia=date(2031, 3, 6))]
+    orbe = _df(novo, leitor_orbe.COLUNAS_SAIDA)
+    assert not _por_prefixo(calcular_checkout(orbe, taxas, "2031-03", cfg, frozenset({EC_B})), "PEN-ALERTA-")
+    assert _por_prefixo(calcular_checkout(orbe, taxas, "2031-03", cfg, frozenset({EC_A})), "PEN-ALERTA-")
 
 
 def test_textos_sem_ponto_e_virgula(taxas, cfg):
@@ -264,6 +306,22 @@ def test_ec_sem_contrato_so_gera_uma_pendencia_pelo_valor_da_orbe(taxas, cfg):
     assert [o.ref_origem for o in pen.origens] == ["X1", "X2"]
 
 
+def test_ec_com_faturamento_retroativo_cita_qtd_bruto_data_e_competencia_seguinte(taxas, cfg):
+    # R30: só o texto muda; continua uma pendência pelo valor da Orbe, sem comissão, divergência ou nota
+    cfg = replace(cfg, faturamento_retroativo={EC_DESCONHECIDO: "RX"})
+    itens = _rodar([
+        _orbe("X1", EC_DESCONHECIDO, "100.00", "2.00", dia=date(2031, 12, 12)),
+        _orbe("X2", EC_DESCONHECIDO, "333.33", "3.00", dia=date(2031, 12, 10)),
+    ], taxas, cfg, competencia="2031-12")
+    assert [i.id_saida for i in itens] == [f"PEN-SEMCONTRATO-{EC_DESCONHECIDO}"]
+    pen = itens[0]
+    assert pen.valor_reportado == D("11.99")
+    motivo = pen.campos["motivo"]
+    assert "R08" in motivo and "(RX)" in motivo
+    assert "2 transações do mês (R$ 433.33 brutos)" in motivo
+    assert "competência 2032-01" in motivo and "retroativa a 2031-12-10" in motivo
+
+
 def test_ec_sem_codigo_com_cnpj_fora_da_planilha_gera_erro(taxas, cfg):
     cfg = replace(cfg, ec_sem_codigo={EC_SEM_COD: "12312312000112"})
     with pytest.raises(ErroCheckout, match="não está na planilha"):
@@ -277,6 +335,7 @@ OXFORD = "23109187000161"
 ROTA_GLOBAL = "95927868000148"
 BRIDGE = "22224579000109"
 EC_ATLAS = "1076801732"
+CNPJ_ATLAS = "39566044000119"   # aba "ANTIGO 2025": só identifica (R39)
 
 
 @pytest.fixture(scope="module")
@@ -318,37 +377,78 @@ def test_set_notas(itens):
 
 def test_set_divergencias(itens):
     div = _por_prefixo(itens, "DIV-")
-    assert len(div) == 210
-    assert sum(i.valor_reportado for i in div.values()) == D("16973.65")
+    # R32: a isenção da Casa é concessão, não divergência; as 118 vieram pela taxa da planilha (era 210 · 16.973,65)
+    assert len(div) == 92
+    assert sum(i.valor_reportado for i in div.values()) == D("1576.23")
     por_lojista = defaultdict(lambda: [0, D("0")])
     for i in div.values():
         por_lojista[i.campos["cnpj"]][0] += 1
         por_lojista[i.campos["cnpj"]][1] += i.valor_reportado
     assert dict(por_lojista) == {
-        CASA_ESTUDANTE: [118, D("15397.42")],
         ROTA_GLOBAL: [87, D("1546.28")],
         BRIDGE: [5, D("29.95")],
     }
     pen = _por_prefixo(itens, "PEN-DEVOL-")
     assert {k: (len(v.origens), v.valor_reportado) for k, v in pen.items()} == {
-        # R10: a Casa recebe de volta o valor_taxa que a Orbe cobrou; a divergência acima segue a R03
-        f"PEN-DEVOL-CHK-{CASA_ESTUDANTE}": (118, D("15396.77")),
         f"PEN-DEVOL-CHK-{ROTA_GLOBAL}": (87, D("1546.28")),
         f"PEN-DEVOL-CHK-{BRIDGE}": (5, D("29.95")),
     }
 
 
+def test_set_casa_concessao_separada_das_divergencias(entradas, itens):
+    # R32, R38, R40: as 118 vendas isentas vieram pela taxa da planilha; a devolução é custo da Tarvo, à parte
+    linhas = [l for l in calcular_linhas(entradas.orbe, entradas.taxas, carregar_config()) if l.cnpj == CASA_ESTUDANTE]
+    assert len(linhas) == 119 and all(l.taxa_aplicada == l.taxa_contratada for l in linhas)
+    isentas = [l for l in linhas if l.concessao == "R10"]
+    assert len(isentas) == 118 and all(l.taxa_comissao == 0 for l in isentas)
+    estorno = next(l for l in linhas if l.ref_origem == "TX88445133")  # venda de 21/08: fora da isenção, 1,49%
+    assert (estorno.concessao, estorno.taxa_comissao, estorno.comissao) == (None, D("1.4900"), D("-5.50"))
+    conc = _por_prefixo(itens, "PEN-CONCESSAO-")[f"PEN-CONCESSAO-CHK-{CASA_ESTUDANTE}"]
+    assert (len(conc.origens), conc.valor_reportado, conc.campos["tipo"]) == (118, D("15396.77"), "DEVOLUCAO_CONCESSAO")
+    assert "concessão comercial - custo da Tarvo - não é divergência - não se cobra da Orbe" in conc.campos["motivo"]
+    assert "R25" not in conc.campos["motivo"]
+
+
+def test_set_nenhuma_divergencia_com_taxa_aplicada_abaixo_da_contratada(entradas):
+    # auditoria R25: a Orbe nunca cobrou menos que o contratado; as 5 diferenças negativas são estornos
+    # devolvidos pela taxa cobrada (acima da contratada), que reduzem o que se devolve ao lojista
+    linhas = [l for l in calcular_linhas(entradas.orbe, entradas.taxas, carregar_config()) if l.divergente]
+    assert not [l for l in linhas if l.taxa_aplicada < l.taxa_contratada]
+    negativas = [l for l in linhas if l.diferenca < 0]
+    assert {l.tipo_lancamento for l in negativas} == {"ESTORNO"}
+    # o estorno da Casa (-9,09) saiu: com a R32 ele não diverge do contrato (era 5 · -107,53)
+    assert (len(negativas), sum(l.diferenca for l in negativas)) == (4, D("-98.44"))
+
+
 def test_set_atlas_sem_contrato(itens):
     pen = _por_prefixo(itens, "PEN-SEMCONTRATO-")
-    assert set(pen) == {f"PEN-SEMCONTRATO-{EC_ATLAS}"}
-    atlas = pen[f"PEN-SEMCONTRATO-{EC_ATLAS}"]
+    # R39: a Atlas é identificada pelo CNPJ da aba de 2025 (sem usar a taxa dela); era PEN-SEMCONTRATO-<EC>
+    assert set(pen) == {f"PEN-SEMCONTRATO-{CNPJ_ATLAS}"}
+    atlas = pen[f"PEN-SEMCONTRATO-{CNPJ_ATLAS}"]
+    assert atlas.campos["motivo"].startswith(f"EC {EC_ATLAS}, CNPJ {CNPJ_ATLAS}")
     assert len(atlas.origens) == 57
     assert atlas.valor_reportado == D("7876.05")
     assert atlas.campos["tipo"] == "LOJISTA_SEM_CONTRATO" and atlas.campos["quem_decide"] == "Comercial"
+    # R30: 57 transações, R$ 262.138,61 brutos, faturadas em outubro, retroativas à primeira (10/09)
+    assert ("as 57 transações do mês (R$ 262138.61 brutos) são faturadas na competência 2026-10, "
+            "com a taxa retroativa a 2026-09-10") in atlas.campos["motivo"]
+    assert "(R30)" in atlas.campos["motivo"]
     # sem comissão, divergência ou nota para os CNPJs que não vieram de contrato
     refs_atlas = {o.ref_origem for o in atlas.origens}
-    assert not any(o.ref_origem in refs_atlas for i in itens if not i.id_saida.startswith("PEN-SEMCONTRATO-")
-                   for o in i.origens)
+    assert not any(o.ref_origem in refs_atlas for i in itens
+                   if not i.id_saida.startswith(("PEN-SEMCONTRATO-", "PEN-ALERTA-ANTEC-")) for o in i.origens)
+    # R36: fora de comissoes_por_lojista (a forma escolhida), sem nota
+    assert f"COM-CHK-{CNPJ_ATLAS}" not in _por_prefixo(itens, "COM-") and f"NF-CHK-{CNPJ_ATLAS}" not in _por_prefixo(itens, "NF-")
+
+
+def test_set_alerta_de_antecipacao_so_a_atlas(itens):
+    # P26: em setembro só a Atlas acende (a Oxford antecipou mais do que vendeu, mas tem histórico)
+    alertas = _por_prefixo(itens, "PEN-ALERTA-ANTEC-")
+    assert set(alertas) == {f"PEN-ALERTA-ANTEC-{CNPJ_ATLAS}"}
+    a = alertas[f"PEN-ALERTA-ANTEC-{CNPJ_ATLAS}"]
+    assert a.valor_reportado == D("0.00") and len(a.origens) == 5
+    assert "primeira transação em 2026-09-10" in a.campos["motivo"]
+    assert "R$ 235943.10 brutos (R$ 127230.96 líquidos das reversões) contra R$ 135428.90 de vendas" in a.campos["motivo"]
 
 
 def test_set_reversao_anula_exatamente_a_antecipacao(entradas):

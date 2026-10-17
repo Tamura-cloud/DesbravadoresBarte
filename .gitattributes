@@ -2,3 +2,5 @@
 dados/** -text
 # Entregáveis gerados pelo código: preservar os bytes exatamente como escritos.
 saida/** -text
+# Rascunhos de contestação gerados pelo código (R29): preservar os bytes.
+contestacoes/** -text

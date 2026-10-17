@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable, Iterable
 
@@ -12,6 +12,8 @@ import pandas as pd
 from tarvo.bancos import bancos
 from tarvo.checkout import checkout
 from tarvo.cli import CONFIG_PADRAO, carregar_padroes, localizar_arquivos
+from tarvo.contestacao import carregar_config as carregar_config_contestacao
+from tarvo.contestacao import gerar_contestacoes, pasta_padrao
 from tarvo.leitores.aurora import ler_aurora
 from tarvo.leitores.meridiano import ler_meridiano
 from tarvo.leitores.orbe import ler_orbe
@@ -61,6 +63,7 @@ class ResultadoFechamento:
     arquivos_entrada: dict[str, Path]
     arquivos_saida: dict[str, Path]
     itens: int
+    arquivos_contestacao: dict[str, Path] = field(default_factory=dict)  # R29; vazio com contestacoes=False
 
 
 def ler_entradas(entrada, competencia: str, config=CONFIG_PADRAO, usar_ia: bool = True) -> Entradas:
@@ -85,10 +88,13 @@ def ler_entradas(entrada, competencia: str, config=CONFIG_PADRAO, usar_ia: bool 
 
 
 def fechar(entrada, saida, competencia: str, *, config=CONFIG_PADRAO,
-           modulos: Iterable[Modulo] | None = None, usar_ia: bool = True) -> ResultadoFechamento:
+           modulos: Iterable[Modulo] | None = None, usar_ia: bool = True,
+           contestacoes: Path | str | bool | None = None) -> ResultadoFechamento:
     """Lê as entradas, roda os módulos, grava os 6 CSVs em saida e falha se validar_saida achar problema.
 
     usar_ia=False força o fluxo sem IA nos extratos (P09 em vez de P14).
+    Depois da validação, grava os rascunhos de contestação (R29) numa pasta irmã de saida (config/contestacao.yaml);
+    contestacoes=<pasta> escolhe outra, contestacoes=False não grava.
     """
     if not isinstance(competencia, str) or not RE_COMPETENCIA.fullmatch(competencia):
         raise ValueError(f"competência deve ser AAAA-MM, veio {competencia!r}")
@@ -100,4 +106,8 @@ def fechar(entrada, saida, competencia: str, *, config=CONFIG_PADRAO,
     problemas = validar_saida(saida)
     if problemas:
         raise ErroFechamento(problemas)
-    return ResultadoFechamento(entradas.arquivos, gravados, len(itens))
+    rascunhos = {}
+    if contestacoes is not False:
+        cfg = carregar_config_contestacao()
+        rascunhos = gerar_contestacoes(itens, entradas, contestacoes or pasta_padrao(saida, cfg), cfg)
+    return ResultadoFechamento(entradas.arquivos, gravados, len(itens), rascunhos)

@@ -7,7 +7,8 @@ ec_sem_codigo:
   "1043396662": "78576234000179"  # Horizonte Viagens e Turismo
   "1038867654": "07752116000126"  # Kiwi Experience
 
-# R10: condição especial que sobrepõe a planilha na data de referência da taxa. Só CHECKOUT.
+# R10, R32, R40: concessão comercial (fora do contrato) que zera a taxa da COMISSÃO na data de referência.
+# Não muda o contrato: a divergência continua medida contra a planilha. A devolução é custo da Tarvo (R38).
 condicoes_especiais:
   - regra: R10
     cnpj: "00520815000100"  # Casa do Estudante
@@ -21,6 +22,16 @@ condicoes_especiais:
       taxa_parc_7_12: "0"
       taxa_pix: "0"
       taxa_antecipacao: "0"
+
+# R30: EC sem contrato vigente cuja taxa, quando o Comercial confirmar, vale desde a primeira transação;
+# o mês é faturado junto com o mês seguinte. EC -> regra. Continua sem comissão, nota e divergência (R08).
+faturamento_retroativo:
+  "1076801732": R30  # Atlas Idiomas
+
+# R39: EC sem contrato vigente identificado pelo CNPJ da aba de 2025. Só identifica a pendência e o rastro;
+# a taxa daquela aba não vale (R08). O EC continua fora de comissoes_por_lojista (R36: a forma escolhida).
+cnpj_identificacao:
+  "1076801732": "39566044000119"  # Atlas Idiomas
 
 # R01, R04, R05: coluna da planilha com a taxa contratada de cada lançamento.
 # tipos_lancamento vale antes da modalidade (antecipação e reversão não têm modalidade).
@@ -45,4 +56,5 @@ discriminacao_nota: "Intermediação de pagamentos - MDR e antecipação - compe
 quem_decide:
   nota_nao_emitida: "Financeiro (Helena)"   # R06
   lojista_sem_contrato: "Comercial"         # R08
+  alerta_antecipacao: "Financeiro (Helena) e Comercial"  # P26, R33
   devolucao_lojista: "Financeiro (Helena)"  # R03, R10
