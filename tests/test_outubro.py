@@ -30,7 +30,7 @@ from tarvo.leitores.meridiano import ler_meridiano
 from tarvo.leitores.orbe import ler_orbe
 from tarvo.leitores.ponte import ler_ponte
 from tarvo.remessa import carregar_config as carregar_config_remessa
-from tarvo.saida import ARQUIVOS, validar_saida
+from tarvo.saida import ARQUIVOS, RASTRO, validar_saida
 
 RAIZ = Path(__file__).resolve().parents[1]
 SETEMBRO = RAIZ / "dados" / "2026-09"
@@ -202,6 +202,11 @@ def test_datas_de_saida_todas_em_outubro_e_nenhuma_de_setembro(pack, saida):
 
     for espec in ARQUIVOS:
         texto = (saida / espec.nome).read_text(encoding="utf-8")
+        if espec is RASTRO:
+            # O06: o detalhe do rastro cita a data da venda (ou antecipação) original de um estorno ou reversão, que
+            # pode ser do mês anterior (R04, R35), e o início de vigência da linha da planilha (que o pack simulado
+            # não desloca); fora isso, nenhuma data de setembro
+            texto = re.sub(r"(venda|antecipação) \S+ de 2026-09-\d{2}|vigente desde 2026-09-\d{2}", "", texto)
         assert "2026-09" not in texto, espec.nome
         assert not re.search(r"\b\d{2}/09/2026\b", texto), espec.nome
     for nota in _ler(saida, "notas_a_emitir.csv"):
@@ -223,7 +228,7 @@ def test_caso_a_venda_de_ec_fora_da_planilha_vira_so_pendencia(pack, saida, entr
     assert p["ref_origem"] == caso["ref_origem"]
     assert Decimal(p["valor_brl"]) == caso["valor_taxa"]  # o que a Orbe cobrou
     assert "R08" in p["motivo"] and "não faturar" in p["motivo"]
-    assert p["quem_decide"] == "Comercial"
+    assert p["quem_decide"] == "Comercial (Diego)"
 
 
 @pytest.mark.parametrize("tipo, banco", [("aurora", "AUR"), ("meridiano", "MER")])
@@ -363,3 +368,12 @@ def test_cli_funciona_sem_o_pacote_anthropic_instalado(pack, tmp_path):
     assert r.returncode == 0, r.stderr
     assert "validados sem problemas" in r.stdout
     assert any(l["tipo"] == "LANCAMENTO_SEM_REGRA" for l in _ler(tmp_path, "pendencias.csv"))
+
+
+def test_toda_linha_do_rastro_tem_regra_e_detalhe(saida):
+    # O06: no outubro simulado (com EC sem contrato, lançamento sem regra, CNPJ fora da planilha), nenhuma linha do
+    # rastro fica sem a regra aplicada; as 4 colunas obrigatórias vêm primeiro
+    rastro = _ler(saida, "rastro.csv")
+    assert list(rastro[0])[:6] == ["id_saida", "arquivo_origem", "ref_origem", "valor", "regra", "detalhe"]
+    assert [l for l in rastro if not l["regra"] or not l["detalhe"]] == []
+    assert {l["regra"] for l in rastro if l["id_saida"].startswith(("PEN-SEMREGRA-", "LAN-AUR-L49"))} == {"P09"}

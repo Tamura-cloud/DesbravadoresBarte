@@ -2,6 +2,8 @@
 
 Cada ItemSaida vira uma linha num dos 5 arquivos de resultado e uma ou mais linhas no rastro.csv.
 A soma das origens precisa fechar com o valor reportado já na criação do item.
+O rastro.csv tem as 4 colunas obrigatórias e, no fim, as extras regra e detalhe: a regra do HIPOTESES.md que deu o
+valor daquela linha e como (taxa usada, isenção, venda original do estorno). Elas são texto, não entram em conta.
 A escrita nunca arredonda: valor com casas a mais é erro, quem arredonda é a regra de negócio.
 Pelo mesmo motivo, a escrita nunca troca o separador: texto com ";" é erro, quem monta o texto usa texto_saida.
 """
@@ -42,6 +44,8 @@ class Origem(NamedTuple):
     arquivo_origem: str
     ref_origem: str
     valor: Decimal
+    regra: str = ""      # regra do HIPOTESES.md que deu o valor (ex.: "R01"); coluna extra do rastro.csv
+    detalhe: str = ""    # como: taxa contratada usada, isenção, venda original do estorno (sem ";")
 
 
 # ---------------------------------------------------------------- tipos de coluna
@@ -225,6 +229,7 @@ RASTRO = EspecArquivo(
     (("id_saida", ID), ("arquivo_origem", TEXTO), ("ref_origem", REF), ("valor", DINHEIRO)),
     "valor",
 )
+EXTRAS_RASTRO = ("regra", "detalhe")  # colunas extras do rastro.csv, no fim, nesta ordem (O06)
 
 ARQUIVOS_ITENS = (COMISSOES, DIVERGENCIAS, NOTAS, LANCAMENTOS, PENDENCIAS)
 ARQUIVOS = ARQUIVOS_ITENS + (RASTRO,)
@@ -239,15 +244,26 @@ def _id_valido(id_saida, prefixos: Iterable[str]) -> bool:
 
 # ---------------------------------------------------------------- item
 
-def _origem(o, id_saida: str) -> Origem:
-    try:
-        arquivo_origem, ref_origem, valor = o
-    except (TypeError, ValueError):
-        raise ErroSaida(f"{id_saida}: origem deve ser (arquivo_origem, ref_origem, valor), veio {o!r}") from None
+def _texto_opcional(v, coluna: str) -> str:
+    """Texto de coluna extra: pode ser vazio, mas nunca com ";" nem quebra de linha."""
+    if not isinstance(v, str):
+        raise ErroSaida(f"{coluna}: esperado texto, veio {v!r}")
+    return _texto(v, coluna) if v else ""
+
+
+def _origem(o, id_saida: str, regra: str = "", detalhe: str = "") -> Origem:
+    """(arquivo_origem, ref_origem, valor[, regra[, detalhe]]). Sem regra ou detalhe próprios, valem os do item."""
+    if not isinstance(o, (tuple, list)) or len(o) not in (3, 4, 5):
+        raise ErroSaida(f"{id_saida}: origem deve ser (arquivo_origem, ref_origem, valor[, regra, detalhe]), "
+                        f"veio {o!r}")
+    arquivo_origem, ref_origem, valor, *resto = o
+    resto += [""] * (2 - len(resto))
     return Origem(
         _texto(arquivo_origem, f"{id_saida}: arquivo_origem"),
         _ref(ref_origem, f"{id_saida}: ref_origem"),
         _decimal(valor, f"{id_saida}: valor da origem {ref_origem!r}", CENTAVO),
+        _texto_opcional(resto[0] or regra, f"{id_saida}: regra da origem {ref_origem!r}"),
+        _texto_opcional(resto[1] or detalhe, f"{id_saida}: detalhe da origem {ref_origem!r}"),
     )
 
 
@@ -257,6 +273,7 @@ class ItemSaida:
 
     campos traz as colunas da linha. id_saida e a coluna de valor saem de id_saida e valor_reportado;
     se vierem também em campos, precisam ser iguais. Colunas fora das obrigatórias são extras.
+    regra e detalhe valem para cada origem que não traga os próprios (colunas extras do rastro.csv).
     """
 
     id_saida: str
@@ -264,6 +281,8 @@ class ItemSaida:
     campos: dict
     valor_reportado: Decimal
     origens: tuple[Origem, ...]
+    regra: str = ""
+    detalhe: str = ""
 
     def __post_init__(self) -> None:
         espec = ESPEC_POR_NOME.get(self.arquivo)
@@ -273,7 +292,9 @@ class ItemSaida:
             raise ErroSaida(f"id_saida {self.id_saida!r} inválido para {espec.nome}: use o prefixo {espec.prefixo}")
         _decimal(self.valor_reportado, f"{self.id_saida}: valor_reportado", CENTAVO)
 
-        origens = tuple(_origem(o, self.id_saida) for o in self.origens)
+        regra = _texto_opcional(self.regra, f"{self.id_saida}: regra")
+        detalhe = _texto_opcional(self.detalhe, f"{self.id_saida}: detalhe")
+        origens = tuple(_origem(o, self.id_saida, regra, detalhe) for o in self.origens)
         soma = sum((o.valor for o in origens), Decimal("0.00"))
         if soma != self.valor_reportado:
             raise ErroSaida(
@@ -357,7 +378,8 @@ def gravar_saida(pasta, itens: Iterable[ItemSaida]) -> dict[str, Path]:
     for item in itens:
         formatados[item.arquivo].append(_formatar(item))
         for o in item.origens:
-            rastro.append([item.id_saida, o.arquivo_origem, o.ref_origem, DINHEIRO.formatar(o.valor, "rastro")])
+            rastro.append([item.id_saida, o.arquivo_origem, o.ref_origem, DINHEIRO.formatar(o.valor, "rastro"),
+                           o.regra, o.detalhe])
 
     pasta = Path(pasta)
     pasta.mkdir(parents=True, exist_ok=True)
@@ -369,7 +391,7 @@ def gravar_saida(pasta, itens: Iterable[ItemSaida]) -> dict[str, Path]:
         gravados[espec.nome] = pasta / espec.nome
         _gravar_csv(gravados[espec.nome], list(espec.nomes) + extras, linhas)
     gravados[RASTRO.nome] = pasta / RASTRO.nome
-    _gravar_csv(gravados[RASTRO.nome], list(RASTRO.nomes), rastro)
+    _gravar_csv(gravados[RASTRO.nome], list(RASTRO.nomes) + list(EXTRAS_RASTRO), rastro)
     return gravados
 
 

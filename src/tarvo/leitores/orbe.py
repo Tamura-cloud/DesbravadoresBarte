@@ -2,7 +2,8 @@
 
 Só lê e converte tipos: uma linha de saída por linha do arquivo, sem regra de negócio. ler_orbe_arquivos junta
 vários arquivos no mesmo formato (relatório e ajustes tardios, O05); ler_orbe_parcial faz o mesmo, mas um arquivo
-de ajustes com problema fica bloqueado sozinho e os outros são lidos (R44).
+de ajustes com problema fica bloqueado sozinho e os outros são lidos (R44). Um id_transacao que reaparece num arquivo
+posterior com dados diferentes é correção: a linha posterior substitui a anterior (P27) e volta em Correcao.
 """
 
 from __future__ import annotations
@@ -149,6 +150,20 @@ def _cabecalho_diferente(arquivo: str, cabecalho: list[str], referencia: str, es
             f"o {referencia} tem {len(esperado)} (a diferença começa na coluna {min(len(cabecalho), len(esperado)) + 1})")
 
 
+class Correcao(NamedTuple):
+    """id_transacao que voltou num arquivo posterior com algum campo diferente: a linha posterior (a correção)
+    substituiu a anterior no quadro (P27). antes e depois são os registros convertidos; campos, os que mudaram."""
+
+    ref_origem: str
+    arquivo_antes: str
+    linha_antes: int
+    antes: dict
+    arquivo_depois: str
+    linha_depois: int
+    depois: dict
+    campos: tuple[str, ...]
+
+
 class ArquivoBloqueado(NamedTuple):
     """Arquivo de ajustes da Orbe que não entrou no fechamento (R44). origens: (arquivo, ref) de cada ponto citado."""
 
@@ -166,27 +181,13 @@ class LeituraOrbe:
     avisos: list[str] = field(default_factory=list)
     lidos: list[str] = field(default_factory=list)
     rejeitadas: list[LinhaRejeitada] = field(default_factory=list)  # linhas com dado inválido (R44)
+    correcoes: list[Correcao] = field(default_factory=list)          # id corrigido num arquivo posterior (P27)
+    linhas_lidas: dict[str, int] = field(default_factory=dict)       # arquivo -> linhas de dados convertidas
 
 
-FIM_CONFLITO = ("O fechamento não escolhe qual vale: peça à Orbe a versão correta e deixe na pasta só os arquivos "
-                "certos.")
-
-
-def _conflitos(linhas: list[tuple[int, dict]], vistos: dict[str, tuple[int, dict]],
-               arquivo: str) -> list[tuple[str, str]]:
-    """(id_transacao, mensagem) de cada id que já veio de OUTRO arquivo com algum campo diferente."""
-    conflitos = []
-    for n, r in linhas:
-        anterior = vistos.get(r["ref_origem"])
-        if anterior is None or anterior[1]["arquivo_origem"] == arquivo:
-            continue
-        n_ant, ant = anterior
-        diferentes = [c for c in COLUNAS_SAIDA if c != "arquivo_origem" and ant[c] != r[c]]
-        if diferentes:
-            conflitos.append((r["ref_origem"], (
-                f"id_transacao {r['ref_origem']} aparece em {ant['arquivo_origem']} (linha física {n_ant}) e em "
-                f"{arquivo} (linha física {n}) com valores diferentes em {', '.join(diferentes)}")))
-    return conflitos
+def _diferentes(antes: dict, depois: dict) -> tuple[str, ...]:
+    """Campos do registro convertido que mudaram entre duas versões do mesmo id_transacao (fora o arquivo)."""
+    return tuple(c for c in COLUNAS_SAIDA if c != "arquivo_origem" and antes[c] != depois[c])
 
 
 def _linhas_de_dados(caminho: Path) -> int | None:
@@ -204,8 +205,9 @@ def ler_orbe_parcial(caminhos) -> LeituraOrbe:
     Linha com dado inválido fica de fora sozinha (LeituraOrbe.rejeitadas, R44).
     O primeiro arquivo (o relatório) é a referência: se o cabeçalho dele não serve, sobe ErroArquivoOrbe e a fonte
     inteira fica bloqueada. Um arquivo posterior fica bloqueado sozinho (nenhuma linha dele entra) quando não pode
-    ser lido, quando o cabeçalho é diferente do do primeiro ou quando traz um id_transacao de arquivo anterior com
-    algum campo diferente; os demais são lidos. id repetido com a linha igual conta uma vez (Repetida, P27).
+    ser lido ou quando o cabeçalho é diferente do do primeiro; os demais são lidos. id de arquivo anterior repetido
+    com a linha igual conta uma vez (Repetida); com algum campo diferente, a linha do arquivo posterior substitui a
+    anterior, no lugar dela (Correcao), e o resto do arquivo é lido normalmente (P27).
     Coluna a mais ou fora de ordem no primeiro arquivo é aviso: a leitura é pelo nome.
     """
     if isinstance(caminhos, (str, Path)):
@@ -217,6 +219,7 @@ def ler_orbe_parcial(caminhos) -> LeituraOrbe:
     leitura = LeituraOrbe(_quadro([]))
     vistos: dict[str, tuple[int, dict]] = {}
     registros: list[dict] = []
+    posicao: dict[str, int] = {}  # id_transacao -> índice em registros da versão que vale
     for caminho in caminhos:
         rejeitadas: list[LinhaRejeitada] = []
         try:
@@ -235,22 +238,25 @@ def ler_orbe_parcial(caminhos) -> LeituraOrbe:
                 caminho.name, _cabecalho_diferente(caminho.name, cabecalho, referencia, esperado),
                 ((caminho.name, "L1"), (referencia, "L1")), len(linhas)))
             continue
-        conflitos = _conflitos(linhas, vistos, caminho.name)
-        if conflitos:
-            origens = tuple(o for ref, _ in conflitos
-                            for o in ((vistos[ref][1]["arquivo_origem"], ref), (caminho.name, ref)))
-            leitura.bloqueados.append(ArquivoBloqueado(
-                caminho.name, "; ".join(m for _, m in conflitos) + ". " + FIM_CONFLITO, origens, len(linhas)))
-            continue
         for n, r in linhas:
-            anterior = vistos.get(r["ref_origem"])
+            ref = r["ref_origem"]
+            anterior = vistos.get(ref)
             if anterior is None or anterior[1]["arquivo_origem"] == r["arquivo_origem"]:
-                vistos.setdefault(r["ref_origem"], (n, r))
+                if anterior is None:
+                    vistos[ref], posicao[ref] = (n, r), len(registros)
                 registros.append(r)
-            else:
-                n_ant, ant = anterior
-                leitura.repetidas.append(Repetida(r["ref_origem"], ant["arquivo_origem"], n_ant, caminho.name, n))
+                continue
+            n_ant, ant = anterior
+            campos = _diferentes(ant, r)
+            if not campos:
+                leitura.repetidas.append(Repetida(ref, ant["arquivo_origem"], n_ant, caminho.name, n))
+                continue
+            # P27: a linha do arquivo posterior é a correção e fica no lugar da anterior
+            leitura.correcoes.append(Correcao(ref, ant["arquivo_origem"], n_ant, ant, caminho.name, n, r, campos))
+            registros[posicao[ref]] = r
+            vistos[ref] = (n, r)
         leitura.lidos.append(caminho.name)
+        leitura.linhas_lidas[caminho.name] = len(linhas)
         leitura.rejeitadas += rejeitadas
     leitura.quadro = _quadro(registros)
     return leitura
@@ -261,7 +267,8 @@ def ler_orbe_arquivos(caminhos) -> tuple[pd.DataFrame, list[Repetida]]:
 
     Cada linha guarda o próprio arquivo_origem. O cabeçalho de cada arquivo tem de ser idêntico ao do primeiro.
     Um id_transacao que reaparece em outro arquivo com a linha igual conta uma vez (e volta em Repetida); com
-    qualquer campo diferente é erro: o leitor não escolhe qual vale. Dentro do mesmo arquivo nada muda.
+    algum campo diferente, a linha do arquivo posterior substitui a anterior (P27; ler_orbe_parcial devolve a
+    Correcao). Dentro do mesmo arquivo nada muda.
     Versão estrita de ler_orbe_parcial: o primeiro arquivo bloqueado ou a primeira linha inválida vira ValueError.
     """
     leitura = ler_orbe_parcial(caminhos)

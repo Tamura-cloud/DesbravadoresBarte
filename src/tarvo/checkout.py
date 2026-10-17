@@ -1,6 +1,7 @@
 """Linha CHECKOUT (Orbe): comissão pela taxa contratada, divergências, notas e pendências por lojista.
 
-Regras do HIPOTESES.md, seção 1: R01 a R10, R25, R30, R32, R33, R35 a R41, R43 a R45; premissas P23 e P26. Mapeamentos e condições especiais em config/checkout.yaml.
+Regras do HIPOTESES.md, seção 1: R01 a R10, R25, R30, R32, R33, R35 a R41, R43 a R48; premissas P23, P26 e P27. Mapeamentos e condições especiais em config/checkout.yaml.
+A bandeira da Orbe não entra em nada: nem na taxa nem no vínculo do estorno com a venda, que é pela referência (R47).
 O lojista é casado só pelo EC (coluna "EC Orbe" da planilha ou ec_sem_codigo da config) e depois pelo CNPJ;
 o nome da Orbe nunca é usado.
 """
@@ -19,7 +20,8 @@ import yaml
 
 from tarvo import dependencias as dep
 from tarvo.leitores.comum import dinheiro
-from tarvo.saida import COMISSOES, DIVERGENCIAS, NOTAS, PENDENCIAS, ItemSaida, texto_saida
+from tarvo.resumo import brl
+from tarvo.saida import COMISSOES, DIVERGENCIAS, NOTAS, PENDENCIAS, ItemSaida, Origem, texto_saida
 
 if TYPE_CHECKING:
     from tarvo.fechamento import Entradas
@@ -27,7 +29,7 @@ if TYPE_CHECKING:
 CONFIG_CHECKOUT = Path(__file__).resolve().parents[2] / "config" / "checkout.yaml"
 LINHA_NEGOCIO = "CHECKOUT"
 ZERO = Decimal("0.00")
-VENDA, ANTECIPACAO, REVERSAO = "VENDA", "ANTECIPACAO", "REVERSAO ANTECIPACAO"  # tipos da Orbe (P26)
+VENDA, ANTECIPACAO, REVERSAO, ESTORNO = "VENDA", "ANTECIPACAO", "REVERSAO ANTECIPACAO", "ESTORNO"  # tipos da Orbe
 
 MOTIVO_NOTA_NAO_EMITIDA = (
     "comissão de checkout do mês zero ou negativa: não emite nota e não passa para o mês seguinte - próximo passo: "
@@ -52,7 +54,8 @@ MOTIVO_CONCESSAO = (
     "concessão comercial; custo da Tarvo; não é divergência; não se cobra da Orbe ({regra}, R32, R38, R41) - "
     "valor = valor_taxa descontado pela Orbe menos a comissão da Tarvo nas transações da concessão, transação a "
     "transação (R45) - próximo passo: a Helena paga a devolução ao lojista e decide com o Comercial se pede à Orbe "
-    "parametrizar {taxa} daqui em diante (nota interna em {rascunho})"
+    "parametrizar {taxa} daqui em diante e se a isenção será renovada depois de {fim} (Comercial) (nota interna em "
+    "{rascunho})"
 )
 MOTIVO_REPETIDA = (
     "id_transacao {ref} veio em {mantido} (linha física {n_mantida}) e de novo, com a linha igual, em {repetido} "
@@ -60,9 +63,25 @@ MOTIVO_REPETIDA = (
     "é a mesma transação enviada duas vezes"
 )
 MOTIVO_SEM_ORIGINAL = (
-    "{tipo} de {data} referente a {original}, transação do mesmo mês que não está em nenhum arquivo da Orbe: entra "
-    "pela taxa da data da original e pela faixa da própria linha (R35), sem conferir com a original (P28) - próximo "
-    "passo: a Helena pede à Orbe a transação original {original}"
+    "{tipo} de {data} referente a {original}, transação do mesmo mês que não está em nenhum arquivo da Orbe: o ajuste "
+    "entra na comissão e na nota pelo valor que veio, com a taxa contratada da data da venda original e a faixa da "
+    "própria linha (R35, R48) - {efeito} - próximo passo: a Helena pede a venda original {original} à Orbe (R48)"
+)
+EFEITO_SEM_ORIGINAL = "valor = efeito do ajuste na comissão do lojista (CNPJ {cnpj}): R$ {valor}"
+EFEITO_SEM_ORIGINAL_FORA = "valor 0,00: a linha não entrou na comissão ({motivo})"
+MOTIVO_CORRECAO = (
+    "correção da Orbe (P27, critério nosso pela Helena às 13h34): o id_transacao {ref} veio em {antes} (linha física "
+    "{n_antes}) e de novo, com dados diferentes, em {depois} (linha física {n_depois}) - a linha de {depois} substitui "
+    "a de {antes}, porque é a correção, e o resto dos arquivos foi lido normalmente - antes → depois: {campos} - "
+    "efeito na comissão: R$ {com_antes} → R$ {com_depois} (R$ {efeito}) - efeito na nota: {notas} - valor = efeito na "
+    "comissão (no rastro, a comissão da linha nova e a da linha substituída com o sinal trocado) - próximo passo: a "
+    "Helena confirma a correção com a Orbe"
+)
+MOTIVO_APOS_APROVACAO = (
+    "ajuste de {mes} recebido depois da aprovação, entra em {competencia} (regra 13h34, R46): {n} linha(s) de "
+    "{arquivo} com data_movimento de {mes} ({refs}) entraram na comissão e na nota de {competencia}, pela taxa da data "
+    "de referência de cada linha - o fechamento de {mes}, já aprovado, não é reaberto - informativa: valor 0,00, o "
+    "efeito já está nos itens do mês - próximo passo: a Helena confere as linhas no fechamento de {competencia}"
 )
 MOTIVO_IDENTIFICACAO = "EC {ec}, CNPJ {cnpj} (identificado pela aba de 2025, sem usar a taxa dela - R39) - "
 MOTIVO_ALERTA = (
@@ -116,6 +135,7 @@ class ConfigCheckout:
     quem_decide: dict[str, str]
     faturamento_retroativo: dict[str, str] = field(default_factory=dict)  # EC -> regra (R30)
     cnpj_identificacao: dict[str, str] = field(default_factory=dict)      # EC sem contrato -> CNPJ, só para identificar (R39)
+    rotulo_taxa: dict[str, str] = field(default_factory=dict)             # coluna de taxa -> texto do rastro (O06)
 
 
 def _data_cfg(v, campo: str) -> date:
@@ -162,6 +182,8 @@ def carregar_config(caminho=CONFIG_CHECKOUT) -> ConfigCheckout:
                                 for ec, r in (bruto.get("faturamento_retroativo") or {}).items()},
         cnpj_identificacao={_str_cfg(ec, "cnpj_identificacao"): _str_cfg(c, "cnpj_identificacao")
                             for ec, c in (bruto.get("cnpj_identificacao") or {}).items()},
+        rotulo_taxa={_str_cfg(c, "rotulo_taxa"): _str_cfg(r, "rotulo_taxa")
+                     for c, r in (bruto.get("rotulo_taxa") or {}).items()},
     )
 
 
@@ -232,8 +254,9 @@ def _campo_taxa(linha_orbe: dict, cfg: ConfigCheckout) -> str:
         for de, ate, campo in cfg.faixas_parcelado:
             if parcelas is not None and de <= parcelas <= ate:
                 return campo
+        acima = " - a Tarvo não vende acima de 12x (R50)" if parcelas is not None and parcelas > 12 else ""
         raise ErroDadoCheckout(dep.TAXA, f"{linha_orbe['ref_origem']}: {modalidade} com {parcelas} parcelas fora das "
-                               "faixas de config/checkout.yaml (taxa_parcelado)")
+                               f"faixas de config/checkout.yaml (taxa_parcelado){acima}")
     if modalidade in cfg.taxa_por_modalidade:
         return cfg.taxa_por_modalidade[modalidade]
     raise ErroDadoCheckout(dep.TAXA, f"{linha_orbe['ref_origem']}: tipo {tipo!r} / modalidade {modalidade!r} sem taxa "
@@ -261,6 +284,8 @@ class LinhaCheckout:
     data_movimento: date | None = None
     taxa_comissao: Decimal | None = None  # taxa da comissão: a do contrato ou a da concessão comercial (R10, R32)
     concessao: str | None = None          # regra da concessão comercial que zerou a comissão, se houver
+    campo_taxa: str | None = None         # coluna da planilha usada (taxa_debito, taxa_parc_2_6, ...)
+    vigencia_taxa: date | None = None     # início de vigência da linha da planilha usada (None: sem início)
 
     @property
     def divergente(self) -> bool:
@@ -322,7 +347,47 @@ def _calcular_linha(l: dict, contratos: Contratos, cfg: ConfigCheckout) -> Linha
         diferenca = dinheiro(l["valor_bruto"] * (l["taxa_aplicada_pct"] - contratada) / 100)
     return LinhaCheckout(**base, cnpj=cnpj, taxa_contratada=contratada, origem_taxa=origem_taxa,
                          comissao=comissao, diferenca=diferenca, taxa_comissao=taxa_comissao,
-                         concessao=condicao.regra if condicao is not None else None)
+                         concessao=condicao.regra if condicao is not None else None,
+                         campo_taxa=campo, vigencia_taxa=linha_taxa["vigencia_inicio"])
+
+
+# ---------------------------------------------------------------- regra e detalhe do rastro (O06)
+
+def pct_texto(v: Decimal) -> str:
+    """Taxa em pontos percentuais como texto do rastro: 3.19 vira "3,19"; 0 vira "0"; 2.105 vira "2,105"."""
+    if v == 0:
+        return "0"
+    q = v.quantize(Decimal("0.01"))
+    return format(q if q == v else v.normalize(), "f").replace(".", ",")
+
+
+def _contrato(l: LinhaCheckout, cfg: ConfigCheckout) -> str:
+    rotulo = cfg.rotulo_taxa.get(l.campo_taxa, l.campo_taxa)
+    desde = f"vigente desde {l.vigencia_taxa.isoformat()}" if l.vigencia_taxa else "sem início de vigência"
+    return f"{rotulo}, {desde} ({l.origem_taxa} da planilha)"
+
+
+def regra_linha(l: LinhaCheckout, cfg: ConfigCheckout, nome: str) -> tuple[str, str]:
+    """(regra, detalhe) da comissão de uma transação, para o rastro.csv (O06). Só texto: nenhuma conta."""
+    if l.tipo_lancamento == ESTORNO:  # R04, R35: taxa da data da venda, faixa da própria linha; vínculo pela referência
+        regra, inicio = "R35", (f"estorno pela venda {l.id_referencia} de {l.data_referencia.isoformat()} a "
+                                f"{pct_texto(l.taxa_comissao)}% - faixa da própria linha - taxa contratada ")
+    elif l.tipo_lancamento == REVERSAO:  # R05
+        regra, inicio = "R05", (f"reversão da antecipação {l.id_referencia} de {l.data_referencia.isoformat()} a "
+                                f"{pct_texto(l.taxa_comissao)}% - taxa contratada ")
+    else:
+        regra, inicio = ("R05" if l.tipo_lancamento == ANTECIPACAO else "R01"), "taxa contratada "
+    detalhe = f"{inicio}{pct_texto(l.taxa_contratada)}% {_contrato(l, cfg)}"
+    if l.concessao is not None and l.taxa_comissao != l.taxa_contratada:  # R10, R32, R40
+        isencao = "isenção" if l.taxa_comissao == 0 else "taxa reduzida"
+        detalhe = f"{isencao} (concessão {nome}, {l.concessao}) {pct_texto(l.taxa_comissao)}% - contrato: " + detalhe
+        regra = "R32"
+    return regra, texto_saida(detalhe)
+
+
+def origem_comissao(l: LinhaCheckout, cfg: ConfigCheckout, nome: str) -> Origem:
+    """Linha do rastro da comissão de uma transação, com a regra e o detalhe (O06)."""
+    return Origem(l.arquivo_origem, l.ref_origem, l.comissao, *regra_linha(l, cfg, nome))
 
 
 # ---------------------------------------------------------------- itens de saída
@@ -343,6 +408,12 @@ def taxa_concessao(cnpj: str, cfg: ConfigCheckout) -> str:
     return " ou ".join(f"{v.normalize():f}".replace(".", ",") + "%" for v in valores) or "a taxa da concessão"
 
 
+def fim_concessao(cnpj: str, cfg: ConfigCheckout) -> str:
+    """Último dia da concessão do lojista (DD/MM/AAAA), das condições especiais do config."""
+    fim = max(c.fim for c in cfg.condicoes if c.cnpj == cnpj)
+    return fim.strftime("%d/%m/%Y")
+
+
 def _rascunho_orbe() -> str:
     """Onde fica o rascunho de contestação da Orbe (R29), como o motivo da pendência o cita: <pasta>/orbe.md."""
     from tarvo.contestacao import ARQUIVO_ORBE, carregar_config  # import tardio: contestacao importa este módulo
@@ -358,7 +429,10 @@ def _pendencia_devolucao(cnpj: str, divergentes: list[LinhaCheckout], cfg: Confi
     """R03, R25, R32: a contraparte cobrou diferente do contrato; o lojista é ressarcido.
     R45: o que se devolve é o que saiu do bolso do lojista, transação a transação: o valor_taxa descontado pela Orbe
     menos a comissão pela taxa contratada. A divergência (DIV-CHK) continua pela fórmula da R03."""
-    origens = [(l.arquivo_origem, l.ref_origem, l.valor_taxa_orbe - comissao_contratada(l)) for l in divergentes]
+    origens = [(l.arquivo_origem, l.ref_origem, l.valor_taxa_orbe - comissao_contratada(l), "R45",
+                f"valor_taxa descontado pela Orbe R$ {brl(l.valor_taxa_orbe)} a {pct_texto(l.taxa_aplicada)}% menos a "
+                f"comissão pela taxa contratada R$ {brl(comissao_contratada(l))} a {pct_texto(l.taxa_contratada)}%")
+               for l in divergentes]
     return ItemSaida(f"PEN-DEVOL-CHK-{cnpj}", PENDENCIAS.nome,
                      {"tipo": "DEVOLUCAO_LOJISTA", "ref_origem": [l.ref_origem for l in divergentes],
                       "motivo": texto_saida(MOTIVO_DEVOLUCAO.format(rascunho=_rascunho_orbe())),
@@ -372,12 +446,20 @@ def _pendencia_concessao(cnpj: str, linhas: list[LinhaCheckout], cfg: ConfigChec
     divergências. Se a mesma linha também diverge do contrato, a parte acima do contrato (valor_taxa menos a comissão
     contratada) já está na PEN-DEVOL-CHK e aqui fica só a comissão contratada menos a da concessão (P23)."""
     regras = sorted({l.concessao for l in linhas})
+    def detalhe(l: LinhaCheckout) -> str:
+        base = (f"comissão pela taxa contratada R$ {brl(comissao_contratada(l))} a {pct_texto(l.taxa_contratada)}% "
+                "(a parte acima do contrato está na PEN-DEVOL-CHK)" if l.divergente
+                else f"valor_taxa descontado pela Orbe R$ {brl(l.valor_taxa_orbe)} a {pct_texto(l.taxa_aplicada)}%")
+        return f"{base} menos a comissão da concessão ({l.concessao}) R$ {brl(l.comissao)} a {pct_texto(l.taxa_comissao)}%"
+
     origens = [(l.arquivo_origem, l.ref_origem,
-                (comissao_contratada(l) if l.divergente else l.valor_taxa_orbe) - l.comissao) for l in linhas]
+                (comissao_contratada(l) if l.divergente else l.valor_taxa_orbe) - l.comissao, "R45", detalhe(l))
+               for l in linhas]
     return ItemSaida(f"PEN-CONCESSAO-CHK-{cnpj}", PENDENCIAS.nome,
                      {"tipo": "DEVOLUCAO_CONCESSAO", "ref_origem": [l.ref_origem for l in linhas],
                       "motivo": texto_saida(MOTIVO_CONCESSAO.format(regra=", ".join(regras), rascunho=_rascunho_orbe(),
-                                                                    taxa=taxa_concessao(cnpj, cfg))),
+                                                                    taxa=taxa_concessao(cnpj, cfg),
+                                                                    fim=fim_concessao(cnpj, cfg))),
                       "quem_decide": cfg.quem_decide["devolucao_concessao"]},
                      _soma(o[2] for o in origens), origens)
 
@@ -451,7 +533,9 @@ def _alertas_antecipacao(grupos: dict[str, list[LinhaCheckout]], contratos, comp
                  reversoes=texto_reversoes, liquido=antecipado + _soma(l.valor_bruto for l in reversoes),
                  vendido=vendido, antecipado=antecipado)),
              "quem_decide": cfg.quem_decide["alerta_antecipacao"]},
-            ZERO, [(l.arquivo_origem, l.ref_origem, ZERO) for l in antecipacoes]))
+            ZERO, [(l.arquivo_origem, l.ref_origem, ZERO, "P26",
+                    f"antecipação de {l.data_movimento.isoformat()}, R$ {brl(l.valor_bruto)} brutos - alerta "
+                    "informativo, não muda nenhum valor") for l in antecipacoes]))
     return itens
 
 
@@ -468,7 +552,7 @@ def gerar_itens(linhas: list[LinhaCheckout], contratos_nome, competencia: str, c
     for cnpj in sorted(por_cnpj):
         doc = por_cnpj[cnpj]
         nome = texto_saida(contratos_nome(cnpj))
-        rastro_comissao = [(l.arquivo_origem, l.ref_origem, l.comissao) for l in doc]
+        rastro_comissao = [origem_comissao(l, cfg, nome) for l in doc]
         comissao = _soma(l.comissao for l in doc)
         itens.append(ItemSaida(f"COM-CHK-{cnpj}", COMISSOES.nome,
                                {"cnpj": cnpj, "lojista": nome, "linha_negocio": LINHA_NEGOCIO},
@@ -491,7 +575,11 @@ def gerar_itens(linhas: list[LinhaCheckout], contratos_nome, competencia: str, c
             itens.append(ItemSaida(f"DIV-CHK-{l.ref_origem}", DIVERGENCIAS.nome,
                                    {"cnpj": cnpj, "linha_negocio": LINHA_NEGOCIO, "ref_origem": l.ref_origem,
                                     "taxa_contratada_pct": l.taxa_contratada, "taxa_aplicada_pct": l.taxa_aplicada},
-                                   l.diferenca, [(l.arquivo_origem, l.ref_origem, l.diferenca)]))
+                                   l.diferenca, [(l.arquivo_origem, l.ref_origem, l.diferenca,
+                                                  "R37" if l.tipo_lancamento == ESTORNO else "R03",
+                                                  texto_saida(f"bruto R$ {brl(l.valor_bruto)} × (taxa aplicada pela "
+                                                              f"Orbe {pct_texto(l.taxa_aplicada)}% - contratada "
+                                                              f"{pct_texto(l.taxa_contratada)}% {_contrato(l, cfg)})"))]))
         if divergentes:
             itens.append(_pendencia_devolucao(cnpj, divergentes, cfg))
         concedidas = [l for l in doc if l.concessao is not None and l.taxa_comissao != l.taxa_contratada]
@@ -513,7 +601,10 @@ def gerar_itens(linhas: list[LinhaCheckout], contratos_nome, competencia: str, c
                                {"tipo": "LOJISTA_SEM_CONTRATO", "ref_origem": [l.ref_origem for l in doc],
                                 "motivo": texto_saida(motivo), "quem_decide": cfg.quem_decide["lojista_sem_contrato"]},
                                _soma(l.valor_taxa_orbe for l in doc),
-                               [(l.arquivo_origem, l.ref_origem, l.valor_taxa_orbe) for l in doc]))
+                               [(l.arquivo_origem, l.ref_origem, l.valor_taxa_orbe,
+                                 cfg.faturamento_retroativo.get(ec, "R08"),
+                                 f"valor_taxa cobrado pela Orbe a {pct_texto(l.taxa_aplicada)}% - EC {ec} sem contrato "
+                                 "vigente: sem comissão, nota e divergência (R08, R36)") for l in doc]))
 
     if contratos is not None:  # P26: alerta informativo de antecipação
         grupos = {**{c: d for c, d in por_cnpj.items()},
@@ -526,6 +617,7 @@ EFEITO_ANTERIOR = ("o alerta de antecipação (P26) usou o histórico do própri
                    "nenhum valor muda")
 EFEITO_LOJISTA = ("as {n} transações do lojista ({quem}) ficaram fora de comissão, nota e divergência - valor = taxa "
                   "cobrada pela Orbe nelas")
+DETALHE_REGRA = "valor_taxa cobrado pela Orbe - transação fora por erro de dado ({tipo})"
 EFEITO_TRANSACAO = ("a transação ficou fora de comissão, nota e divergência; o checkout do lojista (CNPJ {cnpj}) saiu "
                     "PROVISÓRIO - valor = taxa cobrada pela Orbe na transação")
 
@@ -544,7 +636,7 @@ def _pendencias_regra(orbe: pd.DataFrame, problemas: list[ProblemaCheckout],
         l = p.linha
         itens.append(dep.pendencia_regra(
             p.erro.tipo, f"CHK-{l['ref_origem']}", str(p.erro), EFEITO_TRANSACAO.format(cnpj=p.chave), l["valor_taxa"],
-            [(l["arquivo_origem"], l["ref_origem"], l["valor_taxa"])]))
+            [(l["arquivo_origem"], l["ref_origem"], l["valor_taxa"])], detalhe=DETALHE_REGRA.format(tipo=p.erro.tipo.lower())))
     for chave, ps in sorted(do_lojista.items()):
         refs = {(p.linha["arquivo_origem"], p.linha["ref_origem"]) for p in ps} | set(fora.get(chave, ()))
         origens = [(a, r, por_ref[(a, r)]["valor_taxa"]) for a, r in por_ref if (a, r) in refs]
@@ -552,7 +644,8 @@ def _pendencias_regra(orbe: pd.DataFrame, problemas: list[ProblemaCheckout],
         dado = " | ".join(dict.fromkeys(str(p.erro) for p in ps))
         itens.append(dep.pendencia_regra(ps[0].erro.tipo, f"CHK-{chave}", dado,
                                          EFEITO_LOJISTA.format(n=len(origens), quem=quem),
-                                         _soma(o[2] for o in origens), origens))
+                                         _soma(o[2] for o in origens), origens,
+                                         detalhe=DETALHE_REGRA.format(tipo=ps[0].erro.tipo.lower())))
     return itens
 
 
@@ -599,34 +692,139 @@ def ecs_competencia_anterior(entradas: Entradas) -> frozenset[str] | None:
     return frozenset(leitura.quadro["cod_estabelecimento"]) | {r.ec for r in leitura.rejeitadas if r.ec}
 
 
-def pendencias_arquivos_orbe(orbe: pd.DataFrame, repetidas, competencia: str, cfg: ConfigCheckout) -> list[ItemSaida]:
-    """Pendências informativas (valor 0,00) da leitura de vários arquivos da Orbe (O05); não mudam nenhum valor.
+def _comissoes_por_transacao(itens) -> dict[tuple[str, str], tuple[str, Origem]]:
+    """(arquivo, id_transacao) -> (CNPJ, linha do rastro) de cada transação que entrou numa COM-CHK."""
+    return {(o.arquivo_origem, o.ref_origem): (i.campos["cnpj"], o)
+            for i in itens if i.id_saida.startswith("COM-CHK-") for o in i.origens}
 
-    P27: id_transacao igual em dois arquivos, contado uma vez. P28: estorno ou reversão de transação do mesmo mês
-    que não está em nenhum arquivo da Orbe (a de mês anterior é o caso normal da R04 e não abre pendência).
+
+def _valor_texto(v) -> str:
+    if v is None:
+        return "vazio"
+    return v.isoformat() if isinstance(v, date) else str(v)
+
+
+def _efeito_nota(deltas: dict[str, Decimal], totais: dict[str, Decimal]) -> str:
+    """Nota de cada lojista afetado, antes e depois da correção (R06: comissão zero ou negativa não emite nota)."""
+    textos = []
+    for cnpj, delta in sorted(deltas.items()):
+        depois = totais.get(cnpj, ZERO)
+        antes = depois - delta
+        textos.append(f"NF-CHK-{cnpj}: R$ {brl(max(antes, ZERO))} → R$ {brl(max(depois, ZERO))}"
+                      + (" (comissão zero ou negativa não emite nota, R06)" if min(antes, depois) <= 0 else ""))
+    return " - ".join(textos) or "nenhum (a transação não entra na comissão, nem antes nem depois)"
+
+
+def _pendencia_correcao(c, comissoes, totais: dict[str, Decimal], fora: set[str], contratos: Contratos | None,
+                        cfg: ConfigCheckout) -> ItemSaida:
+    """P27: id_transacao corrigido num arquivo posterior. A linha nova já está na comissão (o leitor a pôs no lugar
+    da antiga); a pendência mostra antes → depois e vale o efeito na comissão: no rastro, a comissão da linha nova e a
+    da substituída com o sinal trocado."""
+    depois = comissoes.get((c.arquivo_depois, c.ref_origem))
+    antes = None
+    if contratos is not None:
+        try:
+            l = _calcular_linha(c.antes, contratos, cfg)
+        except dep.ErroDado:
+            l = None
+        if l is not None and l.cnpj is not None and l.cnpj not in fora:
+            antes = (l.cnpj, origem_comissao(l, cfg, contratos.nome(l.cnpj)))
+    com_antes = antes[1].valor if antes else ZERO
+    com_depois = depois[1].valor if depois else ZERO
+    deltas: dict[str, Decimal] = defaultdict(lambda: ZERO)
+    if depois:
+        deltas[depois[0]] += com_depois
+    if antes:
+        deltas[antes[0]] -= com_antes
+    fora_da_comissao = "a linha não entra na comissão (lojista sem contrato ou fora por erro de dado)"
+    origens = [
+        (c.arquivo_depois, c.ref_origem, com_depois, "P27",
+         "comissão pela linha corrigida - " + (depois[1].detalhe if depois else fora_da_comissao)),
+        (c.arquivo_antes, c.ref_origem, -com_antes, "P27",
+         "comissão da linha substituída, com o sinal trocado - " + (antes[1].detalhe if antes else fora_da_comissao)),
+    ]
+    campos = ", ".join(f"{campo} {_valor_texto(c.antes[campo])} → {_valor_texto(c.depois[campo])}"
+                       for campo in c.campos)
+    motivo = MOTIVO_CORRECAO.format(ref=c.ref_origem, antes=c.arquivo_antes, n_antes=c.linha_antes,
+                                    depois=c.arquivo_depois, n_depois=c.linha_depois, campos=campos,
+                                    com_antes=brl(com_antes), com_depois=brl(com_depois),
+                                    efeito=brl(com_depois - com_antes), notas=_efeito_nota(deltas, totais))
+    return ItemSaida(f"PEN-CORRECAO-ORBE-{c.ref_origem}", PENDENCIAS.nome,
+                     {"tipo": "CORRECAO_ORBE", "ref_origem": [c.ref_origem], "motivo": texto_saida(motivo),
+                      "quem_decide": cfg.quem_decide["correcao_orbe"]},
+                     com_depois - com_antes, origens)
+
+
+def pendencias_arquivos_orbe(orbe: pd.DataFrame, repetidas, competencia: str, cfg: ConfigCheckout,
+                             itens: list[ItemSaida] = (), taxas: pd.DataFrame | None = None, correcoes=(),
+                             rejeitadas_taxas=()) -> list[ItemSaida]:
+    """Pendências da leitura de vários arquivos da Orbe (O05). itens: os do checkout, já calculados (a comissão de
+    cada transação sai das COM-CHK; nenhuma conta nova de comissão do mês).
+
+    P27: id_transacao igual em dois arquivos, contado uma vez (PEN-REPET-CHK, 0,00); com dados diferentes, a linha do
+    arquivo posterior substituiu a anterior (PEN-CORRECAO-ORBE, valor = efeito na comissão). R48: estorno ou reversão
+    de transação do mesmo mês que não está em nenhum arquivo da Orbe entra pelo valor que veio (PEN-SEMORIG-CHK,
+    valor = efeito na comissão; a de mês anterior é o caso normal da R04 e não abre pendência). R46: linha com
+    data_movimento de mês anterior recebida na pasta do mês entra no mês (PEN-TARDIO-CHK, informativa, 0,00).
     """
-    itens = []
+    comissoes = _comissoes_por_transacao(itens)
+    totais = {i.campos["cnpj"]: i.valor_reportado for i in itens if i.id_saida.startswith("COM-CHK-")}
+    fora = {i.id_saida.rsplit("-CHK-", 1)[1] for i in itens
+            if i.id_saida.startswith("PEN-REGRA-") and "-CHK-" in i.id_saida}
+    contratos = Contratos(taxas, cfg, estrito=False, rejeitadas=rejeitadas_taxas) if taxas is not None else None
+    resultado = []
     for r in repetidas:
-        itens.append(ItemSaida(
+        resultado.append(ItemSaida(
             f"PEN-REPET-CHK-{r.ref_origem}", PENDENCIAS.nome,
             {"tipo": "TRANSACAO_REPETIDA", "ref_origem": [r.ref_origem],
              "motivo": texto_saida(MOTIVO_REPETIDA.format(ref=r.ref_origem, mantido=r.arquivo_mantido,
                                                           n_mantida=r.linha_mantida, repetido=r.arquivo_repetido,
                                                           n_repetida=r.linha_repetida)),
              "quem_decide": cfg.quem_decide["transacao_repetida"]},
-            ZERO, [(r.arquivo_mantido, r.ref_origem, ZERO), (r.arquivo_repetido, r.ref_origem, ZERO)]))
+            ZERO, [(r.arquivo_mantido, r.ref_origem, ZERO, "P27", "cópia mantida, contada uma vez"),
+                   (r.arquivo_repetido, r.ref_origem, ZERO, "P27", "cópia repetida com a linha igual, não contada")]))
+    for c in correcoes:
+        resultado.append(_pendencia_correcao(c, comissoes, totais, fora, contratos, cfg))
+
+    registros = orbe.to_dict("records")
     ids = set(orbe["ref_origem"])
-    for l in orbe.to_dict("records"):
+    for l in registros:
         original, data = l["id_referencia"], l["data_venda_original"]
         if original and data and data.strftime("%Y-%m") == competencia and original not in ids:
-            itens.append(ItemSaida(
+            par = comissoes.get((l["arquivo_origem"], l["ref_origem"]))
+            if par is not None:
+                cnpj, o = par
+                valor, efeito = o.valor, EFEITO_SEM_ORIGINAL.format(cnpj=cnpj, valor=brl(o.valor))
+                detalhe = f"{o.detalhe} - venda original {original} não encontrada nos arquivos da Orbe"
+            else:
+                valor = ZERO
+                efeito = EFEITO_SEM_ORIGINAL_FORA.format(motivo="lojista sem contrato ou fora por erro de dado: ver "
+                                                                "PEN-SEMCONTRATO ou PEN-REGRA")
+                detalhe = f"venda original {original} não encontrada - a linha não entrou na comissão"
+            resultado.append(ItemSaida(
                 f"PEN-SEMORIG-CHK-{l['ref_origem']}", PENDENCIAS.nome,
                 {"tipo": "REFERENCIA_NAO_ENCONTRADA", "ref_origem": [l["ref_origem"]],
                  "motivo": texto_saida(MOTIVO_SEM_ORIGINAL.format(tipo=l["tipo_lancamento"], data=l["data_movimento"],
-                                                                  original=original)),
+                                                                  original=original, efeito=efeito)),
                  "quem_decide": cfg.quem_decide["referencia_nao_encontrada"]},
-                ZERO, [(l["arquivo_origem"], l["ref_origem"], ZERO)]))
-    return itens
+                valor, [(l["arquivo_origem"], l["ref_origem"], valor, "R48", detalhe)]))
+
+    inicio = _primeiro_dia(competencia)
+    tardias: dict[tuple[str, str], list[dict]] = defaultdict(list)
+    for l in registros:  # R46: ajuste de mês já aprovado, recebido depois, entra no mês atual
+        if l["data_movimento"] < inicio:
+            tardias[(l["arquivo_origem"], l["data_movimento"].strftime("%Y-%m"))].append(l)
+    for (arquivo, mes), linhas in sorted(tardias.items()):
+        texto = f"ajuste de {mes} recebido depois da aprovação, entra em {competencia} (regra 13h34)"
+        resultado.append(ItemSaida(
+            f"PEN-TARDIO-CHK-{mes}-{dep.id_saida_seguro(arquivo)}", PENDENCIAS.nome,
+            {"tipo": "AJUSTE_APOS_APROVACAO", "ref_origem": [l["ref_origem"] for l in linhas],
+             "motivo": texto_saida(MOTIVO_APOS_APROVACAO.format(
+                 mes=mes, competencia=competencia, n=len(linhas), arquivo=arquivo,
+                 refs=", ".join(f"{l['ref_origem']} de {l['data_movimento'].isoformat()}" for l in linhas))),
+             "quem_decide": cfg.quem_decide["ajuste_apos_aprovacao"]},
+            ZERO, [(arquivo, l["ref_origem"], ZERO, "R46", texto) for l in linhas]))
+    return resultado
 
 
 def checkout(entradas: Entradas, config=CONFIG_CHECKOUT) -> list[ItemSaida]:
@@ -644,10 +842,13 @@ def checkout(entradas: Entradas, config=CONFIG_CHECKOUT) -> list[ItemSaida]:
     except dep.ErroDado as e:  # R44: sem a competência anterior, o alerta usa a heurística do mês (P26)
         ecs_anteriores = None
         anterior = [dep.pendencia_regra(e.tipo, "CHK", str(e), EFEITO_ANTERIOR, ZERO,
-                                        [(entradas.competencia, "competencia anterior", ZERO)])]
+                                        [(entradas.competencia, "competencia anterior", ZERO)],
+                                        detalhe="competência anterior ilegível - valor 0,00")]
     itens = (calcular_checkout(entradas.orbe, entradas.taxas, entradas.competencia, cfg, ecs_anteriores,
                                rejeitadas_taxas)
-             + pendencias_arquivos_orbe(entradas.orbe, entradas.orbe_repetidas, entradas.competencia, cfg) + anterior)
+             + anterior)
+    itens += pendencias_arquivos_orbe(entradas.orbe, entradas.orbe_repetidas, entradas.competencia, cfg, itens,
+                                      entradas.taxas, entradas.orbe_correcoes, rejeitadas_taxas)
     if dep.provisorio("checkout", entradas):
         return dep.marcar_provisorio(itens)
     # R44: transação da Orbe que o leitor não converteu deixa o checkout do lojista dela provisório

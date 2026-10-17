@@ -123,7 +123,10 @@ def test_lancamento_classificado_rastro_e_a_propria_linha(cfg):
     assert item.campos == {"banco": "MERIDIANO", "ref_origem": "MRDX1", "data": date(2031, 3, 10),
                            "descricao": "IOF S/ OPERACAO CREDITO", "conta_codigo": "4.3.01", "metodo": "REGRA",
                            "confianca": D("1.00")}
-    assert [tuple(o) for o in item.origens] == [("mer.ofx", "MRDX1", D("-48.21"))]
+    assert [tuple(o)[:3] for o in item.origens] == [("mer.ofx", "MRDX1", D("-48.21"))]
+    # O06: a regra do rastro é a fonte da regra de config/bancos.yaml, e o detalhe diz o padrão e a conta
+    (o,) = item.origens
+    assert o.regra == l.regra.fonte and "conta 4.3.01" in o.detalhe and l.regra.padrao.pattern in o.detalhe
 
 
 def test_textos_sem_ponto_e_virgula(cfg):

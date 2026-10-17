@@ -191,6 +191,80 @@ def test_erro_num_modulo_nao_toca_saida(tmp_path):
     assert _sem_preparo(tmp_path)
 
 
+def test_yaml_invalido_diz_o_arquivo_e_a_linha_com_codigo_2_sem_traceback(tmp_path, capsys):
+    config = tmp_path / "entradas.yaml"
+    config.write_text("padroes:\n  orbe: ['*orbe*.csv'\n  taxas: x\n", encoding="utf-8")
+    saida = tmp_path / "saida"
+    assert cli.main(["fechar", "--competencia", "2026-09", "--entrada", str(ENTRADA), "--saida", str(saida),
+                     "--config", str(config)]) == 2
+    erro = capsys.readouterr().err
+    assert f"Erro de configuração em {config}, linha " in erro and "Corrija o arquivo e rode de novo" in erro
+    assert "Traceback" not in erro and not saida.exists()
+
+
+def _tudo_do_destino(tmp_path):
+    return {p: p.read_bytes() for p in tmp_path.rglob("*") if p.is_file()}
+
+
+def test_arquivo_travado_nao_substitui_nenhum_e_pede_para_fechar_o_arquivo(tmp_path, monkeypatch, capsys):
+    saida, _, _ = _pastas_com_versao_antiga(tmp_path)
+    fechar(ENTRADA, saida, "2026-09", modulos=[])  # versão anterior completa: saida/, contestacoes/ e auditoria/
+    antes = _tudo_do_destino(tmp_path)
+    travado = saida / "pendencias.csv"
+    monkeypatch.setattr(fechamento, "_travado", lambda alvo: alvo == travado)
+    assert cli.main(["fechar", "--competencia", "2026-09", "--entrada", str(ENTRADA), "--saida", str(saida)]) == 1
+    erro = capsys.readouterr().err
+    assert erro.strip() == f"Feche {travado} (provavelmente aberto no Excel) e rode de novo. Nada foi alterado."
+    assert "Traceback" not in erro
+    assert _tudo_do_destino(tmp_path) == antes
+    assert _sem_preparo(tmp_path)
+
+
+@pytest.mark.skipif(os.name != "nt", reason="travar arquivo aberto é do Windows")
+def test_arquivo_realmente_aberto_por_outro_programa_nao_substitui_nada(tmp_path, capsys):
+    import ctypes
+    from ctypes import wintypes
+
+    saida, _, _ = _pastas_com_versao_antiga(tmp_path)
+    fechar(ENTRADA, saida, "2026-09", modulos=[])
+    antes = _tudo_do_destino(tmp_path)
+    k32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    k32.CreateFileW.restype = wintypes.HANDLE
+    k32.CreateFileW.argtypes = [wintypes.LPCWSTR, wintypes.DWORD, wintypes.DWORD, wintypes.LPVOID, wintypes.DWORD,
+                                wintypes.DWORD, wintypes.HANDLE]
+    handle = k32.CreateFileW(str(saida / "rastro.csv"), 0x80000000, 0, None, 3, 0x80, None)  # leitura, sem compartilhar
+    assert handle not in (None, wintypes.HANDLE(-1).value)
+    try:
+        assert cli.main(["fechar", "--competencia", "2026-09", "--entrada", str(ENTRADA), "--saida", str(saida)]) == 1
+        erro = capsys.readouterr().err
+        assert "rastro.csv (provavelmente aberto no Excel) e rode de novo. Nada foi alterado." in erro
+        assert "Traceback" not in erro
+    finally:
+        k32.CloseHandle(handle)
+    assert _tudo_do_destino(tmp_path) == antes
+
+
+def test_troca_que_falha_no_meio_restaura_os_arquivos_antigos(tmp_path, monkeypatch, capsys):
+    saida, _, _ = _pastas_com_versao_antiga(tmp_path)
+    fechar(ENTRADA, saida, "2026-09", modulos=[])
+    antes = _tudo_do_destino(tmp_path)
+    original = os.replace
+    chamadas = []
+
+    def falha_na_terceira(origem, destino):
+        chamadas.append(destino)
+        if len(chamadas) == 3:
+            raise PermissionError(13, "Permission denied", str(destino))
+        return original(origem, destino)
+
+    monkeypatch.setattr(fechamento.os, "replace", falha_na_terceira)
+    assert cli.main(["fechar", "--competencia", "2026-09", "--entrada", str(ENTRADA), "--saida", str(saida)]) == 1
+    erro = capsys.readouterr().err
+    assert "provavelmente aberto no Excel" in erro and "Nada foi alterado." in erro and "Traceback" not in erro
+    assert len(chamadas) == 3
+    assert _tudo_do_destino(tmp_path) == antes
+
+
 def test_sucesso_substitui_saida_e_contestacoes_e_apaga_o_preparo(tmp_path, monkeypatch):
     saida, contestacoes, antigos = _pastas_com_versao_antiga(tmp_path)
     monkeypatch.setattr(fechamento, "MODULOS", [])
@@ -322,27 +396,71 @@ def _situacoes(pasta: Path, nome: str) -> set[str]:
         return {l.get("situacao") or "" for l in csv.DictReader(f, delimiter=";") if l["id_saida"].startswith(("COM-CHK", "NF-CHK"))}
 
 
-def test_reenvio_com_linha_diferente_bloqueia_so_o_arquivo_posterior(com_e_sem_o_06, copia, tmp_path, capsys):
-    # R44 (i)(2): o 07 traz o TX88446992 do 06 com a taxa diferente; só o 07 fica de fora, o 01 e o 06 entram
+def _linhas_csv(pasta: Path, nome: str) -> list[dict]:
+    import csv
+    with open(pasta / nome, encoding="utf-8", newline="") as f:
+        return list(csv.DictReader(f, delimiter=";"))
+
+
+def test_reenvio_com_linha_diferente_vale_a_correcao_e_o_resto_e_lido(com_e_sem_o_06, copia, tmp_path, capsys):
+    # P27 (critério nosso, Helena 13h34): o 07 corrige o valor da venda TX88447225 do 06 (5.480,00 → 5.000,00) e
+    # traz uma venda nova; a linha do 07 substitui a do 06, o resto entra, e o checkout não fica provisório
     com, _ = com_e_sem_o_06["com"]
     ajustes = _orbe(copia)[-1]
     linhas = ajustes.read_text(encoding="utf-8").splitlines()
-    linhas[1] = linhas[1].replace("-1147,05;2,59;-29,70;-1117,35", "-1147,05;2,69;-30,85;-1116,20")
-    (copia / "07_orbe_reenvio_ajustes.csv").write_text("\r\n".join(linhas) + "\r\n", encoding="utf-8", newline="")
+    corrigida = linhas[-1].replace("5480,00;3,19;174,81;5305,19", "5000,00;3,19;159,50;4840,50")
+    nova = "TX88447300;30/09/2026;1038867654;KIWI EXPERIENCE TURISMO;VENDA;DEBITO;1;VISA;1000,00;1,49;14,90;985,10;;"
+    assert corrigida != linhas[-1]
+    (copia / "07_orbe_reenvio_ajustes.csv").write_text("\r\n".join([linhas[0], nova, corrigida]) + "\r\n",
+                                                       encoding="utf-8", newline="")
     saida = tmp_path / "saida"
     assert cli.main(["fechar", "--competencia", "2026-09", "--entrada", str(copia), "--saida", str(saida),
-                     "--sem-contestacao"]) == 3
-    assert "orbe (só o arquivo 07_orbe_reenvio_ajustes.csv); não gerado: nada" in capsys.readouterr().out
-    assert _comissao_total(saida) == _comissao_total(com / "saida")
-    pen = _pendencias(saida)["PEN-BLOQUEIO-ORBE-07_orbe_reenvio_ajustes.csv"]
-    assert pen["tipo"] == "ARQUIVO_BLOQUEADO" and pen["ref_origem"] == "TX88446992"
-    assert (f"id_transacao TX88446992 aparece em {ajustes.name} (linha física 2) e em 07_orbe_reenvio_ajustes.csv "
-            "(linha física 2) com valores diferentes em taxa_aplicada_pct, valor_taxa, valor_liquido") in pen["motivo"]
-    assert "não escolhe" in pen["motivo"] and "PROVISÓRIOS: checkout" in pen["motivo"]
-    rastro = (saida / "rastro.csv").read_text(encoding="utf-8")
-    assert (f"PEN-BLOQUEIO-ORBE-07_orbe_reenvio_ajustes.csv;{ajustes.name};TX88446992;0.00\n"
-            "PEN-BLOQUEIO-ORBE-07_orbe_reenvio_ajustes.csv;07_orbe_reenvio_ajustes.csv;TX88446992;0.00\n") in rastro
-    assert _situacoes(saida, "comissoes_por_lojista.csv") == {"PROVISORIO"}
+                     "--sem-contestacao"]) == 0
+    assert "FECHAMENTO COMPLETO" in capsys.readouterr().out
+    # comissão: -15,31 da correção (174,81 → 159,50) e +14,90 da venda nova (1,49% de débito do Kiwi)
+    assert _comissao_total(saida) - _comissao_total(com / "saida") == Decimal("-0.41")
+    pen = _pendencias(saida)
+    assert not [i for i in pen if i.startswith("PEN-BLOQUEIO")]
+    p = pen["PEN-CORRECAO-ORBE-TX88447225"]
+    assert p["tipo"] == "CORRECAO_ORBE" and p["valor_brl"] == "-15.31" and p["quem_decide"] == "Financeiro (Helena)"
+    m = p["motivo"]
+    assert (f"o id_transacao TX88447225 veio em {ajustes.name} (linha física 15) e de novo, com dados diferentes, "
+            "em 07_orbe_reenvio_ajustes.csv (linha física 3)") in m
+    assert "valor_bruto 5480.00 → 5000.00, valor_taxa 174.81 → 159.50, valor_liquido 5305.19 → 4840.50" in m
+    assert "efeito na comissão: R$ 174,81 → R$ 159,50 (R$ -15,31)" in m and "NF-CHK-07752116000126: R$ " in m
+    assert "próximo passo: a Helena confirma a correção com a Orbe" in m
+    rastro = [l for l in _linhas_csv(saida, "rastro.csv") if l["id_saida"] == "PEN-CORRECAO-ORBE-TX88447225"]
+    assert [(l["arquivo_origem"], l["valor"], l["regra"]) for l in rastro] == [
+        ("07_orbe_reenvio_ajustes.csv", "159.50", "P27"), (ajustes.name, "-174.81", "P27")]
+    kiwi = [l for l in _linhas_csv(saida, "rastro.csv") if l["id_saida"] == "COM-CHK-07752116000126"]
+    assert ("07_orbe_reenvio_ajustes.csv", "TX88447225", "159.50") in [
+        (l["arquivo_origem"], l["ref_origem"], l["valor"]) for l in kiwi]
+    assert not [l for l in kiwi if l["arquivo_origem"] == ajustes.name]  # a linha antiga saiu da comissão
+    assert _situacoes(saida, "comissoes_por_lojista.csv") == {""}  # nada provisório
+    assert validar_saida(saida) == []
+
+
+def test_ajuste_de_agosto_na_pasta_de_setembro_entra_em_setembro(com_e_sem_o_06, copia, tmp_path):
+    # R46 (Helena 13h34): ajuste que chega depois da aprovação entra no mês seguinte; a linha de agosto posta na
+    # pasta de setembro é lida (nenhum filtro por data) e abre a pendência informativa
+    com, _ = com_e_sem_o_06["com"]
+    cabecalho = _orbe(copia)[0].read_text(encoding="utf-8").splitlines()[0]
+    agosto = "TX87999001;28/08/2026;1038867654;KIWI EXPERIENCE TURISMO;VENDA;DEBITO;1;VISA;2000,00;1,49;29,80;1970,20;;"
+    (copia / "07_orbe_ajuste_agosto.csv").write_text(f"{cabecalho}\r\n{agosto}\r\n", encoding="utf-8", newline="")
+    saida = tmp_path / "saida"
+    resultado = fechar(copia, saida, "2026-09", contestacoes=False)
+    assert resultado.completo
+    assert _comissao_total(saida) - _comissao_total(com / "saida") == Decimal("29.80")
+    rastro = _linhas_csv(saida, "rastro.csv")
+    assert {"id_saida": "COM-CHK-07752116000126", "arquivo_origem": "07_orbe_ajuste_agosto.csv",
+            "ref_origem": "TX87999001", "valor": "29.80"}.items() <= next(
+        l for l in rastro if l["ref_origem"] == "TX87999001" and l["id_saida"].startswith("COM-")).items()
+    p = _pendencias(saida)["PEN-TARDIO-CHK-2026-08-07_orbe_ajuste_agosto.csv"]
+    assert p["tipo"] == "AJUSTE_APOS_APROVACAO" and p["valor_brl"] == "0.00" and p["ref_origem"] == "TX87999001"
+    assert "ajuste de 2026-08 recebido depois da aprovação, entra em 2026-09 (regra 13h34" in p["motivo"]
+    assert [(l["arquivo_origem"], l["ref_origem"], l["regra"]) for l in rastro
+            if l["id_saida"] == "PEN-TARDIO-CHK-2026-08-07_orbe_ajuste_agosto.csv"] == [
+        ("07_orbe_ajuste_agosto.csv", "TX87999001", "R46")]
     assert validar_saida(saida) == []
 
 

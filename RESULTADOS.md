@@ -8,9 +8,30 @@
 | Commit do código | o commit que contém este arquivo (`git log -1 --format=%h -- RESULTADOS.md`; um hash escrito aqui ficaria velho no commit seguinte). O resumo gerado (`python -m tarvo resumo`, `resumo.versao_do_codigo`) imprime o commit atual (`git rev-parse --short HEAD`) e a branch; sem git, "commit indisponível" |
 | Fechamento | `python -m tarvo fechar --competencia 2026-09 --entrada dados/2026-09 --saida saida/` (IA conforme `config/ia.yaml`; em setembro todo lançamento casa uma regra, então a IA não é chamada nenhuma vez, P14) |
 | Resumo | `python -m tarvo resumo --saida saida` |
-| pytest | **456 passed** (`python -m pytest -q`) |
+| Registro da execução (O06) | `auditoria/execucao.md` e `auditoria/execucao.json`: a última execução do `fechar`, com data e hora, commit, comando, cada arquivo de entrada (tipo, tamanho, SHA-256, linhas lidas), arquivos ignorados, fontes bloqueadas, status e código de saída, e linhas e total de cada CSV de `saida/` |
+| pytest | **489 passed** (`python -m pytest -q`) |
 | `validar_saida(saida/)` | `[]`, **sem problemas** |
 | Rastro | 371 de 371 itens com soma do rastro por id_saida = valor reportado |
+
+**R49 a R60 (Helena, 17/10, 10h59 a 16h08) e O07 (Organização, 15h54).** Nenhum número de setembro mudou: saida/ tem os mesmos 6 CSVs, e só o pendencias.csv mudou, em motivo e quem_decide de 5 linhas (valores, referências e rastro iguais); contestacoes/ ficou idêntico byte a byte. O que mudou nas 5 pendências: PEN-TED-PONTE (o motivo não supõe como a Ponte vai pagar, R18), PEN-NAOID-L50 (o Caio identifica o pagador com o banco até o fechamento de outubro), PEN-TRANSF-L92 (se não aparecer no extrato de outubro, vira pendência da tesouraria), PEN-CONCESSAO-CHK (acrescenta a renovação da isenção depois de 31/12/2026, Comercial) e PEN-SEMCONTRATO da Atlas (quem_decide "Comercial (Diego)"). Conferido nos dados: as 4 antecipações da Casa estão na concessão pela data da antecipação (R49); nenhuma transação com mais de 12 parcelas (R50); Fluente a 0,79% sem divergência nem pendência (R58); CNPJ da Fluente e da Campus Global com 14 dígitos em toda a saída (R57); classificação do Pix da contabilidade, rendimento, seguro, IOF e CDB como antes (R59). Código: uma transação com mais de 12 parcelas vira PEN-REGRA-TAXA (R50) e as PEN-REGRA de cadastro, vigência e taxa passam a "Comercial" (R51), sem caso em setembro.
+
+**R46 a R48 (Helena, 17/10, 13h34 a 14h10) e O06 (Organização, 14h11).** Com todos os arquivos, o fechamento continua completo (código 0). Nenhum número de setembro mudou: as três regras novas não têm caso em setembro (nenhuma linha de agosto nos arquivos da Orbe, nenhum id corrigido, toda original do 06 está no 01), e a R47 confirma o que o código já fazia. O rastro.csv ganhou duas colunas no fim (O06).
+
+| arquivo | linhas antes → depois | total antes → depois | o que mudou e a regra |
+|---|---:|---:|---|
+| comissoes_por_lojista.csv, divergencias_taxa.csv, notas_a_emitir.csv, lancamentos_classificados.csv, pendencias.csv | 35, 115, 21, 184, 16 (iguais) | iguais | idênticos byte a byte |
+| rastro.csv | 5.086 → 5.086 | -543.718,70 → -543.718,70 | colunas extras no fim, `regra` e `detalhe` (O06); as 4 obrigatórias, idênticas linha a linha e na mesma ordem (conferido por script: as 4 primeiras colunas de cada linha, antes e depois). Nenhuma linha sem regra: R01 3.358, R11 684, R32 236, R45 210, R19 154, R35 134, R03 88, R05 72, R30 57, R15 46, R21 21, R20 11, R34 4, R37 4, P26 5, R13 1, P06 1 |
+| contestacoes/ (orbe.md, orbe_operacoes.csv, ponte.md, ponte_operacoes.csv) | iguais | iguais | idênticos byte a byte |
+| auditoria/execucao.json, execucao.md | não existiam | | registro da execução (O06) |
+
+O que cada regra muda quando o caso aparecer (testes em pastas temporárias):
+
+| regra | o que o fechamento faz | teste |
+|---|---|---|
+| P27 (critério nosso, Helena 13h34) | id_transacao que volta num arquivo posterior com dados diferentes: a linha do arquivo posterior substitui a do relatório, o resto do arquivo é lido, e a PEN-CORRECAO-ORBE-<id> traz antes → depois, o efeito em R$ na comissão e na nota, "a Helena confirma a correção com a Orbe" e "Financeiro (Helena)". Valor = efeito na comissão. O checkout não fica provisório, e o fechamento sai COMPLETO (código 0). Antes: o arquivo inteiro ficava bloqueado e o checkout, provisório | `test_fechamento.py::test_reenvio_com_linha_diferente_vale_a_correcao_e_o_resto_e_lido` (07 corrige a venda TX88447225 do Kiwi de 5.480,00 para 5.000,00: PEN-CORRECAO-ORBE-TX88447225 de -15,31) |
+| R46 (13h34) | linha da Orbe com data_movimento de mês anterior na pasta da competência: é lida e entra no mês (não há filtro por data); PEN-TARDIO-CHK-<mês>-<arquivo>, 0,00, "ajuste de 2026-08 recebido depois da aprovação, entra em 2026-09 (regra 13h34)" | `test_fechamento.py::test_ajuste_de_agosto_na_pasta_de_setembro_entra_em_setembro` |
+| R47 (14h08) | bandeira não entra na taxa nem no vínculo do estorno; os 7 estornos do 06 com bandeira diferente da venda (TX88447011, -030, -044, -057, -070, -093, -109) só aparecem em COM-CHK e NF-CHK | `test_checkout.py::test_set_estornos_com_bandeira_diferente_da_venda_sem_pendencia_nem_divergencia` |
+| R48 (14h10) | estorno ou reversão sem a original entra pelo valor que veio; a PEN-SEMORIG-CHK vale o efeito na comissão (era 0,00), com "a Helena pede a venda original à Orbe" | `test_checkout.py::test_estorno_sem_a_original_entra_pelo_valor_que_veio_e_a_pendencia_vale_o_efeito` |
 
 **R41 a R45 (Helena, 17/10, 11h49 a 12h50).** Com todos os arquivos, o fechamento continua completo (código 0). Mudaram só o valor das devoluções (R45, centavos) e textos (R41, R43, R45); a R42 e a R44 não mudam nenhum número de setembro.
 
@@ -64,7 +85,7 @@ Os casos de teste, em cópias temporárias de `dados/2026-09` (`tests/test_parci
 | relatório da Orbe com `valor_taxa` renomeada | 3 | remessa, Aurora, Meridiano, conferências, ponte.md | checkout, orbe.md | PEN-BLOQUEIO-ORBE: "01_orbe_relatorio_comissoes_set2026.csv: colunas ausentes no cabeçalho: ['valor_taxa']", rastro na L1 |
 | arquivo 06 com cabeçalho diferente | 3 | tudo; o checkout sem o 06, com `situacao` = PROVISORIO, e o orbe.md com aviso de provisório | só o 06 (14 linhas) | PEN-BLOQUEIO-ORBE-06_orbe_ajustes_tardios_set2026.csv (ARQUIVO_BLOQUEADO) |
 | coluna a mais (Aurora com "Categoria") | 0 | tudo, igual ao completo byte a byte, fora pendencias.csv e rastro.csv | nada | PEN-AVISO-LAYOUT-AURORA (AVISO_LAYOUT, 0,00) |
-| outros (`tests/test_fechamento.py`, `test_parcial.py`) | 3 | id do 06 reenviado num 07 com taxa diferente: só o 07 fica de fora, e a pendência cita TX88446992, os dois arquivos, a linha física 2 de cada um e os campos taxa_aplicada_pct, valor_taxa e valor_liquido; segundo `.eml`: ponte ambígua; planilha que não é xlsx: ilegível (BadZipFile); pasta vazia: as 6 fontes bloqueadas, saída válida | | |
+| outros (`tests/test_fechamento.py`, `test_parcial.py`) | 3 | id do 06 reenviado num 07 com dados diferentes: desde a P27 de 17/10, 13h34, não bloqueia mais (código 0, a linha do 07 vale e abre PEN-CORRECAO-ORBE); segundo `.eml`: ponte ambígua; planilha que não é xlsx: ilegível (BadZipFile); pasta vazia: as 6 fontes bloqueadas, saída válida | | |
 
 Saída real da CLI, sem o `.eml` (código 3):
 
@@ -265,7 +286,7 @@ Colunas novas no ponte_operacoes.csv (P24, exibição, aguardando aprovação):
 | natureza | coluna | total | Esperado | teste de origem | |
 |---|---|---:|---|---|:-:|
 | SPREAD_ACIMA_CONTRATADO | parte_tarvo_brl (50% da diferença, por operação) | 709,46 | 709,46 | `test_contestacao.py::test_ponte_partes_da_tarvo_no_csv` | ✓ |
-| SPREAD_NEGATIVO | tarvo_deixou_de_receber_brl (50% do spread contratado) | 865,98 | 865,98 | idem | ✓ |
+| SPREAD_NEGATIVO | (sem coluna no anexo) 50% do spread contratado por operação, só nas notas internas do ponte.md | 865,98 | 865,98 | idem | ✓ |
 | OPERACAO_DUPLICADA | parte_tarvo_brl · valor_operacao_brl | 410,94 · 55.811,47 | 410,94 · 55.811,47 | idem | ✓ |
 
 O `fechar` pelo CLI lista os 4 arquivos gravados e aceita `--sem-contestacao` (`test_contestacao.py::test_cli_lista_os_rascunhos_e_grava_na_pasta_irma`, `::test_cli_sem_contestacao_nao_grava_a_pasta`).
@@ -296,7 +317,7 @@ COM-REM-17217888000111;03_email_ponte_cambio_relatorio_out2026.eml#PonteCambio_R
 COM-REM-17217888000111;03_email_ponte_cambio_relatorio_set2026.eml#PonteCambio_Relatorio_TARVO_092026.xlsx;PC-0926-0434;0.00
 ```
 
-A NF-REM traz na discriminação: "... competência 2026-10 - líquida de ajuste da Ponte: AJUSTE REF PC-0926-0434 (operação de 2026-09, contestada em 2026-09) - AJUSTE REF PC-0926-9999 (operação original não encontrada em 2026-09)". O rastro.csv não tem coluna de descrição; por isso a descrição vai na discriminação da nota e no motivo da PEN-AJUSTE-SEMORIG.
+A NF-REM traz na discriminação: "... competência 2026-10 - líquida de ajuste da Ponte: AJUSTE REF PC-0926-0434 (operação de 2026-09, contestada em 2026-09) - AJUSTE REF PC-0926-9999 (operação original não encontrada em 2026-09)". O bloco acima mostra as 4 colunas obrigatórias do rastro. Desde a O06, cada linha traz também, no fim, `regra` (R31) e `detalhe` ("ajuste Ponte AJUSTE REF PC-0926-0434 (operação de 2026-09, contestada em 2026-09) - 50% do Spread R$ ... (P25)"; na original, "operação original do ajuste ..., valor 0,00"); a descrição continua também na discriminação da nota e no motivo da PEN-AJUSTE-SEMORIG.
 
 A mudança anterior (R23, 9h48: spread negativo só como contestação, fora das divergências) está no commit `292a3eb`.
 
@@ -568,7 +589,7 @@ Nenhum teste fixa os agregados por tipo ou por quem decide. As 16 pendências es
 | PEN-CONCESSAO-CHK-00520815000100 | DEVOLUCAO_CONCESSAO | 118 | 15.396,77 | Financeiro (Helena) e Comercial | 118 · 15.396,77 · DEVOLUCAO_CONCESSAO; motivo sem a R25 (R32, R38) | `test_checkout.py::test_set_casa_concessao_separada_das_divergencias` | ✓ |
 | PEN-DEVOL-CHK-22224579000109 | DEVOLUCAO_LOJISTA | 5 | 29,94 | Financeiro (Helena) | 5 · 29,94 (R45: descontado de fato) | `test_checkout.py::test_set_divergencias` | ✓ |
 | PEN-DEVOL-CHK-95927868000148 | DEVOLUCAO_LOJISTA | 87 | 1.545,86 | Financeiro (Helena) | 87 · 1.545,86 (R45: descontado de fato) | `test_checkout.py::test_set_divergencias` | ✓ |
-| PEN-SEMCONTRATO-39566044000119 | LOJISTA_SEM_CONTRATO | 57 | 7.876,05 | Comercial | 57 · 7.876,05 · LOJISTA_SEM_CONTRATO · Comercial; id pelo CNPJ da aba de 2025 (R39); motivo com 57 transações, 262138.61 brutos, competência 2026-10 e retroativa a 2026-09-10 (R30) | `test_checkout.py::test_set_atlas_sem_contrato` | ✓ |
+| PEN-SEMCONTRATO-39566044000119 | LOJISTA_SEM_CONTRATO | 57 | 7.876,05 | Comercial (Diego) | 57 · 7.876,05 · LOJISTA_SEM_CONTRATO · Comercial; id pelo CNPJ da aba de 2025 (R39); motivo com 57 transações, 262138.61 brutos, competência 2026-10 e retroativa a 2026-09-10 (R30) | `test_checkout.py::test_set_atlas_sem_contrato` | ✓ |
 | PEN-ALERTA-ANTEC-39566044000119 | ALERTA_ANTECIPACAO | 5 | 0,00 | Financeiro (Helena) e Comercial | só a Atlas acende, pelo pico em 15/09: 179.592,82 antecipados contra 55.357,50 vendidos; reversões AN88445637 (17/09) e AN88446517 (26/09); fim do mês 127.230,96 contra 135.428,90 (P26, R43) | `test_checkout.py::test_set_alerta_de_antecipacao_so_a_atlas` | ✓ |
 | PEN-CONTEST-REM-17217888000111 | CONTESTACAO_PONTE | 23 | 1.418,85 | Financeiro (Helena) | 23 refs · 1.418,85 | `test_remessa.py::test_set_pendencias` | ✓ |
 | PEN-NEG-REM-PC-0926-0326 | CONTESTACAO_PONTE | 1 | -1.001,30 | Financeiro (Helena) | -1.001,30 | `test_remessa.py::test_set_pendencias` | ✓ |
@@ -698,7 +719,6 @@ Cada premissa abaixo é uma escolha nossa que a Helena (ou o Comercial, nas taxa
 | P24 | os rascunhos mostram a parte da Tarvo como 50% (R11), só como exibição | lê nas notas internas um valor errado, sem mudar o que se pede à Ponte | R$ 709,46, R$ 410,94 e R$ 865,98 de exibição |
 | P25 | o ajuste da Ponte abate 50% do Spread R$ da linha | nota da Ponte R$ 50,00 mais alta (ou mais baixa) por R$ 100,00 de ajuste, a corrigir depois | R$ 0,00 em setembro (sem ajuste) |
 | P26 | alerta pelo pico: lojista sem histórico com o antecipado acumulado acima das vendas acumuladas em alguma data (critério nosso, delegado pela Helena às 11h37, 11h49 e 12h50) | não vê um lojista novo antecipando alto, ou olha à toa lojistas com histórico | R$ 179.592,82 antecipados contra R$ 55.357,50 vendidos (Atlas, 15/09) |
-| P27 | id_transacao repetido em dois arquivos da Orbe com a linha igual conta uma vez, com pendência informativa; com campo diferente, o fechamento para | deixaria de faturar uma transação legítima reenviada com o mesmo id, ou faturaria em dobro sem a checagem | R$ 0,00 (nenhum id repetido em setembro) |
-| P28 | estorno ou reversão de transação do mesmo mês sem a original em nenhum arquivo da Orbe abre pendência informativa | olha à toa um estorno cuja venda a Orbe ainda vai mandar, ou, sem a pendência, abate um estorno de venda que nunca foi faturada | R$ 0,00 (todas as originais estão no 01) |
+| P27 | id_transacao repetido em dois arquivos da Orbe com a linha igual conta uma vez, com pendência informativa; com campo diferente, a linha do arquivo posterior (o ajuste) substitui a do relatório e abre PEN-CORRECAO-ORBE com antes → depois e o efeito (critério nosso, delegado pela Helena às 13h34) | se a versão certa fosse a do relatório, a comissão e a nota sairiam pela versão corrigida, e a diferença inteira está na PEN-CORRECAO-ORBE para ela desfazer | R$ 0,00 (nenhum id repetido em setembro) |
 
-**Fechada:** a P18 (contestação dos spreads negativos pela diferença até o contrato, R$ 3.565,98; o spread do relatório, R$ 1.834,05, é o que aconteceu) foi **confirmada pela R34**. **Substituídas** e fora desta lista: P02 e P15 (R23) e P21 (R36 e R39).
+**Fechada:** a P18 (contestação dos spreads negativos pela diferença até o contrato, R$ 3.565,98; o spread do relatório, R$ 1.834,05, é o que aconteceu) foi **confirmada pela R34**. **Substituídas** e fora desta lista: P02 e P15 (R23), P21 (R36 e R39) e P28 (R48, Helena às 14h10: o estorno sem a original entra pelo valor que veio, e a pendência vale o efeito na comissão).

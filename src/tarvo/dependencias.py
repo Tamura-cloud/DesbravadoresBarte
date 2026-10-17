@@ -127,8 +127,6 @@ EFEITO_LINHA = {
              "do lojista, quando ele tem transação no mês)",
 }
 PASSO_ORBE_LAYOUT = "pedir à Orbe o arquivo no mesmo layout do relatório e pôr na pasta no lugar deste"
-PASSO_ORBE_CONFLITO = ("a Helena confirma com a Orbe qual versão da transação vale e deixa na pasta só os arquivos "
-                       "certos (o fechamento não escolhe)")
 
 
 @dataclass(frozen=True)
@@ -159,7 +157,7 @@ class ConfigBloqueio:
     quem_decide: str
     quem_decide_por_fonte: dict[str, str]
     descricoes: dict[str, str]
-    quem_decide_cadastro: str = "Comercial e Financeiro (Helena)"
+    quem_decide_cadastro: str = "Comercial"
 
     def quem(self, fonte: str) -> str:
         return self.quem_decide_por_fonte.get(fonte, self.quem_decide)
@@ -218,9 +216,9 @@ def marcar_provisorio(itens: Iterable[ItemSaida], cnpjs: Iterable[str] | None = 
 
 
 def pendencia_regra(tipo: str, chave: str, dado: str, efeito: str, valor: Decimal, origens, refs=None,
-                    cfg: ConfigBloqueio | None = None, rotulo: str | None = None) -> ItemSaida:
+                    cfg: ConfigBloqueio | None = None, rotulo: str | None = None, detalhe: str = "") -> ItemSaida:
     """PEN-REGRA-<rotulo ou tipo>-<chave> (R44): o dado exato, o que ficou de fora, o próximo passo e quem decide
-    (R28, pelo tipo)."""
+    (R28, pelo tipo). No rastro, regra R44 e o detalhe (padrão: o tipo do erro de dado)."""
     cfg = cfg or carregar_config()
     origens = list(origens)
     comercial = " (taxa e cadastro: o Comercial decide antes, R28)" if tipo in TIPOS_COMERCIAL else ""
@@ -230,13 +228,18 @@ def pendencia_regra(tipo: str, chave: str, dado: str, efeito: str, valor: Decima
                      {"tipo": TIPO_ITEM_BLOQUEADO,
                       "ref_origem": list(refs) if refs else list(dict.fromkeys(o[1] for o in origens)),
                       "motivo": texto_saida(motivo), "quem_decide": cfg.quem_regra(tipo)},
-                     valor, origens)
+                     valor, origens, regra="R44",
+                     detalhe=texto_saida(detalhe or f"item fora por erro de dado ({tipo.lower()}) - fora de comissão, "
+                                                   "nota e divergência"))
 
 
 # ---------------------------------------------------------------- pendências
 
 def _id(texto: str) -> str:
     return re.sub(r"[^A-Za-z0-9._-]", "_", texto)
+
+
+id_saida_seguro = _id  # para os módulos: nome de arquivo dentro de um id_saida
 
 
 def _refs(b: Bloqueio) -> list[str]:
@@ -272,7 +275,9 @@ def pendencias_bloqueio(entradas: Entradas, cfg: ConfigBloqueio | None = None) -
         itens.append(ItemSaida(id_saida, PENDENCIAS.nome,
                                {"tipo": tipo, "ref_origem": _refs(b), "motivo": texto_saida(motivo),
                                 "quem_decide": cfg.quem(b.fonte)},
-                               ZERO, [(a, r, ZERO) for a, r in b.origens]))
+                               ZERO, [(a, r, ZERO) for a, r in b.origens], regra="R44",
+                               detalhe=texto_saida(f"{tipo.lower().replace('_', ' ')}: {b.fonte} - ponto citado no "
+                                                   "erro, valor 0,00")))
     return itens
 
 
@@ -294,7 +299,8 @@ def pendencias_rejeitadas(entradas: Entradas, cfg: ConfigBloqueio | None = None)
             efeito = EFEITO_LINHA[fonte].format(provisorio=provisorio, cnpj=r.cnpj)
             valor = r.valor if r.valor is not None else ZERO
             itens.append(pendencia_regra(CADASTRO if fonte == "taxas" else LINHA, chave, r.erro, efeito, valor,
-                                         [(r.arquivo, r.ref, valor)], [r.ident or r.ref], cfg, rotulo=LINHA))
+                                         [(r.arquivo, r.ref, valor)], [r.ident or r.ref], cfg, rotulo=LINHA,
+                                         detalhe="linha que o leitor não converteu - valor o da linha, se legível"))
     return itens
 
 
@@ -317,7 +323,8 @@ def pendencias_aviso(entradas: Entradas, cfg: ConfigBloqueio | None = None) -> l
                                 "motivo": texto_saida(MOTIVO_AVISO_LAYOUT.format(
                                     avisos=" - ".join(a.texto for a in avisos))),
                                 "quem_decide": cfg.quem(fonte)},
-                               ZERO, [(a, r, ZERO) for a, r in origens]))
+                               ZERO, [(a, r, ZERO) for a, r in origens], regra="R44",
+                               detalhe="cabeçalho com layout diferente - leitura pelo nome da coluna, valor 0,00"))
     return itens
 
 

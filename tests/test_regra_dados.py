@@ -23,7 +23,7 @@ RAIZ = Path(__file__).resolve().parents[1]
 ENTRADA = RAIZ / "dados" / "2026-09"
 BRIDGE, EC_BRIDGE = "22224579000109", "1075624862"
 KIWI, EC_KIWI = "07752116000126", "1038867654"
-CADASTRO = "Comercial e Financeiro (Helena)"
+CADASTRO = "Comercial"  # R51
 
 
 def _ler(pasta: Path, nome: str) -> list[dict]:

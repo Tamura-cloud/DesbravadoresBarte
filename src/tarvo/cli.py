@@ -162,7 +162,7 @@ def arquivos_ignorados(entrada: Path, padroes: dict[str, str]) -> list[tuple[Pat
 
 def cmd_fechar(args: argparse.Namespace) -> int:
     # import tardio: fechamento importa este módulo
-    from tarvo.fechamento import ErroFechamento, fechar
+    from tarvo.fechamento import ErroArquivoTravado, ErroFechamento, fechar
     from tarvo.saida import ErroSaida
 
     entrada = Path(args.entrada)
@@ -172,10 +172,20 @@ def cmd_fechar(args: argparse.Namespace) -> int:
     try:
         resultado = fechar(entrada, Path(args.saida), args.competencia, config=Path(args.config),
                            usar_ia=not args.sem_ia, contestacoes=False if args.sem_contestacao else None)
+    except ErroArquivoTravado as e:  # saida/, contestacoes/ e auditoria/ ficaram como estavam
+        print(e, file=sys.stderr)
+        return 1
     except (ErroSaida, ErroFechamento) as e:
         print(f"Erro: a saída gerada não passou na validação. Nada foi gravado: {args.saida} e os rascunhos de "
               f"contestação ficaram como estavam.\nProblemas:\n{e}", file=sys.stderr)
         return 1
+    except yaml.YAMLError as e:  # config/*.yaml com sintaxe inválida: diz o arquivo e a linha, sem traceback
+        marca = getattr(e, "problem_mark", None) or getattr(e, "context_mark", None)
+        onde = f"{marca.name}, linha {marca.line + 1}" if marca is not None else "arquivo de config/"
+        problema = getattr(e, "problem", None) or "sintaxe inválida"
+        print(f"Erro de configuração em {onde}: {problema}. Corrija o arquivo e rode de novo. Nada foi gravado: "
+              f"{args.saida} ficou como estava.", file=sys.stderr)
+        return 2
     except ValueError as e:  # dado de entrada não chega aqui (R44): é configuração ou erro de programa
         print(f"Erro de configuração ou interno. Nada foi gravado: {args.saida} ficou como estava.\n{e}",
               file=sys.stderr)

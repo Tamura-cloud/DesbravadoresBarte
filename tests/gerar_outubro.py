@@ -38,7 +38,7 @@ import openpyxl
 
 CENTAVO = Decimal("0.01")
 RAIZ = Path(__file__).resolve().parents[1]
-PROTEGIDAS = (RAIZ / "dados", RAIZ / "saida", RAIZ / "contestacoes")  # nunca recebem o pack simulado
+PROTEGIDAS = (RAIZ / "dados", RAIZ / "saida", RAIZ / "contestacoes", RAIZ / "auditoria")  # nunca recebem o pack simulado
 
 # Tipos que podem vir em vários arquivos no mesmo formato (config/entradas.yaml, multiplos: true). O caso novo
 # vai no primeiro em ordem de nome (o relatório); os outros (ajustes) só têm as datas deslocadas.

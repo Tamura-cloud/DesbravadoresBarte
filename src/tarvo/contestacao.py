@@ -46,7 +46,7 @@ COLUNAS_ORBE = ["id_saida", "cnpj", "lojista", "ref_origem", "data_movimento", "
                 "valor_bruto", "taxa_contratada_pct", "taxa_aplicada_pct", "diferenca_brl"]
 COLUNAS_PONTE = ["id_saida", "natureza", "cnpj", "lojista", "ref_origem", "data_contratacao",
                  "taxa_contratada_pct", "taxa_aplicada_pct", "valor_brl", "parte_tarvo_brl",
-                 "spread_aplicado_brl", "spread_contratado_brl", "tarvo_deixou_de_receber_brl", "valor_operacao_brl"]
+                 "spread_aplicado_brl", "spread_contratado_brl", "valor_operacao_brl"]
 
 ACIMA, NEGATIVO, DUPLICADA = "SPREAD_ACIMA_CONTRATADO", "SPREAD_NEGATIVO", "OPERACAO_DUPLICADA"
 TIPO_ESTORNO = "ESTORNO"
@@ -521,9 +521,9 @@ def _md_ponte(linhas, entradas, contratos, cfg, participacao) -> list[str]:
         linhas_md = []
         for cnpj in cnpjs:
             ls = grupos[cnpj]
-            obs = "; ".join(r["obs"] for r in condicoes_remessa(cnpj, ls) if r["obs"])
-            linhas_md.append(f"- {ls[0]['lojista']} (CNPJ {cnpj}): spread contratado de "
-                             f"{_faixa_pct(Decimal(l['taxa_contratada_pct']) for l in ls)}" + (f" ({obs})" if obs else "") +
+            # a Obs da planilha é interna: fica só nas notas, nunca no corpo do e-mail
+            linhas_md.append(f"- {ls[0]['lojista']} (CNPJ {cnpj}): condição contratada de "
+                             f"{_faixa_pct(Decimal(l['taxa_contratada_pct']) for l in ls)}"
                              f". {len(ls)} operações contratadas {_periodo(l['_op']['data_contratacao'] for l in ls)} saíram com "
                              f"spread de {_faixa_pct(Decimal(l['taxa_aplicada_pct']) for l in ls)}, e o cliente pagou "
                              f"{_rs(_soma(ls))} a maior (spread inteiro, sobre a PTAX de referência).")

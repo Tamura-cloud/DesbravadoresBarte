@@ -6,7 +6,8 @@ from pathlib import Path
 import pytest
 
 from tarvo.cli import localizar_pela_config
-from tarvo.leitores.orbe import COLUNAS_SAIDA, ErroArquivoOrbe, Repetida, ler_orbe, ler_orbe_arquivos, ler_orbe_parcial
+from tarvo.leitores.orbe import (COLUNAS_SAIDA, Correcao, ErroArquivoOrbe, Repetida, ler_orbe, ler_orbe_arquivos,
+                                 ler_orbe_parcial)
 
 ENTRADA = Path(__file__).resolve().parents[1] / "dados" / "2026-09"
 
@@ -160,14 +161,13 @@ def test_id_repetido_com_a_linha_igual_conta_uma_vez(tmp_path):
     assert repetidas == [Repetida("TX2", "01_orbe_a.csv", 3, "06_orbe_b.csv", 2)]
 
 
-def test_id_repetido_com_a_linha_diferente_para_sem_escolher(tmp_path):
+def test_id_repetido_com_a_linha_diferente_vale_a_linha_do_arquivo_posterior(tmp_path):
+    # P27 (critério nosso, Helena 13h34): a linha do ajuste é a correção e substitui a do relatório
     a = _arquivo(tmp_path, "01_orbe_a.csv", VENDA_1)
     b = _arquivo(tmp_path, "06_orbe_b.csv", VENDA_1.replace("1.000,00;1,49;14,90;985,10", "1.100,00;1,49;16,39;1.083,61"))
-    with pytest.raises(ValueError) as erro:
-        ler_orbe_arquivos([a, b])
-    texto = str(erro.value)
-    assert "TX1" in texto and "01_orbe_a.csv (linha física 2)" in texto and "06_orbe_b.csv (linha física 2)" in texto
-    assert "valor_bruto, valor_taxa, valor_liquido" in texto and "não escolhe" in texto
+    df, repetidas = ler_orbe_arquivos([a, b])
+    assert repetidas == [] and list(df["ref_origem"]) == ["TX1"]
+    assert df.loc[0, "arquivo_origem"] == "06_orbe_b.csv" and df.loc[0, "valor_bruto"] == Decimal("1100.00")
 
 
 def test_cabecalho_diferente_do_relatorio_para_com_o_arquivo_e_a_coluna(tmp_path):
@@ -188,15 +188,43 @@ def test_cabecalho_com_coluna_a_mais_tambem_para(tmp_path):
 
 # ---------------------------------------------------------------- R44: bloqueio só do arquivo de ajustes
 
-def test_parcial_ajustes_com_id_diferente_ficam_de_fora_e_o_relatorio_entra(tmp_path):
-    a = _arquivo(tmp_path, "01_orbe_a.csv", VENDA_1)
-    b = _arquivo(tmp_path, "06_orbe_b.csv", VENDA_2, VENDA_1.replace("1.000,00;1,49;14,90;985,10", "1.100,00;1,49;16,39;1.083,61"))
+def test_parcial_correcao_substitui_so_a_linha_e_o_resto_do_arquivo_e_lido(tmp_path):
+    # P27: antes, o id repetido com dados diferentes bloqueava o arquivo de ajustes inteiro; agora é por linha
+    a = _arquivo(tmp_path, "01_orbe_a.csv", VENDA_1, VENDA_2)
+    corrigida = VENDA_1.replace("1.000,00;1,49;14,90;985,10", "1.100,00;1,49;16,39;1.083,61")
+    venda_3 = "TX3;03/09/2026;0012345678;LOJA;VENDA;DEBITO;1;VISA;300,00;1,49;4,47;295,53;;"
+    b = _arquivo(tmp_path, "06_orbe_b.csv", venda_3, corrigida)
     leitura = ler_orbe_parcial([a, b])
-    assert list(leitura.quadro["ref_origem"]) == ["TX1"] and leitura.lidos == ["01_orbe_a.csv"]
-    (bloq,) = leitura.bloqueados
-    assert bloq.arquivo == "06_orbe_b.csv" and bloq.linhas == 2
-    assert bloq.origens == (("01_orbe_a.csv", "TX1"), ("06_orbe_b.csv", "TX1"))
-    assert "01_orbe_a.csv (linha física 2)" in bloq.erro and "06_orbe_b.csv (linha física 3)" in bloq.erro
+    assert not leitura.bloqueados and leitura.lidos == ["01_orbe_a.csv", "06_orbe_b.csv"]
+    # a correção fica no lugar da linha antiga; o resto do 06 entra normalmente
+    assert list(leitura.quadro["ref_origem"]) == ["TX1", "TX2", "TX3"]
+    assert list(leitura.quadro["arquivo_origem"]) == ["06_orbe_b.csv", "01_orbe_a.csv", "06_orbe_b.csv"]
+    assert leitura.quadro.loc[0, "valor_bruto"] == Decimal("1100.00")
+    (c,) = leitura.correcoes
+    assert isinstance(c, Correcao) and leitura.repetidas == []
+    assert (c.ref_origem, c.arquivo_antes, c.linha_antes, c.arquivo_depois, c.linha_depois) == \
+        ("TX1", "01_orbe_a.csv", 2, "06_orbe_b.csv", 3)
+    assert c.campos == ("valor_bruto", "valor_taxa", "valor_liquido")
+    assert c.antes["valor_bruto"] == Decimal("1000.00") and c.depois["valor_bruto"] == Decimal("1100.00")
+    assert leitura.linhas_lidas == {"01_orbe_a.csv": 2, "06_orbe_b.csv": 2}
+
+
+def test_parcial_correcao_de_correcao_vale_a_ultima(tmp_path):
+    a = _arquivo(tmp_path, "01_orbe_a.csv", VENDA_1)
+    b = _arquivo(tmp_path, "06_orbe_b.csv", VENDA_1.replace("1.000,00;1,49;14,90;985,10", "1.100,00;1,49;16,39;1.083,61"))
+    c = _arquivo(tmp_path, "07_orbe_c.csv", VENDA_1.replace("1.000,00;1,49;14,90;985,10", "1.200,00;1,49;17,88;1.182,12"))
+    leitura = ler_orbe_parcial([a, b, c])
+    assert list(leitura.quadro["arquivo_origem"]) == ["07_orbe_c.csv"]
+    assert [(x.arquivo_antes, x.arquivo_depois) for x in leitura.correcoes] == \
+        [("01_orbe_a.csv", "06_orbe_b.csv"), ("06_orbe_b.csv", "07_orbe_c.csv")]
+
+
+def test_parcial_id_repetido_com_linha_igual_continua_contando_uma_vez(tmp_path):
+    a = _arquivo(tmp_path, "01_orbe_a.csv", VENDA_1)
+    b = _arquivo(tmp_path, "06_orbe_b.csv", VENDA_1, VENDA_2)
+    leitura = ler_orbe_parcial([a, b])
+    assert list(leitura.quadro["ref_origem"]) == ["TX1", "TX2"] and leitura.correcoes == []
+    assert leitura.repetidas == [Repetida("TX1", "01_orbe_a.csv", 2, "06_orbe_b.csv", 2)]
 
 
 def test_parcial_cabecalho_diferente_bloqueia_so_o_posterior(tmp_path):

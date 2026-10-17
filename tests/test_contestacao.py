@@ -221,11 +221,14 @@ def test_ponte_partes_da_tarvo_no_csv(cont):
     assert all(D(l["parte_tarvo_brl"]) == dinheiro(D(l["valor_brl"]) * D("0.5")) for l in acima)
     assert sum(D(l["parte_tarvo_brl"]) for l in acima) == D("709.46")
     neg = {l["ref_origem"]: l for l in linhas if l["natureza"] == "SPREAD_NEGATIVO"}
-    assert {r: (l["spread_aplicado_brl"], l["spread_contratado_brl"], l["tarvo_deixou_de_receber_brl"]) for r, l in neg.items()} == {
-        "PC-0926-0210": ("-687.52", "664.35", "332.18"), "PC-0926-0326": ("-509.22", "492.07", "246.04"),
-        "PC-0926-0491": ("-292.28", "282.63", "141.32"), "PC-0926-0545": ("-345.03", "292.88", "146.44")}
-    assert sum(D(l["tarvo_deixou_de_receber_brl"]) for l in neg.values()) == D("865.98")
-    assert all(D(l["tarvo_deixou_de_receber_brl"]) > 0 for l in neg.values())
+    assert {r: (l["spread_aplicado_brl"], l["spread_contratado_brl"]) for r, l in neg.items()} == {
+        "PC-0926-0210": ("-687.52", "664.35"), "PC-0926-0326": ("-509.22", "492.07"),
+        "PC-0926-0491": ("-292.28", "282.63"), "PC-0926-0545": ("-345.03", "292.88")}
+    # P24: a parte da Tarvo nos spreads negativos (50% por operação, arredondada por operação: 332,18 + 246,04 +
+    # 141,32 + 146,44 = 865,98) fica só nas notas internas e não vai no anexo enviado à Ponte
+    assert "tarvo_deixou_de_receber_brl" not in linhas[0]
+    parte = [dinheiro(D(l["spread_contratado_brl"]) * D("0.5")) for l in neg.values()]
+    assert sorted(parte) == [D("141.32"), D("146.44"), D("246.04"), D("332.18")] and sum(parte) == D("865.98")
     dup = next(l for l in linhas if l["natureza"] == "OPERACAO_DUPLICADA")
     assert (dup["valor_brl"], dup["parte_tarvo_brl"], dup["valor_operacao_brl"]) == ("821.88", "410.94", "55811.47")
 
@@ -240,7 +243,7 @@ def test_ponte_totais_de_cada_secao_saem_do_csv(cont):
     assert "Comunicação de condição comercial" not in corpo
     acima = _secao(corpo, "## 1. Contestação: spread acima do contratado")
     total_acima = sum(D(l["valor_brl"]) for l in por["SPREAD_ACIMA_CONTRATADO"])
-    assert "Mundo Aberto (CNPJ 17217888000111): spread contratado de 1,20%" in acima
+    assert "Mundo Aberto (CNPJ 17217888000111): condição contratada de 1,20%" in acima
     assert "23 operações contratadas de 2026-09-01 a 2026-09-30" in acima
     assert acima.count(_rs(total_acima)) == 2 and "ressarcimento ao cliente" in acima
 
@@ -252,8 +255,7 @@ def test_ponte_totais_de_cada_secao_saem_do_csv(cont):
         linha = next(x for x in negativos.splitlines() if x.startswith("|") and l["ref_origem"] in x)
         assert linha.rstrip(" |").endswith(brl(abs(D(l["valor_brl"])))) and brl(D(l["spread_aplicado_brl"])) in linha
     assert "-R$" not in negativos.split("|")[0]  # a frase de resumo não mostra o valor como negativo
-    perdido = sum(D(l["tarvo_deixou_de_receber_brl"]) for l in por["SPREAD_NEGATIVO"])
-    assert perdido == D("865.98") and _rs(perdido) not in corpo and "deixou de receber" not in corpo
+    assert _rs(D("865.98")) in notas and _rs(D("865.98")) not in corpo and "deixou de receber" not in corpo
 
     duplicada = _secao(corpo, "## 3. Contestação: operação repetida no relatório")
     dup = por["OPERACAO_DUPLICADA"][0]
@@ -264,7 +266,7 @@ def test_ponte_totais_de_cada_secao_saem_do_csv(cont):
     assert "confirme se o cliente foi cobrado duas vezes e corrija o relatório" in duplicada
 
     # as notas internas repetem os números do CSV
-    assert _rs(total_acima) in notas and _rs(perdido) in notas and _rs(D(dup["valor_brl"])) in notas
+    assert _rs(total_acima) in notas and _rs(D("865.98")) in notas and _rs(D(dup["valor_brl"])) in notas
 
 
 def test_ponte_notas_aviso_contrato_e_parte_da_tarvo(cont):
@@ -275,6 +277,13 @@ def test_ponte_notas_aviso_contrato_e_parte_da_tarvo(cont):
             "contrato, não o aviso (Helena, 11h37).") in notas
     assert "confirme a data da condição" not in notas
     assert "PEN-NEG" in notas and "R$ 865,98" in notas and "fica fora do e-mail" in notas
+
+
+def test_ponte_corpo_nao_leva_a_obs_da_planilha_so_a_condicao_contratada(cont):
+    notas, corpo = _partes(cont, "ponte.md")
+    assert "spread negociado em jul/26" in notas  # a Obs fica nas notas internas
+    assert "negociado" not in corpo and "jul/26" not in corpo
+    assert "Mundo Aberto (CNPJ 17217888000111): condição contratada de 1,20%." in corpo
 
 
 def test_textos_sem_ponto_e_virgula_nos_csvs(cont):

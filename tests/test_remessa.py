@@ -163,7 +163,7 @@ def test_spread_em_texto_desconhecido_tira_o_lojista_e_vira_pendencia(cfg):
     itens = _calc(taxas, cfg, _op("OP-1", CNPJ_A, "10.00", "1.5000"), _op("OP-2", CNPJ_B, "20.00", "1.5000"))
     pen = _por_prefixo(itens, "PEN-REGRA-")[f"PEN-REGRA-TAXA-REM-{CNPJ_A}"]
     assert "'a combinar' não reconhecido" in pen.campos["motivo"] and pen.valor_reportado == D("10.00")
-    assert pen.campos["quem_decide"] == "Comercial e Financeiro (Helena)"
+    assert pen.campos["quem_decide"] == "Comercial"  # R51
     assert set(_por_prefixo(itens, "COM-")) == {f"COM-REM-{CNPJ_B}"}
     nota = _por_prefixo(itens, "NF-")["NF-REM-75374179000146"]
     assert (nota.valor_reportado, nota.campos["situacao"]) == (D("10.00"), "PROVISORIO")
@@ -234,8 +234,9 @@ def test_pendencia_do_ted_tem_o_valor_e_as_origens_da_nota(taxas, cfg):
     assert ted.origens == nf.origens
     assert ted.campos["ref_origem"] == ["OP-1", "OP-2"]
     assert ted.campos["tipo"] == "CONFERENCIA_REPASSE"
-    assert ted.campos["motivo"] == ("conferir se o TED de repasse da Ponte bate com a nota de intermediação - "
-                                    "não supor desconto (R18)")
+    assert ted.campos["motivo"] == ("conferir o TED de repasse da Ponte quando cair, contra a nota de intermediação - "
+                                    "ainda não se sabe como a Ponte vai pagar e nenhum desconto no repasse é suposto "
+                                    "(R18)")
 
 
 def test_textos_sem_ponto_e_virgula(taxas, cfg):

@@ -300,14 +300,26 @@ def _secao_rastro(lidos, problemas: list[str]) -> list[str]:
     return partes
 
 
+def _registro_execucao(pasta: Path) -> Path | None:
+    """execucao.md da pasta de auditoria irmã da saída (config/auditoria.yaml), se existir."""
+    from tarvo.auditoria import ARQUIVO_MD, carregar_config, pasta_padrao
+
+    caminho = pasta_padrao(pasta, carregar_config()) / ARQUIVO_MD
+    return caminho if caminho.is_file() else None
+
+
 def resumir(pasta) -> str:
     """Resumo em Markdown da pasta de saída."""
     pasta = Path(pasta)
     lidos = ler_saida(pasta)
     problemas = validar_saida(pasta)
+    registro = _registro_execucao(pasta)
     secoes = [
         [f"# Resumo da saída — {pasta.name or pasta}", "", f"Commit do código: {versao_do_codigo()}"],
         _secao_status(lidos),
+        # O06: o registro da última execução do fechar, na pasta irmã
+        [f"Registro da execução (arquivos de entrada com SHA-256, linhas lidas, comando e código de saída): "
+         f"`{registro.parent.name}/{registro.name}` e `{registro.with_suffix('.json').name}`"] if registro else [],
         _secao_comissoes(lidos),
         _secao_notas(lidos),
         _secao_divergencias(lidos),
@@ -315,4 +327,4 @@ def resumir(pasta) -> str:
         _secao_pendencias(lidos),
         _secao_rastro(lidos, problemas),
     ]
-    return "\n\n".join("\n".join(s).strip() for s in secoes) + "\n"
+    return "\n\n".join(t for t in ("\n".join(s).strip() for s in secoes) if t) + "\n"
