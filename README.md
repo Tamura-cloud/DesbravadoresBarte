@@ -2,11 +2,12 @@
 
 **Time Desbravadores Barte** · Desafio Barte AI, case Tarvo (17/10/2026)
 
-**Em um minuto:** lemos os 6 arquivos do mês como chegam, aplicamos as regras da Helena e entregamos 21 notas
-(R$ 246.588,68), 115 divergências (R$ 2.995,08) e 16 pendências, cada uma com quem decide. Cada número aponta
-para a linha de origem. Um comando fecha o mês.
+**Em um minuto:** lemos os arquivos do mês como chegam, inclusive os ajustes que a Orbe manda depois do relatório,
+aplicamos as regras da Helena e entregamos 21 notas (R$ 243.284,29), 115 divergências (R$ 2.995,08) e 16 pendências,
+cada uma com quem decide. Cada número aponta para a linha de origem. Um comando fecha o mês; se faltar um arquivo,
+ele fecha o que não depende dele e diz o que ficou bloqueado.
 
-Fecha o mês da Tarvo a partir dos 6 arquivos do data pack, lidos como vêm (sem edição manual), e gera os
+Fecha o mês da Tarvo a partir dos arquivos do data pack, lidos como vêm (sem edição manual), e gera os
 6 CSVs de `saida/`. Cada número de saída é rastreável até a linha do arquivo de origem pelo `rastro.csv`,
 e a execução falha se algum valor não fechar com o rastro.
 
@@ -43,19 +44,22 @@ python -m pip install -e ".[dev]"
 
 No Ubuntu/Debian, o `venv` precisa do pacote do sistema `python3-venv` (`sudo apt install python3-venv`).
 
-**Arquivos de entrada:** os 6 arquivos do mês ficam em `dados/<AAAA-MM>/`, como chegaram. Setembro já está
+**Arquivos de entrada:** os arquivos do mês ficam em `dados/<AAAA-MM>/`, como chegaram. Setembro já está
 em `dados/2026-09/`. Cada arquivo é achado pelo padrão de nome de `config/entradas.yaml`, não pelo nome exato:
 
 | tipo | padrão | formato |
 |------|--------|---------|
-| Orbe (transações) | `*orbe*.csv` | `;`, vírgula decimal, UTF-8 |
+| Orbe (transações) | `*orbe*.csv` (um ou mais) | relatório e ajustes tardios no mesmo layout; `;`, vírgula decimal, UTF-8 |
 | Taxas contratadas | `*taxas*.xlsx` | aba "Taxas vigentes"; taxa em fração ou texto ("2,59%") |
 | Ponte Câmbio | `*.eml` | e-mail com o relatório XLSX anexo em base64 |
 | Plano de contas | `*plano_de_contas*.csv` | `;`, Windows-1252 |
 | Extrato Aurora | `*aurora*.csv` | `;`, UTF-8, cabeçalho e rodapé livres |
 | Extrato Meridiano | `*.ofx` | OFX 1.02 SGML, cp1252 |
 
-Precisa haver exatamente um arquivo por padrão. Se faltar ou sobrar, o comando para e diz qual.
+A Orbe aceita mais de um arquivo: o relatório e os ajustes que chegam depois, como o
+`06_orbe_ajustes_tardios_set2026.csv`. Todos são lidos, e cada linha guarda no rastro o arquivo de onde veio.
+Os outros tipos precisam de exatamente um arquivo. Se um arquivo faltar, sobrar ou não puder ser lido, o
+fechamento não para: fecha o que não depende dele (ver "Fechamento parcial").
 
 **Fechamento:**
 
@@ -63,8 +67,15 @@ Precisa haver exatamente um arquivo por padrão. Se faltar ou sobrar, o comando 
 python -m tarvo fechar --competencia 2026-09 --entrada dados/2026-09 --saida saida/
 ```
 
-O comando lista os arquivos encontrados, grava os 6 CSVs em `--saida` e relê o que gravou. Sai com código 0
-só se a validação não achar problema; sai com 1 ou 2 se a saída ou uma entrada estiver com problema.
+O comando lista os arquivos encontrados, grava os 6 CSVs em `--saida`, relê o que gravou e termina com um quadro:
+**FECHAMENTO COMPLETO** ou **FECHAMENTO PARCIAL**, com as fontes bloqueadas e o que não foi gerado.
+
+| código | significado |
+|-------:|-------------|
+| 0 | completo: todas as fontes lidas |
+| 3 | parcial: alguma fonte bloqueada; o resto foi gerado e validado, e cada bloqueio vira uma pendência `PEN-BLOQUEIO` (R44) |
+| 1 | a saída gerada não passou na validação; nada foi gravado |
+| 2 | erro que impede o fechamento (pasta de entrada inexistente, ou um dado que nenhuma regra cobre, como uma modalidade sem taxa); nada foi gravado |
 
 **Testes:**
 
@@ -72,7 +83,26 @@ só se a validação não achar problema; sai com 1 ou 2 se a saída ou uma entr
 python -m pytest
 ```
 
-São 374 testes, sem acesso à rede. Incluem o fechamento de um outubro simulado (ver "Como rodar outubro").
+São 437 testes, sem acesso à rede. Incluem o fechamento de um outubro simulado (ver "Como rodar outubro").
+
+## Fechamento parcial
+
+Pedido da Helena (R44): *"Quando falta alguma coisa, eu não seguro o mês inteiro. Fecha o que não depende daquilo,
+marca o que é provisório e deixa claro o que está bloqueado e por quê. Quem libera sou eu."*
+
+| situação | o que acontece | código |
+|----------|----------------|-------:|
+| fonte ausente (nenhum arquivo casa com o padrão) | a fonte fica bloqueada e só o que depende dela não é gerado. Sem o `.ofx`, por exemplo, checkout, remessa e notas fecham; ficam de fora os lançamentos do Meridiano e as conferências P11, P12 e P13 | 3 |
+| fonte ambígua (dois arquivos para um tipo que aceita só um) | bloqueada: o fechamento não escolhe um deles. Com dois `.eml`, a remessa e a nota da Ponte não são geradas | 3 |
+| arquivo ilegível ou sem coluna obrigatória | bloqueado | 3 |
+| arquivo de ajustes da Orbe com cabeçalho diferente do relatório (inclusive coluna a mais) ou com id repetido e dados diferentes | bloqueia só esse arquivo; o relatório é lido e o checkout sai marcado como provisório (coluna `situacao` = `PROVISORIO` nos CSVs) | 3 |
+| coluna a mais ou fora de ordem numa fonte de arquivo único | só aviso (`PEN-AVISO-LAYOUT`); nada deixa de ser gerado | 0 |
+| mesmo `id_transacao` com os mesmos dados em dois arquivos da Orbe | conta uma vez e vira pendência informativa (`PEN-REPET-CHK`, P27) | 0 |
+
+Cada bloqueio vira a pendência `PEN-BLOQUEIO-<fonte>`, de valor 0, com o arquivo, o erro exato, o que não foi
+gerado e o próximo passo. Quem libera é a Helena; na planilha de taxas, o Comercial e a Helena (R28). Testamos com
+cópias de `dados/2026-09`: sem o `.ofx`, com dois `.eml`, com o arquivo 06 sem uma coluna e com uma coluna a mais.
+Todos terminaram com código 3 e o restante da saída validado.
 
 ## Chaves
 
@@ -103,25 +133,28 @@ Os totais abaixo foram lidos dos CSVs gerados para setembro/2026 (contagem de li
 
 | arquivo | conteúdo | linhas | soma da coluna de valor |
 |---------|----------|-------:|------------------------:|
-| `comissoes_por_lojista.csv` | comissão do mês por lojista e linha de negócio | 35 | `comissao_brl` = 246583.18 |
+| `comissoes_por_lojista.csv` | comissão do mês por lojista e linha de negócio | 35 | `comissao_brl` = 243278.79 |
 | `divergencias_taxa.csv` | transação ou operação com taxa aplicada ≠ contratada | 115 | `diferenca_brl` = 2995.08 |
-| `notas_a_emitir.csv` | notas fiscais a emitir: uma por lojista (checkout) e uma para a Ponte (remessa) | 21 | `valor_brl` = 246588.68 |
+| `notas_a_emitir.csv` | notas fiscais a emitir: uma por lojista (checkout) e uma para a Ponte (remessa) | 21 | `valor_brl` = 243284.29 |
 | `lancamentos_classificados.csv` | cada lançamento dos dois extratos com a conta contábil (contrapartida) | 184 | `valor` = -1416088.18 |
-| `pendencias.csv` | o que precisa de decisão humana, com valor, origem e quem decide | 16 | `valor_brl` = 382811.75 |
-| `rastro.csv` | as linhas de origem de cada id_saida dos 5 arquivos acima | 5058 | `valor` = -537109.49 |
+| `pendencias.csv` | o que precisa de decisão humana, com valor, origem e quem decide | 16 | `valor_brl` = 382811.32 |
+| `rastro.csv` | as linhas de origem de cada id_saida dos 5 arquivos acima | 5086 | `valor` = -543718.70 |
 
 Por linha de negócio:
 
 | arquivo | CHECKOUT | REMESSA |
 |---------|----------|---------|
-| `comissoes_por_lojista.csv` | 21 linhas, 207039.73 | 14 linhas, 39543.45 |
+| `comissoes_por_lojista.csv` | 21 linhas, 203735.34 | 14 linhas, 39543.45 |
 | `divergencias_taxa.csv` | 92 linhas, 1576.23 | 23 linhas, 1418.85 |
-| `notas_a_emitir.csv` | 20 notas, 207045.23 | 1 nota, 39543.45 |
+| `notas_a_emitir.csv` | 20 notas, 203740.84 | 1 nota, 39543.45 |
 
-- A comissão de checkout (207039.73) é 5.50 menor que as notas de checkout (207045.23) porque a Casa do
+- A comissão de checkout (203735.34) é 5.50 menor que as notas de checkout (203740.84) porque a Casa do
   Estudante fechou o mês em -5.50: comissão zero ou negativa não emite nota e vira pendência (R06).
 - A devolução da Casa do Estudante (15396.77, concessão comercial: custo da Tarvo, não se cobra da Orbe) fica
   fora das divergências, como pendência `DEVOLUCAO_CONCESSAO` (R10, R32, R38).
+- **Ajustes tardios da Orbe:** o `06_orbe_ajustes_tardios_set2026.csv` (14 linhas: 10 estornos, 3 reversões de
+  antecipação e 1 venda) entra junto com o relatório 01. As 28 linhas do rastro que vêm dele apontam para o
+  arquivo 06.
 - Lançamentos: 84 do Aurora e 100 do Meridiano, todos com `metodo` REGRA.
 - **Rascunhos de contestação (R29):** além dos 6 CSVs, o fechamento grava em `contestacoes/`, pasta irmã de
   `saida/`, um rascunho de e-mail por contraparte (`orbe.md`, `ponte.md`) com as operações anexadas
@@ -129,7 +162,7 @@ Por linha de negócio:
   `--sem-contestacao` desliga os rascunhos.
 - **Como o rastro fecha:** o `rastro.csv` tem uma ou mais linhas por id_saida (`arquivo_origem`, `ref_origem`,
   `valor`). Para cada id_saida, a soma do `valor` no rastro é igual ao valor reportado. Por isso a soma do
-  rastro inteiro (-537109.49) é a soma das cinco colunas de valor acima. São 371 id_saida.
+  rastro inteiro (-543718.70) é a soma das cinco colunas de valor acima. São 371 id_saida.
 - **ref_origem:** `id_transacao` (Orbe), Nº Operação (Ponte), `L<n>` = número da linha física no arquivo (Aurora),
   FITID (Meridiano).
 
@@ -140,9 +173,10 @@ pipeline, e bateram ao centavo. A prova está em três lugares:
 
 - **Commit `d588ad9`** (16/10, 23h43), no histórico do `main`: os testes daquele commit guardam os valores do
   recálculo, feito direto de `dados/`. São 20 notas de checkout = 207045.23, nota da Ponte = 39543.45,
-  210 divergências de checkout e 184 lançamentos. Notas e lançamentos continuam iguais na `saida/` atual; as
-  divergências de checkout caíram para 92 porque a Helena separou a devolução da Casa do Estudante (118 linhas)
-  das divergências (R32, R38).
+  210 divergências de checkout e 184 lançamentos. A nota da Ponte e os lançamentos continuam iguais na `saida/`
+  atual. Dois números mudaram depois, por fatos novos e não por erro do recálculo: as divergências de checkout
+  caíram para 92 porque a Helena separou a devolução da Casa do Estudante (118 linhas) das divergências (R32,
+  R38), e as notas de checkout foram para 203740.84 com os ajustes tardios da Orbe (arquivo 06).
 - **Transcript `be5d287e`**, em `PROMPTS/sessoes/`: a sessão em que esse recálculo foi feito.
 - **Revisão adversarial:** uma sessão só de leitura, sem importar `src/`, recalculou tudo e questionou 7
   premissas (P15–P21). A decisão sobre cada uma, com o número alternativo, está no `HIPOTESES.md`.
@@ -156,7 +190,7 @@ Seis etapas, orquestradas por `src/tarvo/fechamento.py`:
 
 | etapa | o que faz | código | configuração |
 |-------|-----------|--------|--------------|
-| 1. Leitura | acha os 6 arquivos pelo padrão de nome e lê cada um com o encoding explícito; cada linha sai com `arquivo_origem` e `ref_origem` | `cli.py`, `leitores/orbe.py`, `taxas.py`, `ponte.py`, `plano_contas.py`, `aurora.py`, `meridiano.py` | `config/entradas.yaml` |
+| 1. Leitura | acha os arquivos pelo padrão de nome (a Orbe aceita o relatório e os ajustes tardios) e lê cada um com o encoding explícito; fonte ausente, ambígua ou ilegível fica bloqueada (R44); cada linha sai com `arquivo_origem` e `ref_origem` | `cli.py`, `dependencias.py`, `leitores/orbe.py`, `taxas.py`, `ponte.py`, `plano_contas.py`, `aurora.py`, `meridiano.py` | `config/entradas.yaml` |
 | 2. Normalização | número brasileiro → `Decimal`, data → `datetime.date`, CNPJ → 14 dígitos, taxa → pontos percentuais. Os leitores só convertem tipos, sem regra de negócio | `leitores/comum.py` e os leitores | — |
 | 3. Cálculo por regra | comissão, divergência, nota e pendência do checkout e da remessa; classificação contábil dos extratos. Cada regra cita o seu R## ou P## do `HIPOTESES.md` | `checkout.py`, `remessa.py`, `bancos.py` (e `ia.py`, só para lançamento sem regra) | `config/checkout.yaml`, `remessa.yaml`, `bancos.yaml`, `favorecidos.yaml`, `pagadores_meridiano.yaml`, `ia.yaml` |
 | 4. Conferências cruzadas | Orbe × planilha (EC sem contrato), duplicatas da Ponte (R13), TED de liquidação Ponte × Meridiano (P11), PIX recebidos × remessas por CNPJ (P12), transferência Aurora × Meridiano (P13), TED de repasse × nota de remessa (R18, P22). Toda diferença vira pendência | `checkout.py`, `remessa.py`, `bancos.py` | as mesmas da etapa 3 |
@@ -199,7 +233,7 @@ arredonda nem troca texto: valor com casas a mais ou texto com `;` é erro.
 
 O mesmo comando fecha qualquer mês, sem mexer no código: só mudam a competência e as pastas.
 
-1. Ponha os 6 arquivos do mês, como chegaram, numa pasta **fora deste repositório**. Os nomes podem mudar,
+1. Ponha os arquivos do mês, como chegaram, numa pasta **fora deste repositório**. Os nomes podem mudar,
    desde que casem com os padrões da tabela de entradas.
 2. Rode, com a saída também fora do repositório:
    ```bash
@@ -223,16 +257,17 @@ O gerador só lê `dados/2026-09`: nada é gravado no repositório. O mesmo ensa
 
 ## Como a analista usa no fechamento
 
-1. **Rodar** o fechamento do mês (comando acima). Se ele parar com erro, a mensagem diz o arquivo, a linha e o
-   motivo (ver "Casos que param com erro").
+1. **Rodar** o fechamento do mês (comando acima). Se terminar com **FECHAMENTO PARCIAL**, começar pelas
+   pendências `PEN-BLOQUEIO`: cada uma diz o arquivo, o erro e o próximo passo (ver "Fechamento parcial"). Se
+   parar com erro, a mensagem diz o arquivo, a linha e o motivo (ver "Casos que param com erro").
 2. **Abrir `pendencias.csv`.** Cada linha tem tipo, `ref_origem` (as linhas de origem, separadas por `|`), valor,
    motivo e quem decide. Tipos possíveis:
 
    | tipo | regra | quem decide | o que fazer | set/2026 |
    |------|-------|-------------|-------------|---------:|
    | `NOTA_NAO_EMITIDA` | R06 | Financeiro (Helena) | comissão do mês zero ou negativa: decidir o tratamento (não passa para o mês seguinte) | 1 |
-   | `DEVOLUCAO_LOJISTA` | R03, R25, R32 | Financeiro (Helena) | devolver ao lojista o que foi cobrado acima do contrato | 2 |
-   | `DEVOLUCAO_CONCESSAO` | R10, R32, R38 | Financeiro (Helena) | devolver ao lojista a taxa cobrada numa concessão comercial: custo da Tarvo, não se cobra da Orbe | 1 |
+   | `DEVOLUCAO_LOJISTA` | R03, R25, R32, R45 | Financeiro (Helena) | devolver ao lojista o que foi descontado acima do contrato (taxa descontada pela Orbe menos a comissão contratada) | 2 |
+   | `DEVOLUCAO_CONCESSAO` | R10, R32, R38, R41, R45 | Financeiro (Helena) e Comercial | devolver ao lojista a taxa cobrada numa concessão comercial: custo da Tarvo, não se cobra da Orbe | 1 |
    | `ALERTA_ANTECIPACAO` | R33, P26 | Financeiro (Helena) e Comercial | lojista sem histórico antecipou mais do que vendeu no mês: avaliar o risco (não muda nenhum valor) | 1 |
    | `LOJISTA_SEM_CONTRATO` | R08 | Comercial | EC da Orbe sem taxa contratada: confirmar o contrato antes de faturar | 1 |
    | `LOJISTA_NAO_CADASTRADO` | P04 | Financeiro (Helena) | CNPJ da Ponte fora da planilha: cadastrar (a comissão já entrou na nota) | 0 |
@@ -240,6 +275,11 @@ O gerador só lê `dados/2026-09`: nada é gravado no repositório. O mesmo ensa
    | `OPERACAO_DUPLICADA` | R13, P19 | Financeiro (Helena) | pedir à Ponte a correção do relatório | 1 |
    | `AJUSTE_SEM_OPERACAO_ORIGINAL` | R31, P25 | Financeiro (Helena) | ajuste da Ponte cuja operação original não está no relatório: conferir (já abatido da participação) | 0 |
    | `AJUSTE_SEM_LOJISTA` | R31 | Financeiro (Helena) | ajuste da Ponte sem CNPJ nem operação original: identificar o lojista (não foi abatido) | 0 |
+   | `FONTE_BLOQUEADA` | R44 | Financeiro (Helena); na planilha de taxas, Comercial e Financeiro (Helena) | fonte ausente, ambígua ou ilegível: seguir o próximo passo da pendência e rodar de novo | 0 |
+   | `ARQUIVO_BLOQUEADO` | R28, R44 | Financeiro (Helena) | arquivo de ajustes da Orbe recusado: pedir à Orbe o arquivo no layout do relatório; até lá o checkout é provisório | 0 |
+   | `AVISO_LAYOUT` | R44 | quem decide a fonte | coluna a mais ou fora de ordem: confirmar com quem mandou que o layout mudou | 0 |
+   | `TRANSACAO_REPETIDA` | P27 | Financeiro (Helena) | mesmo id_transacao em dois arquivos da Orbe, com os mesmos dados: contado uma vez; confirmar | 0 |
+   | `REFERENCIA_NAO_ENCONTRADA` | P28 | Financeiro (Helena) | estorno ou reversão sem a transação original no mês: conferir | 0 |
    | `OPERACAO_FORA_DA_COMPETENCIA` | R11 | Financeiro (Helena) | operação contratada em outro mês: conferir | 0 |
    | `CONFERENCIA_REPASSE` | R18, P22 | Financeiro (Helena) | conferir o TED de repasse da Ponte contra a nota de remessa quando cair | 1 |
    | `CREDITO_NAO_IDENTIFICADO` | R20 | Financeiro (Helena) | identificar o PIX recebido; não é receita até lá | 1 |
@@ -286,16 +326,19 @@ O gerador só lê `dados/2026-09`: nada é gravado no repositório. O mesmo ensa
   `config/checkout.yaml`; renovações e contratos novos precisam ser atualizados lá e na planilha de taxas.
 - **Nomes fixos de abas e colunas.** A planilha de taxas precisa ter a aba "Taxas vigentes", e o relatório da
   Ponte, a aba "Operações" com a coluna "Nº Operação". Se o formato mudar, a leitura para com erro.
-- **Casos que param com erro, de propósito, em vez de supor:**
-  - arquivo de entrada ausente, ou mais de um para o mesmo padrão;
-  - coluna esperada ausente, número ou data em formato desconhecido, FITID repetido, OFX sem DTSTART/DTEND;
+- **Arquivo com problema não para mais o mês (R44):** arquivo ausente, mais de um para um tipo que aceita só um,
+  ou ilegível (coluna obrigatória ausente, número ou data em formato desconhecido, FITID repetido, OFX sem
+  DTSTART/DTEND) bloqueia só a fonte. Ver "Fechamento parcial".
+- **Casos que param com erro, de propósito, em vez de supor** (código 2, nada é gravado). São dados que nenhuma
+  regra cobre:
   - CNPJ sem linha vigente na planilha, ou com mais de uma, na data da transação; EC com dois CNPJs;
-  - tipo de lançamento ou modalidade da Orbe sem taxa mapeada; parcelas fora das faixas da configuração;
+  - tipo de lançamento ou modalidade da Orbe sem taxa mapeada (testado: uma modalidade nova na Orbe para o
+    fechamento); parcelas fora das faixas da configuração;
   - texto de spread na planilha que não é número nem "padrão" (R14);
   - Nº Operação repetido com valores diferentes além da observação (R13);
   - spread negativo de CNPJ fora da planilha (P05);
   - CNPJ em `favorecidos.yaml` ou `pagadores_meridiano.yaml` que não está na planilha;
-  - qualquer saída fora do formato ou que não feche com o rastro.
+  - qualquer saída fora do formato ou que não feche com o rastro (código 1).
 
 ## Estrutura do repositório
 
@@ -313,7 +356,7 @@ O gerador só lê `dados/2026-09`: nada é gravado no repositório. O mesmo ensa
 ├── pyproject.toml            pacote, dependências e configuração do pytest
 ├── requirements.txt          as mesmas dependências, em lista
 ├── config/
-│   ├── entradas.yaml         padrões de nome dos 6 arquivos
+│   ├── entradas.yaml         padrões de nome de cada fonte (a Orbe aceita vários arquivos)
 │   ├── checkout.yaml         ECs sem código, condição especial, taxa por modalidade
 │   ├── remessa.yaml          participação, spread padrão, tolerância, tomador da nota
 │   ├── bancos.yaml           regras de classificação dos extratos, em ordem
@@ -324,15 +367,16 @@ O gerador só lê `dados/2026-09`: nada é gravado no repositório. O mesmo ensa
 ├── src/tarvo/
 │   ├── cli.py, __main__.py   comando `python -m tarvo fechar`
 │   ├── fechamento.py         orquestra leitura, módulos, gravação e validação
-│   ├── leitores/             um leitor por arquivo + comum.py (conversões)
+│   ├── dependencias.py       fontes bloqueadas e o que depende de cada uma (R44)
+│   ├── leitores/             um leitor por arquivo + comum.py (conversões) e layout.py (colunas obrigatórias)
 │   ├── checkout.py           linha CHECKOUT (Orbe)
 │   ├── remessa.py            linha REMESSA (Ponte Câmbio)
 │   ├── bancos.py             classificação dos extratos e conferências cruzadas
 │   ├── ia.py                 sugestão de conta para lançamento sem regra
 │   ├── contestacao.py        rascunhos de contestação por contraparte (R29)
 │   └── saida.py              ItemSaida, escrita e validação dos 6 CSVs
-├── tests/                    374 testes + gerar_outubro.py (outubro simulado)
-├── dados/2026-09/            data pack de setembro, como recebido
+├── tests/                    437 testes + gerar_outubro.py (outubro simulado)
+├── dados/2026-09/            data pack de setembro, como recebido (com os ajustes tardios da Orbe, arquivo 06)
 ├── cache/ia_sugestoes.json   respostas da IA já obtidas (vazio em setembro)
 ├── saida/                    os 6 CSVs de setembro
 └── contestacoes/             rascunhos de contestação para a Helena revisar (R29)
