@@ -3,17 +3,21 @@
 | | |
 |---|---|
 | Data | 2026-10-17 |
-| Commit do código | branch `regras-helena`, commit da R22 (sobre `966ecf5`). Em relação a `f45295f`, a R22 mudou 3 linhas de 3 CSVs (ver abaixo); comissões, notas e divergências estão idênticas byte a byte |
+| Commit do código | branch `regras-helena`, commit da R23 (sobre `db29cf0`, o da R22). Em relação a `db29cf0`, a R23 tirou 4 linhas de divergencias_taxa.csv e as 4 linhas de rastro delas (ver abaixo); comissões, notas, lançamentos e pendências estão idênticos byte a byte |
 | Fechamento | `python -m tarvo fechar --competencia 2026-09 --entrada dados/2026-09 --saida saida/` (IA conforme `config/ia.yaml`; em setembro todo lançamento casa uma regra, então a IA não é chamada nenhuma vez, P14) |
 | Resumo | `python -m tarvo resumo --saida saida` |
-| pytest | **318 passed** (`python -m pytest -q`, 14,4 s) |
+| pytest | **318 passed** (`python -m pytest -q`, 13,5 s) |
 | `validar_saida(saida/)` | `[]`, **sem problemas** |
-| Rastro | 492 de 492 itens com soma do rastro por id_saida = valor reportado |
+| Rastro | 488 de 488 itens com soma do rastro por id_saida = valor reportado |
 
-**R22 (Helena, 17/10 às 9h45):** o PIX de 17/09 da Ponte Aérea Estudantil (MRD2026090425, 18.240,00) é adiantamento de uma remessa de outubro, não pendência. Mudou em relação ao fechamento anterior:
-- pendencias.csv: saiu a PEN-PIX-SEMREM-MRD2026090425 (16 → 15 pendências; soma 401.051,75 → 382.811,75);
-- rastro.csv: saiu a linha de rastro dessa pendência (5.176 → 5.175);
-- lancamentos_classificados.csv: LAN-MER-MRD2026090425 continua em 2.1.02.001 com metodo REGRA, e a confiança passa de 0,80 para 1,00 (P10: deixou de ser premissa nossa e virou regra da Helena).
+**R23 (Helena, 17/10 às 9h48, citando a resposta à MN AI das 9h44):** divergência é quando o lojista pagou diferente do contrato; no spread negativo o lojista não pagou a mais, então é só pendência de contestação. Decidimos não listar os spreads negativos em divergencias_taxa.csv. Mudou em relação ao fechamento anterior (`db29cf0`):
+- divergencias_taxa.csv: saíram DIV-REM-PC-0926-0210, -0326, -0491 e -0545 (237 → 233 linhas; soma 14.826,52 → 18.392,50, ou seja, menos os -3.565,98 dos 4 negativos);
+- rastro.csv: saíram as 4 linhas de rastro dessas divergências (5.175 → 5.171);
+- pendencias.csv: sem mudança. As 4 PEN-NEG-REM continuam com os mesmos valores (P18).
+
+Também às 9h48: a conta da devolução de PIX (2.1.01.001) foi validada (P16), e o provisionamento mensal de folha e impostos foi confirmado (R24). Nenhuma das duas muda a saída.
+
+A mudança anterior (R22, 9h45: o PIX de 18.240,00 da Ponte Aérea é adiantamento, não pendência) está no commit `db29cf0`.
 
 **Coluna "Esperado":** valor copiado de um assert dos testes, com o teste de origem (`arquivo::função`). Quando o número do relatório é a soma de dois asserts, a conta aparece na coluna. "—" quer dizer que nenhum teste fixa esse número.
 ✓ = bate com o esperado; ✗ = não bate.
@@ -29,16 +33,16 @@ Valores em R$, no formato brasileiro.
 | arquivo | linhas | Esperado | teste de origem | |
 |---|---:|---:|---|:-:|
 | comissoes_por_lojista.csv | 35 | 21 + 14 | `test_checkout.py::test_set_comissao_total_e_lojistas` (21) + `test_remessa.py::test_set_comissao_total_e_lojistas` (14) | ✓ |
-| divergencias_taxa.csv | 237 | 210 + 27 | `test_checkout.py::test_set_divergencias` (210) + `test_remessa.py::test_set_divergencias` (27) | ✓ |
+| divergencias_taxa.csv | 233 | 210 + 23 | `test_checkout.py::test_set_divergencias` (210) + `test_remessa.py::test_set_divergencias` (23) | ✓ |
 | notas_a_emitir.csv | 21 | 20 + 1 | `test_checkout.py::test_set_notas` (20) + `test_remessa.py::test_set_nota_unica` (1) | ✓ |
 | lancamentos_classificados.csv | 184 | 184 | `test_bancos.py::test_setembro_184_lancamentos_todos_por_regra` | ✓ |
 | pendencias.csv | 15 | — | nenhum teste fixa o total; as 15 aparecem uma a uma na seção 6 | |
-| rastro.csv | 5.175 | — | | |
+| rastro.csv | 5.171 | — | | |
 
 | checagem | resultado | Esperado | teste de origem | |
 |---|---|---|---|:-:|
 | `validar_saida` (formato, id único, soma do rastro) | `[]` | `[]` | `test_bancos.py::test_setembro_validar_saida_com_os_tres_modulos` | ✓ |
-| itens com soma do rastro = valor reportado | 492 de 492 | — | | |
+| itens com soma do rastro = valor reportado | 488 de 488 | — | | |
 | itens com soma diferente, itens sem rastro, id do rastro sem item | 0, 0, 0 | — | | |
 
 ---
@@ -146,8 +150,8 @@ As notas somam R$ 5,50 a mais que as comissões (246.583,18): é a comissão neg
 | linha | linhas | soma | Esperado | teste de origem | |
 |---|---:|---:|---|---|:-:|
 | CHECKOUT | 210 | 16.973,65 | 210 · 16.973,65 | `test_checkout.py::test_set_divergencias` | ✓ |
-| REMESSA | 27 | -2.147,13 | 27 · 1.418,85 + (-3.565,98) | `test_remessa.py::test_set_divergencias` (27 linhas; Mundo Aberto 1.418,85; negativos -3.565,98) | ✓ |
-| **total** | 237 | 14.826,52 | — | | |
+| REMESSA | 23 | 1.418,85 | 23 · 1.418,85, todas da Mundo Aberto, nenhuma DIV-REM dos 4 spreads negativos (R23) | `test_remessa.py::test_set_divergencias` | ✓ |
+| **total** | 233 | 18.392,50 | — | | |
 
 ### Por lojista e linha
 
@@ -157,12 +161,10 @@ As notas somam R$ 5,50 a mais que as comissões (246.583,18): é a comissão neg
 | CHECKOUT | 95927868000148 | Rota Global Intercâmbio Ltda | 87 | 1.546,28 | 87 · 1.546,28 | `test_checkout.py::test_set_divergencias` | ✓ |
 | CHECKOUT | 22224579000109 | Escola Bridge de Idiomas Ltda | 5 | 29,95 | 5 · 29,95 | `test_checkout.py::test_set_divergencias` | ✓ |
 | REMESSA | 17217888000111 | Mundo Aberto | 23 | 1.418,85 | 23 · 1.418,85 | `test_remessa.py::test_set_divergencias` | ✓ |
-| REMESSA | 95739378000118 | Ponte Aérea Estudantil Ltda | 1 | -1.351,87 | PC-0926-0210: -1.351,87 | `test_remessa.py::test_set_divergencias` (NEGATIVOS) | ✓ |
-| REMESSA | 53857560000123 | Canguru | 1 | -1.001,30 | PC-0926-0326: -1.001,30 | `test_remessa.py::test_set_divergencias` (NEGATIVOS) | ✓ |
-| REMESSA | 66564512000199 | Novo Horizonte Intercambio | 1 | -637,91 | PC-0926-0545: -637,91, CNPJ 66564512000199, contratado 1,4% | `test_remessa.py::test_set_divergencias` (NEGATIVOS) | ✓ |
-| REMESSA | 68567965000102 | Dublin Hub Intercâmbio Ltda | 1 | -574,90 | PC-0926-0491: -574,90 | `test_remessa.py::test_set_divergencias` (NEGATIVOS) | ✓ |
 
-Abaixo da tolerância de 0,01 p.p. (P01), a maior oscilação das operações não divergentes é 0,0016 p.p. (`test_remessa.py::test_set_oscilacao_dos_demais_abaixo_da_tolerancia`), um número que não aparece nos CSVs.
+Os 4 spreads negativos (PC-0926-0210, -0326, -0491 e -0545) não entram aqui: pela R23 não são divergência. Ficam só como PEN-NEG-REM na seção 6, com os mesmos valores (P18).
+
+Abaixo da tolerância de 0,01 p.p. (P01), a maior oscilação das operações não divergentes e sem spread negativo é 0,0016 p.p. (`test_remessa.py::test_set_oscilacao_dos_demais_abaixo_da_tolerancia`), um número que não aparece nos CSVs.
 
 ### As 5 maiores
 
@@ -176,21 +178,17 @@ Abaixo da tolerância de 0,01 p.p. (P01), a maior oscilação das operações n�
 
 As cinco são da Casa do Estudante: antecipações (AN) e vendas cobradas durante a tarifa zerada da R10.
 
-### Negativas (9 linhas, soma -3.673,51)
+### Negativas (5 linhas, soma -107,53)
 
 | id_saida | CNPJ | contratada (%) | aplicada (%) | diferença | Esperado | teste de origem | |
 |---|---|---:|---:|---:|---:|---|:-:|
-| DIV-REM-PC-0926-0210 | 95739378000118 | 1.5000 | -1.5523 | -1.351,87 | -1.351,87 | `test_remessa.py::test_set_divergencias` | ✓ |
-| DIV-REM-PC-0926-0326 | 53857560000123 | 1.5000 | -1.5523 | -1.001,30 | -1.001,30 | `test_remessa.py::test_set_divergencias` | ✓ |
-| DIV-REM-PC-0926-0545 | 66564512000199 | 1.4000 | -1.6493 | -637,91 | -637,91 | `test_remessa.py::test_set_divergencias` | ✓ |
-| DIV-REM-PC-0926-0491 | 68567965000102 | 1.5000 | -1.5512 | -574,90 | -574,90 | `test_remessa.py::test_set_divergencias` | ✓ |
 | DIV-CHK-TX88446419 | 95927868000148 | 3.5900 | 4.0900 | -52,10 | — | | |
 | DIV-CHK-TX88446596 | 95927868000148 | 2.9900 | 3.4900 | -29,98 | — | | |
 | DIV-CHK-TX88446647 | 95927868000148 | 2.9900 | 3.4900 | -11,23 | — | | |
 | DIV-CHK-TX88446763 | 00520815000100 | 0.0000 | 0.8900 | -9,09 | — | | |
 | DIV-CHK-TX88446585 | 95927868000148 | 2.4900 | 2.9900 | -5,13 | — | | |
 
-As 4 de remessa são os spreads negativos (P15). As 5 de checkout são estornos de vendas que já tinham sido cobradas acima do contratado: o estorno devolve a diferença, com sinal negativo.
+As 5 são estornos de checkout de vendas que já tinham sido cobradas acima do contratado: o estorno devolve a diferença, com sinal negativo. Os 4 spreads negativos da remessa, que estavam nesta lista, saíram pela R23.
 
 ---
 
@@ -312,7 +310,7 @@ python -m tarvo fechar --competencia 2026-10 --entrada <tmp>/dados/2026-10 --sai
 python -m tarvo resumo --saida <tmp>/saida
 ```
 
-Resultado: 510 itens, `validar_saida` sem problemas, rastro fechando em 510 de 510. Linhas: comissões 36, divergências 246, notas 21, lançamentos 186, pendências 21, rastro 5.213.
+Resultado: 506 itens, `validar_saida` sem problemas, rastro fechando em 506 de 506. Linhas: comissões 36, divergências 242, notas 21, lançamentos 186, pendências 21, rastro 5.209.
 
 ### O que cada caso novo gerou
 
@@ -351,19 +349,19 @@ Os números mudam com o deslocamento das datas, como prevê `test_outubro.py`. N
 
 ## Escolhas de interpretação (P15 a P21)
 
-Premissas do HIPOTESES.md (seção 2.1) que a revisão independente questionou e que foram mantidas. Para cada uma: o número de setembro que ela afeta e o valor que esse número teria na leitura alternativa.
+Premissas do HIPOTESES.md (seção 2.1) que a revisão independente questionou e que foram mantidas. Para cada uma: o número de setembro que ela afeta e o valor que esse número teria na leitura alternativa. A P15 foi substituída depois pela R23 e aparece invertida: o valor adotado é o da R23, e a alternativa é a antiga P15.
 
-Os valores alternativos **não são valores de teste**. P15, P16, P19 e P20 são contas sobre os CSVs de `saida/`. P17, P18 e P21 foram calculados à parte, com um script descartável que usa os leitores e `remessa.calcular_operacao` sem alterá-los, sobre `dados/2026-09`.
+Os valores alternativos **não são valores de teste**. P16, P19 e P20 são contas sobre os CSVs de `saida/`; a alternativa da P15 é a saída do commit `db29cf0`. P17, P18 e P21 foram calculados à parte, com um script descartável que usa os leitores e `remessa.calcular_operacao` sem alterá-los, sobre `dados/2026-09`.
 
 | premissa | escolha adotada | número afetado | valor adotado | leitura alternativa | valor na alternativa |
 |---|---|---|---:|---|---:|
-| **P15** | spread negativo também é divergência (reforça P02) | linhas de remessa em divergencias_taxa.csv · soma | 27 · -2.147,13 | spreads negativos só como contestação, fora das divergências | **23 · 1.418,85** |
-| | | total de divergencias_taxa.csv · soma | 237 · 14.826,52 | | 233 · 18.392,50 |
-| | | divergências negativas | 9 | | 5 (só os estornos de checkout) |
-| **P16** | devolução de PIX (L65, +12.400,00) em 2.1.01.001 | AURORA 2.1.01.001 · soma | 45 · -4.217.867,61 | L65 em 2.1.01.002 (Devoluções e créditos a lojistas) | **44 · -4.230.267,61**, e 2.1.01.002 com 1 · 12.400,00 |
+| **P15** (substituída pela R23) | R23: spread negativo só como contestação, fora das divergências | linhas de remessa em divergencias_taxa.csv · soma | 23 · 1.418,85 | P15 antiga: listar também como divergência (a Helena permite, desde que fique claro que é outra natureza) | **27 · -2.147,13** |
+| | | total de divergencias_taxa.csv · soma | 233 · 18.392,50 | | 237 · 14.826,52 |
+| | | divergências negativas | 5 (só os estornos de checkout) | | 9 |
+| **P16** | devolução de PIX (L65, +12.400,00) em 2.1.01.001 (validada pela Helena às 9h48: as duas contas servem; critério fixo) | AURORA 2.1.01.001 · soma | 45 · -4.217.867,61 | L65 em 2.1.01.002 (Devoluções e créditos a lojistas) | **44 · -4.230.267,61**, e 2.1.01.002 com 1 · 12.400,00 |
 | **P17** | diferença de remessa pelo Spread % do relatório: (Spread % − contratado) / 100 × PTAX × Valor ME | DIV-REM Mundo Aberto (23 linhas) e PEN-CONTEST-REM-17217888000111 | 1.418,85 | pelo Spread R$: Spread R$ − contratado / 100 × PTAX × Valor ME, por operação | **1.418,88** |
-| | | DIV-REM-PC-0926-0326 · DIV-REM-PC-0926-0491 | -1.001,30 · -574,90 | | -1.001,29 · -574,91 (os 4 negativos continuam somando -3.565,98) |
-| | | soma das divergências de remessa | -2.147,13 | | -2.147,10 |
+| | | PEN-NEG-REM-PC-0926-0326 · PEN-NEG-REM-PC-0926-0491 | -1.001,30 · -574,90 | | -1.001,29 · -574,91 (os 4 negativos continuam somando -3.565,98) |
+| | | CONTESTACAO_PONTE (5 pendências) | -2.147,13 | | -2.147,10 |
 | **P18** | contestação do spread negativo pela diferença contra o contrato (mesmo cálculo de P17) | 4 PEN-NEG-REM: PC-0926-0210 · 0326 · 0491 · 0545 | -1.351,87 · -1.001,30 · -574,90 · -637,91 = **-3.565,98** | pelo Spread R$ negativo da operação | -687,52 · -509,22 · -292,28 · -345,03 = **-1.834,05** |
 | | | CONTESTACAO_PONTE (5 pendências) · total de pendencias.csv | -2.147,13 · 382.811,75 | | -415,20 · 384.543,68 |
 | **P19** | PEN-DUP pelo Spread R$ da cópia descartada | PEN-DUP-REM-PC-0926-0162 | 821,88 (o quanto o rodapé de 78.073,59 está inflado) | pela parte da Tarvo na cópia (50%, R11) | **410,94** |

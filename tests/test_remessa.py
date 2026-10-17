@@ -118,17 +118,15 @@ def test_nota_unica_tomadora_ponte_com_todas_as_operacoes(taxas, cfg):
     assert nf.campos["discriminacao"].endswith(f"competência {COMP}")
 
 
-def test_spread_negativo_fora_da_comissao_e_da_nota_e_vira_divergencia_e_contestacao(taxas, cfg):
+def test_spread_negativo_fora_da_comissao_da_nota_e_das_divergencias_e_vira_contestacao(taxas, cfg):
     itens = _calc(taxas, cfg, _op("OP-1", CNPJ_A, "10.00", "1.2000"),
                   _op("OP-NEG", CNPJ_A, "-60.00", "-1.3000", valor_me="1000.00", ptax="5.0000"))
     assert _por_prefixo(itens, "COM-REM-")[f"COM-REM-{CNPJ_A}"].valor_reportado == D("5.00")
     nf = _por_prefixo(itens, "NF-")["NF-REM-75374179000146"]
     assert [o.ref_origem for o in nf.origens] == ["OP-1"]
-    div = _por_prefixo(itens, "DIV-")["DIV-REM-OP-NEG"]
-    # (-1,30 - 1,20) / 100 × 5,0000 × 1000,00 = -125,00 (P02, R15)
-    assert div.valor_reportado == D("-125.00")
-    assert div.campos["taxa_contratada_pct"] == D("1.200") and div.campos["taxa_aplicada_pct"] == D("-1.3000")
+    assert _por_prefixo(itens, "DIV-") == {}  # R23: spread negativo não é divergência
     neg = _por_prefixo(itens, "PEN-NEG-")["PEN-NEG-REM-OP-NEG"]
+    # (-1,30 - 1,20) / 100 × 5,0000 × 1000,00 = -125,00 (P18, R15)
     assert neg.campos["tipo"] == "CONTESTACAO_PONTE" and neg.valor_reportado == D("-125.00")
     assert "PEN-CONTEST-REM-" + CNPJ_A not in {i.id_saida for i in itens}
 
@@ -248,7 +246,6 @@ def test_sinteticos_gravam_e_validam(taxas, cfg, tmp_path):
 
 PONTE = "75374179000146"
 MUNDO_ABERTO = "17217888000111"
-NOVO_HORIZONTE = "66564512000199"
 NEGATIVOS = {"PC-0926-0210": D("-1351.87"), "PC-0926-0326": D("-1001.30"),
              "PC-0926-0491": D("-574.90"), "PC-0926-0545": D("-637.91")}
 
@@ -298,20 +295,15 @@ def test_set_nota_unica(itens):
 
 def test_set_divergencias(itens):
     div = _por_prefixo(itens, "DIV-")
-    assert len(div) == 27
-    mundo = [i for i in div.values() if i.campos["cnpj"] == MUNDO_ABERTO]
-    assert len(mundo) == 23
-    assert sum(i.valor_reportado for i in mundo) == D("1418.85")
-    outras = {i.campos["ref_origem"]: i for i in div.values() if i.campos["cnpj"] != MUNDO_ABERTO}
-    assert {r: i.valor_reportado for r, i in outras.items()} == NEGATIVOS
-    assert sum(NEGATIVOS.values()) == D("-3565.98")
-    nh = outras["PC-0926-0545"]
-    assert nh.campos["cnpj"] == NOVO_HORIZONTE and nh.campos["taxa_contratada_pct"] == D("1.4")
+    assert len(div) == 23
+    assert all(i.campos["cnpj"] == MUNDO_ABERTO for i in div.values())
+    assert sum(i.valor_reportado for i in div.values()) == D("1418.85")
+    assert not {f"DIV-REM-{r}" for r in NEGATIVOS} & set(div)  # R23
 
 
 def test_set_oscilacao_dos_demais_abaixo_da_tolerancia(entradas, itens):
     cfg = carregar_config()
-    divergentes = {i.campos["ref_origem"] for i in _por_prefixo(itens, "DIV-").values()}
+    divergentes = {i.campos["ref_origem"] for i in _por_prefixo(itens, "DIV-").values()} | set(NEGATIVOS)
     contratos = Contratos(entradas.taxas, cfg)
     unicas, _ = deduplicar(entradas.ponte, cfg)
     oscilacao = max(abs(op["spread_pct"] - contratos.spread_contratado(op["cnpj"], op["data_contratacao"])[0])
@@ -324,7 +316,8 @@ def test_set_pendencias(itens):
     assert pen["PEN-DUP-REM-PC-0926-0162"].valor_reportado == D("821.88")
     assert pen[f"PEN-CONTEST-REM-{MUNDO_ABERTO}"].valor_reportado == D("1418.85")
     assert len(pen[f"PEN-CONTEST-REM-{MUNDO_ABERTO}"].campos["ref_origem"]) == 23
-    assert {r: pen[f"PEN-NEG-REM-{r}"].valor_reportado for r in NEGATIVOS} == NEGATIVOS
+    assert {r: pen[f"PEN-NEG-REM-{r}"].valor_reportado for r in NEGATIVOS} == NEGATIVOS  # P18
+    assert sum(NEGATIVOS.values()) == D("-3565.98")
     ted = pen["PEN-TED-PONTE"]
     nf = _por_prefixo(itens, "NF-")[f"NF-REM-{PONTE}"]
     assert ted.valor_reportado == nf.valor_reportado == D("39543.45")

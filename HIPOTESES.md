@@ -2,7 +2,7 @@
 
 Fontes deste arquivo:
 - **Fonte 1:** HIPOTESES.md do colega em `origin/main` (commit `d425cd4`). Todo o conteúdo dela está aqui, nas seções 2, 4 e 5, identificado como `F1-H01` a `F1-H10`.
-- **Fonte 2:** respostas públicas da Helena (financeiro da Tarvo) no canal #tarvo-financeiro em 16/10/2026. As perguntas foram feitas por outros times; as respostas valem para todos. Exceção: as duas perguntas do nosso time (Desbravadores Barte), respondidas em 17/10/2026 às 9h45 (seção 3; viraram R22 e a validação de P04).
+- **Fonte 2:** respostas públicas da Helena (financeiro da Tarvo) no canal #tarvo-financeiro em 16/10/2026. As perguntas foram feitas por outros times; as respostas valem para todos. Exceção: as perguntas do nosso time (Desbravadores Barte), respondidas em 17/10/2026: duas às 9h45 (viraram R22 e a validação de P04) e três às 9h48 (viraram R23, R24 e a validação de P16; na R23 a Helena remeteu à resposta pública dada à MN AI às 9h44). Ver seção 3.
 
 Pela regra do CLAUDE.md, só entra no código regra de negócio que esteja aqui. Os valores de setembro citados neste arquivo são referência para os testes, nunca para `src/` ou `config/`.
 
@@ -36,6 +36,9 @@ Pela regra do CLAUDE.md, só entra no código regra de negócio que esteja aqui.
 - **R16** — A nota de remessa sai pelo realizado, inclusive o excesso da Mundo Aberto; o ajuste vem no mês em que a Ponte devolver. Fica como pendência da Helena. *(pergunta de Theo Garcia, resposta da Helena às 21h45)*
 - **R17** — Nota de remessa: uma só, tomadora Ponte Câmbio, pelo total da participação no mês. *(pergunta de MN AI, resposta da Helena às 20h47)*
 - **R18** — Nada foi contestado ainda e o prazo está ok. Pendência de contestação com valor e operações. Não supor desconto no repasse; conferir o TED de outubro é pendência da Helena. *(pergunta de Lucca Landeiro, resposta da Helena às 22h33; pergunta de Insper AI, resposta da Helena às 22h34)*
+- **R23** — Divergência é quando o lojista pagou diferente do contrato. No spread negativo o lojista não pagou a mais: o prejuízo é da Tarvo com a Ponte, então é pendência de contestação (R12, R18). Listar também nas divergências é permitido, desde que fique claro que é outra natureza.
+  - **Decisão nossa:** o spread negativo NÃO entra em divergencias_taxa.csv, para a lista não misturar outra natureza nem gerar alarme falso. Fica só a PEN-NEG-REM, com o mesmo valor (P18). Substitui P02 e P15.
+  - *(pergunta de MN AI, resposta da Helena às 9h44: "Para mim, divergência é quando o lojista pagou diferente do contrato. No spread negativo o lojista não pagou a mais. O prejuízo é nosso com a Ponte, então é pendência de contestação. Se quiserem listar também nas divergências, tudo bem, desde que fique claro que é outra natureza." Citada pela Helena às 9h48 em resposta à pergunta do nosso time, Desbravadores Barte)*
 
 ### Extratos e classificação contábil
 
@@ -43,6 +46,7 @@ Pela regra do CLAUDE.md, só entra no código regra de negócio que esteja aqui.
 - **R20** — PIX de R$ 7.350 sem identificação: não é receita até identificar. Devolução de PIX da Mundo Aberto: repasse que voltou, motivo desconhecido. Transferência de R$ 300 mil: sai do Aurora em 30/09 e cai no Meridiano em 01/10. *(pergunta de Lucca Landeiro, resposta da Helena às 20h49)*
 - **R21** — A Orbe deposita tudo no Aurora. O saldo negativo é a conta garantida. Conciliar Orbe × banco parcela a parcela está fora do escopo: só classificar os créditos. *(pergunta de Insper AI, resposta da Helena às 22h34)*
 - **R22** — PIX recebido de lojista acima das remessas do mês = adiantamento de remessa futura: é recurso de lojista em 2.1.02.001 e não é pendência. A Ponte Aérea Estudantil (lojista, CNPJ 95739378000118) não tem relação com a Ponte Câmbio. *(pergunta do nosso time, Desbravadores Barte, resposta da Helena às 9h45: "É a Ponte Aérea mandando dinheiro de uma remessa que ainda não foi feita. A operação sai em outubro.")*
+- **R24** — Folha, ISS, INSS, FGTS e DARFs ficam provisionados todo mês: no fechamento, a folha e os impostos do mês são provisionados, e o pagamento no mês seguinte baixa a provisão. Vale para qualquer mês, não só para agosto (generaliza a parte de R19 sobre agosto). É o que config/bancos.yaml já faz. *(pergunta do nosso time, Desbravadores Barte, resposta da Helena às 9h48: "Sempre. Todo mês a folha e os impostos do mês ficam provisionados no fechamento, e o pagamento no mês seguinte baixa a provisão.")*
 
 ---
 
@@ -52,7 +56,7 @@ Pela regra do CLAUDE.md, só entra no código regra de negócio que esteja aqui.
 
 - **P01 — Tolerância de divergência de remessa:** diferença de spread abaixo de 0,01 p.p. não é divergência.
   - **Motivo:** a Ponte arredonda o spread entre 1,4984% e 1,5015%. A maior oscilação observada é de ±0,002 p.p., e a menor divergência real (Mundo Aberto) é de 0,3 p.p. É a tolerância que R15 deixa a nosso cargo. A Fonte 1 adota o mesmo critério (ver F1-H08).
-- **P02 — Spread negativo também é divergência:** entra em divergencias_taxa.csv, com diferença negativa contra o contratado, e em pendencias.csv como contestação.
+- **P02 — Spread negativo também é divergência:** **substituída por R23** (Helena às 9h44 e 9h48: spread negativo não é divergência; saiu de divergencias_taxa.csv e fica só como contestação). Texto original: entra em divergencias_taxa.csv, com diferença negativa contra o contratado, e em pendencias.csv como contestação.
   - **Motivo:** a taxa aplicada é diferente da contratada (R15), e R12 manda contestar. A Fonte 1 faz o mesmo (ver F1-H08). Reforçada em P15.
 - **P03 — Truncamento da Orbe:** a Orbe trunca valor_taxa no centavo (verificado: as 1943 linhas batem com ROUND_DOWN, e 1001 não batem com ROUND_HALF_UP). Por isso a divergência compara taxa aplicada × contratada, nunca valores (R02).
 
@@ -62,7 +66,7 @@ Pela regra do CLAUDE.md, só entra no código regra de negócio que esteja aqui.
   - **Motivo:** a Ponte paga a participação pelo realizado, com ou sem cadastro nosso (R11, R16). Sem spread contratado, não há com que comparar a taxa aplicada (R15).
   - **Validada pela Helena às 9h45** ("tratamento razoável; registrem como premissa"). Não aconteceu em setembro. Continua premissa, não vira regra.
 - **P05 — Spread negativo de CNPJ fora da planilha:** é erro e para o fechamento.
-  - **Motivo:** R12 manda contestar e P02 registra a divergência contra o contratado, que nesse caso não existe. Sem regra para o valor da contestação, preferimos parar a inventar um.
+  - **Motivo:** R12 manda contestar e P18 valora a contestação pela diferença contra o contratado, que nesse caso não existe. Sem regra para o valor da contestação, preferimos parar a inventar um.
 
 **Extratos (bancos.py)**
 
@@ -104,16 +108,17 @@ Pela regra do CLAUDE.md, só entra no código regra de negócio que esteja aqui.
 
 **Escolhas mantidas após a revisão independente das saídas (P15 a P21)**
 
-Uma revisão independente questionou as escolhas abaixo. Todas foram mantidas; o motivo de cada uma fica registrado aqui.
+Uma revisão independente questionou as escolhas abaixo. Todas foram mantidas, menos a P15, substituída depois pela R23; o motivo de cada uma fica registrado aqui.
 
-- **P15 — Spread negativo listado também como divergência (reforça P02):** as 4 operações com spread negativo entram em divergencias_taxa.csv, além da contestação em pendencias.csv.
+- **P15 — Spread negativo listado também como divergência (reforça P02):** **substituída por R23** (Helena às 9h44 e 9h48: spread negativo não é divergência). As 4 operações saíram de divergencias_taxa.csv; a contestação em pendencias.csv não mudou. Texto original: as 4 operações com spread negativo entram em divergencias_taxa.csv, além da contestação em pendencias.csv.
   - **Motivo:** o docx do desafio define divergência como "taxa contratada ≠ aplicada", e no spread negativo a taxa aplicada é diferente da contratada. R12 tira a operação da comissão e da nota, mas não diz que deixa de ser divergência. Aguardando a confirmação da Helena.
 - **P16 — Devolução de PIX em 2.1.01.001, não em 2.1.01.002 (reforça P06):**
-  - **Motivo:** a Helena disse "PIX de repasse que voltou" (R20). Se o repasse voltou, ele volta a ser devido ao lojista: é Repasses a lojistas a pagar (2.1.01.001). A conta 2.1.01.002 (Devoluções e créditos a lojistas) é para devolução ao lojista, e a Helena não descreveu o caso como devolução ao lojista. Aguardando confirmação.
+  - **Motivo:** a Helena disse "PIX de repasse que voltou" (R20). Se o repasse voltou, ele volta a ser devido ao lojista: é Repasses a lojistas a pagar (2.1.01.001). A conta 2.1.01.002 (Devoluções e créditos a lojistas) é para devolução ao lojista, e a Helena não descreveu o caso como devolução ao lojista.
+  - **Validada pela Helena às 9h48:** as duas contas servem ("Escolham uma, mantenham o mesmo critério e escrevam o motivo"). Escolhemos 2.1.01.001 pelo motivo acima, com critério fixo: toda devolução de PIX de repasse vai para 2.1.01.001, porque o repasse volta a ser devido ao lojista; 2.1.01.002 fica para devoluções e créditos a lojistas originados pela Tarvo (ex.: taxa cobrada a mais). Continua premissa nossa (a escolha entre duas contas válidas), com a confiança de P06 e P10.
 - **P17 — Diferença de remessa calculada sobre o Spread % do relatório:** diferenca_brl = (Spread % aplicado − spread contratado) / 100 × PTAX de referência × Valor ME, arredondada por operação.
   - **Motivo:** assim a coluna diferenca_brl é exatamente reproduzível pelas colunas taxa_contratada_pct e taxa_aplicada_pct do mesmo arquivo. Pelo Spread R$ (Spread R$ − contratado × PTAX × Valor ME), o total da Mundo Aberto seria R$ 1.418,88 em vez de R$ 1.418,85: a diferença vem do arredondamento do Spread % no relatório da Ponte.
 - **P18 — Contestação dos spreads negativos valorada pela diferença contra o contrato:** cada PEN-NEG-REM vale a diferenca_brl da operação (mesmo cálculo de P17), não o Spread R$ negativo.
-  - **Motivo:** coerente com P15. Se o spread negativo é divergência, o que se contesta é a distância até o contratado, o mesmo valor que aparece em divergencias_taxa.csv.
+  - **Motivo:** o que se contesta é a distância até o contratado. Antes da R23 era também o valor da linha em divergencias_taxa.csv (P15); com a R23 a linha saiu de lá, e o valor da PEN-NEG-REM continua o mesmo.
 - **P19 — PEN-DUP valorada pelo Spread R$ da cópia descartada (R$ 821,88 em setembro):**
   - **Motivo:** é exatamente quanto o total do relatório da Ponte está inflado: o rodapé soma R$ 78.073,59, e as operações únicas somam R$ 77.251,71 (R13). É o valor que a Ponte precisa corrigir no relatório.
 - **P20 — PEN-TRANSF mantida como item de conciliação para outubro:** a transferência de 30/09 continua em pendencias.csv como TRANSFERENCIA_EM_TRANSITO (P13), embora a R20 explique a transferência.
@@ -181,7 +186,7 @@ O conteúdo da Fonte 1 está reproduzido abaixo. Onde ela contradizia a Helena, 
   - **Estornos:** estornos de setembro referentes a vendas de agosto entram em setembro (agosto já está fechado). Eles abatem a comissão pela taxa contratada vigente na data_venda_original.
   - **Antecipações:** ANTECIPACAO (2,10%, exceto Casa do Estudante a 0,00%) e REVERSAO ANTECIPACAO compõem a base da mesma NF mensal de Checkout do lojista. A reversão anula a taxa da antecipação referenciada em id_referencia.
   - **Saldo zero ou negativo:** o lojista não tem NF emitida, e o saldo, seja zero ou negativo, vai para pendencias.csv (R06, Helena às 20h47). A Fonte 1 previa pendência só para o saldo negativo; ver C3 em "Conflitos resolvidos" na seção 4.
-- **F1-H08 — Remessas (Ponte Câmbio)** (regras: R11 a R18; premissas P01 e P02)
+- **F1-H08 — Remessas (Ponte Câmbio)** (regras: R11 a R18 e R23; premissas P01 e P18)
   - **Base:** a comissão da Tarvo e a NF única contra a Ponte Câmbio S.A. (CNPJ 75374179000146) são 50% do Spread R$ realizado, arredondado (ROUND_HALF_UP) operação por operação. É diferente do Checkout.
   - **Spread padrão:** spread em branco ou "padrão" na planilha de taxas = 1,50% sobre a PTAX de referência (PTAX Ref. × Valor ME).
   - **Incluídas em setembro:** 228 operações válidas, com NF Ponte Câmbio = R$ 39.543,45.
@@ -192,7 +197,7 @@ O conteúdo da Fonte 1 está reproduzido abaixo. Onde ela contradizia a Helena, 
       - Também vão para pendencias.csv, para contestação com a Ponte Câmbio.
   - **Excluídas da comissão e da NF:**
     - **Duplicidade PC-0926-0162:** a segunda linha com o mesmo número de operação e a observação "Operação reprocessada" (Spread R$ 821,88) é descartada do cálculo e reportada em pendencias.csv.
-    - **4 operações com spread negativo:** PC-0926-0210, PC-0926-0326, PC-0926-0491 e PC-0926-0545, somando Spread R$ = -R$ 1.834,05. Decorrem de "Taxa travada no pedido (D-1)" fora do limite contratual de 2 horas. São excluídas da comissão e da NF e reportadas em divergencias_taxa.csv e pendencias.csv para contestação.
+    - **4 operações com spread negativo:** PC-0926-0210, PC-0926-0326, PC-0926-0491 e PC-0926-0545, somando Spread R$ = -R$ 1.834,05. Decorrem de "Taxa travada no pedido (D-1)" fora do limite contratual de 2 horas. São excluídas da comissão e da NF e reportadas em pendencias.csv para contestação. *(Corrigido pela R23: a Fonte 1 também as reportava em divergencias_taxa.csv; saíram de lá.)*
   - **Tolerância de arredondamento da PTAX (0,01 p.p.):**
     - Oscilações abaixo de 0,01 p.p. entre o Spread % reportado e a taxa contratada não são divergência; por exemplo, 1,4984% a 1,5015% para a taxa de 1,50%.
     - Vêm do arredondamento da taxa final de câmbio em 4 casas decimais. É a mesma tolerância de P01.
@@ -202,7 +207,7 @@ O conteúdo da Fonte 1 está reproduzido abaixo. Onde ela contradizia a Helena, 
 
 - **F1-H09 — Contrapartida contábil e competência** (regra: R19)
   - **Conta:** conta_codigo registra a contrapartida contábil analítica (ACEITA_LANCTO = S) da movimentação bancária.
-  - **Obrigações e recebíveis de agosto já provisionados:** baixam os respectivos passivos ou ativos.
+  - **Obrigações e recebíveis de agosto já provisionados:** baixam os respectivos passivos ou ativos. **Confirmada pela R24** (Helena às 9h48): todo mês a folha e os impostos do mês ficam provisionados no fechamento, e o pagamento no mês seguinte baixa a provisão.
     - Folha 08/2026 → 2.1.04.001.
     - ISS 08/2026 → 2.1.03.003.
     - INSS 08/2026 → 2.1.04.002.
@@ -242,6 +247,9 @@ A Fonte 1 não registra nenhuma pergunta feita pelo nosso time. As confirmaçõe
 |----------|----------|---------|
 | No Meridiano entrou em 17/09 um PIX de R$ 18.240,00 de "PONTE AEREA ESTUDANTIL L" (FITID MRD2026090425), sem remessa correspondente na Ponte. [...] Proposta: 2.1.02.001 + pendência para você confirmar se é adiantamento de outubro ou devolução. | "É a Ponte Aérea mandando dinheiro de uma remessa que ainda não foi feita. A operação sai em outubro. A Ponte Aérea Estudantil é lojista e não tem nada a ver com a Ponte Câmbio." → **R22** | 17/10, 9h45 |
 | Se aparecer na Ponte uma operação de um CNPJ que não está na planilha, propomos calcular a nossa metade do spread mesmo assim e abrir pendência de cadastro para o comercial. | "Não aconteceu em setembro. Se acontecer, o tratamento que vocês propuseram é razoável. Registrem como premissa." → **P04** (continua premissa) | 17/10, 9h45 |
+| As 4 operações de spread negativo (PC-0926-0210, -0326, -0491, -0545): além da pendência de contestação, elas entram na lista de divergências de taxa? Ou divergência é só quando o lojista paga a mais? | A Helena remeteu à resposta pública dada à MN AI às 9h44: "Para mim, divergência é quando o lojista pagou diferente do contrato. No spread negativo o lojista não pagou a mais. O prejuízo é nosso com a Ponte, então é pendência de contestação. Se quiserem listar também nas divergências, tudo bem, desde que fique claro que é outra natureza." → **R23** (decidimos não listar; P02 e P15 substituídas) | 17/10, 9h48 (citando 9h44) |
+| A devolução do PIX de R$ 12.400 da Mundo Aberto: lançamos em 2.1.01.001 (o repasse volta a ser devido). A 2.1.01.002 seria mais adequada? | "As duas contas fazem sentido. Escolham uma, mantenham o mesmo critério e escrevam o motivo." → **P16** (validada; mantida 2.1.01.001 com critério fixo) | 17/10, 9h48 |
+| Folha, ISS, INSS, FGTS e DARFs pagos no mês seguinte estão sempre provisionados, ou só os de agosto? | "Sempre. Todo mês a folha e os impostos do mês ficam provisionados no fechamento, e o pagamento no mês seguinte baixa a provisão." → **R24** | 17/10, 9h48 |
 
 ---
 
@@ -250,7 +258,7 @@ A Fonte 1 não registra nenhuma pergunta feita pelo nosso time. As confirmaçõe
 ### Pendências abertas
 
 - **TED da Ponte:** conferir se o TED da Ponte bate com a nota de intermediação (R$ 39.543,45, P22). Quem decide é a Helena (R18, 22h33/22h34).
-- **Devolução de PIX da Mundo Aberto (L65, +R$ 12.400,00):** o motivo é desconhecido. Classificada em 2.1.01.001, com a pendência de apurar o motivo (R20, 20h49).
+- **Devolução de PIX da Mundo Aberto (L65, +R$ 12.400,00):** o motivo é desconhecido. Classificada em 2.1.01.001, com a pendência de apurar o motivo (R20, 20h49). A conta foi validada pela Helena às 9h48 (P16); o motivo continua em aberto.
 - **Adiantamento da Ponte Aérea em outubro (pergunta a fazer):** a operação que o PIX de 17/09 adiantou sai em outubro (R22). Se em outubro ela vier sem PIX do mesmo mês, a conferência de outubro (P12) mostra PIX a menos e gera PEN-PIX-REM-95739378000118. Não há regra para abater o adiantamento de um mês anterior; não implementado.
 - **Valores da Fonte 1:** contagens e totais (por exemplo, 228 operações, R$ 39.543,45, R$ 1.546,28 e R$ 1.418,85) ainda precisam ser reconferidos pelo nosso código antes de virar valor de referência nos testes.
 
@@ -275,6 +283,10 @@ Em todos, vale a regra da Helena: ela é a fonte, e a Fonte 1 é a interpretaç�
   - **Motivo:** é a regra literal da Helena.
 
 ### Pendências resolvidas
+
+- **Spread negativo como divergência (P02, P15):** resolvido pela R23 (Helena às 9h44 e 9h48). As 4 operações (PC-0926-0210, -0326, -0491, -0545) saíram de divergencias_taxa.csv; as 4 PEN-NEG-REM continuam com o mesmo valor (P18).
+- **Conta da devolução de PIX (P16):** as duas contas servem (Helena às 9h48); mantida 2.1.01.001 com critério fixo.
+- **Provisionamento de folha e impostos (F1-H09):** confirmado para todo mês pela R24 (Helena às 9h48).
 
 - **MRD2026090425 (+R$ 18.240,00, PONTE AEREA ESTUDANTIL):** adiantamento de remessa de outubro (R22, Helena às 9h45). Saiu de pendencias.csv; o lançamento continua em 2.1.02.001 com metodo REGRA, agora com confiança 1,00 (P10).
 - **IOF (4.3.01):** deixou de ser premissa do colega. É aplicação de R19 (Helena às 21h14: "além desses, nada estava provisionado") e vai direto para a despesa 4.3.01.
