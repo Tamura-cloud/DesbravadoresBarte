@@ -53,6 +53,7 @@ Pela regra do CLAUDE.md, só entra no código regra de negócio que esteja aqui.
   - **Motivo:** a Ponte arredonda o spread entre 1,4984% e 1,5015%. A maior oscilação observada é de ±0,002 p.p., e a menor divergência real (Mundo Aberto) é de 0,3 p.p. É a tolerância que R15 deixa a nosso cargo. A Fonte 1 adota o mesmo critério (ver F1-H08).
 - **P02 — Spread negativo também é divergência:** entra em divergencias_taxa.csv, com diferença negativa contra o contratado, e em pendencias.csv como contestação.
   - **Motivo:** a taxa aplicada é diferente da contratada (R15), e R12 manda contestar. A Fonte 1 faz o mesmo (ver F1-H08).
+- **P03 — Truncamento da Orbe:** a Orbe trunca valor_taxa no centavo (verificado: as 1943 linhas batem com ROUND_DOWN, e 1001 não batem com ROUND_HALF_UP). Por isso a divergência compara taxa aplicada × contratada, nunca valores (R02).
 
 ### 2.2 Premissas e achados do HIPOTESES.md do colega (Fonte 1)
 
@@ -146,9 +147,9 @@ O conteúdo da Fonte 1 está reproduzido abaixo. Onde ela contradizia a Helena, 
   - **IOF:** não é premissa. É aplicação de R19 (Helena às 21h14: "além desses, nada estava provisionado"). Como não estava provisionado, vai direto para a despesa 4.3.01.
   - **Nota nossa:** pelo CLAUDE.md, esse mapeamento vai para config/*.yaml, não para o código.
 - **F1-H10 — Anomalias bancárias e de conciliação** (regras: R20, R19)
-  - **16/09/2026 (L042, Aurora)** — "PIX RECEBIDO 38686002000180 SEM IDENTIFICACAO" (+R$ 7.350,00): não é receita até identificar a origem. Vai para a conta transitória 1.1.09.002 (Créditos não identificados) e para pendencias.csv.
-  - **23/09/2026 (L057, Aurora)** — "DEVOLUCAO PIX - MUNDO ABERTO INTERC" (+R$ 12.400,00): repasse que voltou, motivo desconhecido (R20, Helena às 20h49). Vai para 2.1.01.001 (Repasses a lojistas a pagar) e para pendencias.csv, com a pendência de apurar o motivo. Ver C2 em "Conflitos resolvidos" na seção 4.
-  - **30/09/2026 (L084, Aurora)** — "TRANSF ENTRE CONTAS P/ BCO MERIDIANO" (-R$ 300.000,00): saída no último dia do mês, compensada no Banco Meridiano em 01/10/2026. Vai para 1.1.09.001 (Transferências entre contas próprias) e para pendencias.csv.
+  - **16/09/2026 (L50, Aurora)** — "PIX RECEBIDO 38686002000180 SEM IDENTIFICACAO" (+R$ 7.350,00): não é receita até identificar a origem. Vai para a conta transitória 1.1.09.002 (Créditos não identificados) e para pendencias.csv.
+  - **23/09/2026 (L65, Aurora)** — "DEVOLUCAO PIX - MUNDO ABERTO INTERC" (+R$ 12.400,00): repasse que voltou, motivo desconhecido (R20, Helena às 20h49). Vai para 2.1.01.001 (Repasses a lojistas a pagar) e para pendencias.csv, com a pendência de apurar o motivo. Ver C2 em "Conflitos resolvidos" na seção 4.
+  - **30/09/2026 (L92, Aurora)** — "TRANSF ENTRE CONTAS P/ BCO MERIDIANO" (-R$ 300.000,00): saída no último dia do mês, compensada no Banco Meridiano em 01/10/2026. Vai para 1.1.09.001 (Transferências entre contas próprias) e para pendencias.csv.
   - **17/09/2026 (MRD2026090425, Meridiano)** — "PIX RECEB PONTE AEREA ESTUDANTIL L" (+R$ 18.240,00): recurso recebido na conta de câmbio sem operação correspondente no relatório de setembro da Ponte Câmbio. Vai para 2.1.02.001 (Recursos de lojistas para remessas a liquidar) e para pendencias.csv.
     - **Verificado:** é o único dos 64 PIX recebidos no Meridiano sem remessa correspondente na Ponte. Continua pendência, aguardando resposta da Helena.
     - **FITID corrigido:** a Fonte 1 citava MRD2026090364, que não existe no OFX. O lançamento de 17/09 de R$ 18.240,00 tem FITID MRD2026090425, e o MEMO no arquivo é "PONTE AEREA", sem acento.
@@ -170,7 +171,7 @@ A Fonte 1 não registra nenhuma pergunta feita pelo nosso time. As confirmaçõe
 ### Pendências abertas
 
 - **TED da Ponte:** conferir o TED da Ponte quando cair. Quem decide é a Helena (R18, 22h33/22h34).
-- **Devolução de PIX da Mundo Aberto (L057, +R$ 12.400,00):** o motivo é desconhecido. Classificada em 2.1.01.001, com a pendência de apurar o motivo (R20, 20h49).
+- **Devolução de PIX da Mundo Aberto (L65, +R$ 12.400,00):** o motivo é desconhecido. Classificada em 2.1.01.001, com a pendência de apurar o motivo (R20, 20h49).
 - **MRD2026090425 (+R$ 18.240,00, PONTE AEREA ESTUDANTIL):** verificado, é o único dos 64 PIX recebidos no Meridiano sem remessa correspondente na Ponte. Aguarda resposta da Helena.
 - **Valores da Fonte 1:** contagens e totais (por exemplo, 228 operações, R$ 39.543,45, R$ 1.546,28 e R$ 1.418,85) ainda precisam ser reconferidos pelo nosso código antes de virar valor de referência nos testes.
 
@@ -183,7 +184,7 @@ Em todos, vale a regra da Helena: ela é a fonte, e a Fonte 1 é a interpretaç�
   - **Fonte 2 (R18, 22h33/22h34):** "Não supor desconto no repasse; conferir o TED de outubro é pendência da Helena."
   - **Decisão:** a projeção, a diferença de R$ 506,65 e a discrepância 506,65 × 506,09 saíram da seção 2. Fica só a pendência "conferir o TED da Ponte quando cair", e quem decide é a Helena.
   - **Motivo:** a Helena proibiu supor desconto no repasse; a projeção era exatamente essa suposição.
-- **C2 — Devolução de PIX da Mundo Aberto (L057, +R$ 12.400,00)**
+- **C2 — Devolução de PIX da Mundo Aberto (L65, +R$ 12.400,00)**
   - **Fonte 1 (F1-H10):** descrevia como "estorno bancário parcial de repasse enviado ao lojista", recompondo a obrigação de repasse.
   - **Fonte 2 (R20, 20h49):** "repasse que voltou, motivo desconhecido".
   - **Decisão:** a descrição passa a ser "repasse que voltou, motivo desconhecido". A classificação continua 2.1.01.001, com a pendência do motivo.
@@ -212,6 +213,11 @@ Em todos, vale a regra da Helena: ela é a fonte, e a Fonte 1 é a interpretaç�
   - metodo: REGRA | IA | HUMANO
   - confianca: de 0 a 1
 - **Valores:** dinheiro em `Decimal` com 2 casas e ROUND_HALF_UP, linha a linha (R02). Taxas em pontos percentuais.
+
+### Referências de origem (ref_origem)
+
+- ref_origem do Aurora = linha física do arquivo, contando a partir de 1 (primeiro lançamento = L9), sem zeros à esquerda; aguardando confirmação no #hackathon-duvidas.
+  - Conferido contra `ler_aurora`: os 84 lançamentos vão de L9 a L92. As referências antigas por posição (L042, L057, L084) viraram L50, L65 e L92 (posição + 8).
 
 ### Encoding dos arquivos de entrada (bytes conferidos em 16/10/2026)
 
