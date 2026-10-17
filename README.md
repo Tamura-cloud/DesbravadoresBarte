@@ -2,6 +2,9 @@
 
 **Time Desbravadores Barte** · Desafio Barte AI, case Tarvo (17/10/2026)
 
+**Equipe:** Pedro (Pessoa 1: integração, dados novos e README) · Antônio (Pessoa 2: regras da Helena, código e testes) ·
+Erick (Pessoa 3: histórico de IA e pitch)
+
 **Em um minuto:** lemos os arquivos do mês como chegam, inclusive os ajustes que a Orbe manda depois do relatório,
 aplicamos as regras da Helena e entregamos 21 notas (R$ 243.284,29), 115 divergências (R$ 2.995,08) e 16 pendências,
 cada uma com quem decide. Cada número aponta para a linha de origem. Um comando fecha o mês; se faltar um arquivo,
