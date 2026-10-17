@@ -6,11 +6,11 @@ Pedimos ao Antigravity uma avaliação do Graphify e dos dossiês sobre a Barte,
 
 *Fonte: `sessoes/2026-10-16_pessoa-3_antigravity_40ab3010`, 16/10 21:32–21:44.*
 
-## 2. Trocamos teoria por varredura dos dados (decisão do time)
+## 2. A regra escrita pela IA confundia a Ponte Aérea com a Ponte Câmbio (a IA errou)
 
-Pedimos que nenhuma regra entrasse sem conferência linha a linha, e a varredura em Python achou dois arquivos em cp1252, CNPJs com 13 dígitos, 5 vendas da Bridge na taxa antiga e o estorno de agosto que deixa a Casa do Estudante negativa. Essas descobertas viraram regras e, depois, testes (commit `d425cd4`).
+Quando a Helena disse que a Ponte Aérea Estudantil é lojista e não tem nada a ver com a Ponte Câmbio, pedimos ao Claude Code que conferisse se alguma regra confundia as duas, e ele confirmou que o padrão do repasse da Ponte, escrito por ele na véspera, procurava só "PONTE" e pegaria a Ponte Aérea. Restringimos o padrão a "PONTE CAMBIO" e deixamos um teste que impede a volta do erro (commit `db29cf0`).
 
-*Fonte: `sessoes/2026-10-16_pessoa-3_antigravity_40ab3010`, 16/10 22:26.*
+*Fonte: `sessoes/2026-10-17_pessoa-2_claude_7c85056d` (horário do computador da Pessoa 2: 17/10 07:08–07:44).*
 
 ## 3. O documento que a IA ajudou a escrever tinha 8 erros (a IA errou)
 
@@ -26,4 +26,7 @@ Pedimos ao Claude Code que analisasse a branch `pix` sem fazer merge, e ele rodo
 
 ---
 
-**Reserva:** a duplicata `PC-0926-0162` provada pelo extrato do Meridiano e a revisão adversarial das premissas P15–P21, quando os transcripts das sessões da `pix` estiverem em `sessoes/`.
+**Reserva:**
+- Varredura de 100% das linhas antes de aceitar qualquer regra (encodings, CNPJs de 13 dígitos, Bridge, estorno de agosto), em `sessoes/2026-10-16_pessoa-3_antigravity_40ab3010`, 16/10 22:26, commit `d425cd4`.
+- Revisão independente das saídas, que questionou 7 premissas (P15–P21) e manteve cada uma com o número alternativo, em `sessoes/*_pessoa-2_claude_e749f188` e `656c59d7`, commit `329831b`.
+- A regra da Casa do Estudante que mudou no meio do dia ("o que decide é o contrato, não o aviso"), em `sessoes/*_pessoa-2_claude_56449fe8`, commit `2b679b3`.

@@ -2,6 +2,10 @@
 
 **Time Desbravadores Barte** · Desafio Barte AI, case Tarvo (17/10/2026)
 
+**Em um minuto:** lemos os 6 arquivos do mês como chegam, aplicamos as regras da Helena e entregamos 21 notas
+(R$ 246.588,68), 115 divergências (R$ 2.995,08) e 16 pendências, cada uma com quem decide. Cada número aponta
+para a linha de origem. Um comando fecha o mês.
+
 Fecha o mês da Tarvo a partir dos 6 arquivos do data pack, lidos como vêm (sem edição manual), e gera os
 6 CSVs de `saida/`. Cada número de saída é rastreável até a linha do arquivo de origem pelo `rastro.csv`,
 e a execução falha se algum valor não fechar com o rastro.
@@ -68,7 +72,7 @@ só se a validação não achar problema; sai com 1 ou 2 se a saída ou uma entr
 python -m pytest
 ```
 
-São 303 testes, sem acesso à rede. Incluem o fechamento de um outubro simulado (ver "Como rodar outubro").
+São 374 testes, sem acesso à rede. Incluem o fechamento de um outubro simulado (ver "Como rodar outubro").
 
 ## Chaves
 
@@ -100,26 +104,32 @@ Os totais abaixo foram lidos dos CSVs gerados para setembro/2026 (contagem de li
 | arquivo | conteúdo | linhas | soma da coluna de valor |
 |---------|----------|-------:|------------------------:|
 | `comissoes_por_lojista.csv` | comissão do mês por lojista e linha de negócio | 35 | `comissao_brl` = 246583.18 |
-| `divergencias_taxa.csv` | transação ou operação com taxa aplicada ≠ contratada | 233 | `diferenca_brl` = 18392.50 |
+| `divergencias_taxa.csv` | transação ou operação com taxa aplicada ≠ contratada | 115 | `diferenca_brl` = 2995.08 |
 | `notas_a_emitir.csv` | notas fiscais a emitir: uma por lojista (checkout) e uma para a Ponte (remessa) | 21 | `valor_brl` = 246588.68 |
 | `lancamentos_classificados.csv` | cada lançamento dos dois extratos com a conta contábil (contrapartida) | 184 | `valor` = -1416088.18 |
-| `pendencias.csv` | o que precisa de decisão humana, com valor, origem e quem decide | 15 | `valor_brl` = 382811.75 |
-| `rastro.csv` | as linhas de origem de cada id_saida dos 5 arquivos acima | 5171 | `valor` = -521712.07 |
+| `pendencias.csv` | o que precisa de decisão humana, com valor, origem e quem decide | 16 | `valor_brl` = 382811.75 |
+| `rastro.csv` | as linhas de origem de cada id_saida dos 5 arquivos acima | 5058 | `valor` = -537109.49 |
 
 Por linha de negócio:
 
 | arquivo | CHECKOUT | REMESSA |
 |---------|----------|---------|
 | `comissoes_por_lojista.csv` | 21 linhas, 207039.73 | 14 linhas, 39543.45 |
-| `divergencias_taxa.csv` | 210 linhas, 16973.65 | 23 linhas, 1418.85 |
+| `divergencias_taxa.csv` | 92 linhas, 1576.23 | 23 linhas, 1418.85 |
 | `notas_a_emitir.csv` | 20 notas, 207045.23 | 1 nota, 39543.45 |
 
 - A comissão de checkout (207039.73) é 5.50 menor que as notas de checkout (207045.23) porque a Casa do
   Estudante fechou o mês em -5.50: comissão zero ou negativa não emite nota e vira pendência (R06).
+- A devolução da Casa do Estudante (15396.77, concessão comercial: custo da Tarvo, não se cobra da Orbe) fica
+  fora das divergências, como pendência `DEVOLUCAO_CONCESSAO` (R10, R32, R38).
 - Lançamentos: 84 do Aurora e 100 do Meridiano, todos com `metodo` REGRA.
+- **Rascunhos de contestação (R29):** além dos 6 CSVs, o fechamento grava em `contestacoes/`, pasta irmã de
+  `saida/`, um rascunho de e-mail por contraparte (`orbe.md`, `ponte.md`) com as operações anexadas
+  (`orbe_operacoes.csv`, 92 linhas; `ponte_operacoes.csv`, 28 linhas). A Helena revisa e envia.
+  `--sem-contestacao` desliga os rascunhos.
 - **Como o rastro fecha:** o `rastro.csv` tem uma ou mais linhas por id_saida (`arquivo_origem`, `ref_origem`,
   `valor`). Para cada id_saida, a soma do `valor` no rastro é igual ao valor reportado. Por isso a soma do
-  rastro inteiro (-521712.07) é a soma das cinco colunas de valor acima. São 488 id_saida.
+  rastro inteiro (-537109.49) é a soma das cinco colunas de valor acima. São 371 id_saida.
 - **ref_origem:** `id_transacao` (Orbe), Nº Operação (Ponte), `L<n>` = número da linha física no arquivo (Aurora),
   FITID (Meridiano).
 
@@ -130,7 +140,9 @@ pipeline, e bateram ao centavo. A prova está em três lugares:
 
 - **Commit `d588ad9`** (16/10, 23h43), no histórico do `main`: os testes daquele commit guardam os valores do
   recálculo, feito direto de `dados/`. São 20 notas de checkout = 207045.23, nota da Ponte = 39543.45,
-  210 divergências de checkout e 184 lançamentos, os mesmos quatro números da `saida/` atual.
+  210 divergências de checkout e 184 lançamentos. Notas e lançamentos continuam iguais na `saida/` atual; as
+  divergências de checkout caíram para 92 porque a Helena separou a devolução da Casa do Estudante (118 linhas)
+  das divergências (R32, R38).
 - **Transcript `be5d287e`**, em `PROMPTS/sessoes/`: a sessão em que esse recálculo foi feito.
 - **Revisão adversarial:** uma sessão só de leitura, sem importar `src/`, recalculou tudo e questionou 7
   premissas (P15–P21). A decisão sobre cada uma, com o número alternativo, está no `HIPOTESES.md`.
@@ -140,7 +152,7 @@ Essa conferência usou as regras confirmadas até 16/10. As respostas da Helena 
 
 ## Como funciona
 
-Cinco etapas, orquestradas por `src/tarvo/fechamento.py`:
+Seis etapas, orquestradas por `src/tarvo/fechamento.py`:
 
 | etapa | o que faz | código | configuração |
 |-------|-----------|--------|--------------|
@@ -149,6 +161,7 @@ Cinco etapas, orquestradas por `src/tarvo/fechamento.py`:
 | 3. Cálculo por regra | comissão, divergência, nota e pendência do checkout e da remessa; classificação contábil dos extratos. Cada regra cita o seu R## ou P## do `HIPOTESES.md` | `checkout.py`, `remessa.py`, `bancos.py` (e `ia.py`, só para lançamento sem regra) | `config/checkout.yaml`, `remessa.yaml`, `bancos.yaml`, `favorecidos.yaml`, `pagadores_meridiano.yaml`, `ia.yaml` |
 | 4. Conferências cruzadas | Orbe × planilha (EC sem contrato), duplicatas da Ponte (R13), TED de liquidação Ponte × Meridiano (P11), PIX recebidos × remessas por CNPJ (P12), transferência Aurora × Meridiano (P13), TED de repasse × nota de remessa (R18, P22). Toda diferença vira pendência | `checkout.py`, `remessa.py`, `bancos.py` | as mesmas da etapa 3 |
 | 5. Saída com rastro | cada resultado é um `ItemSaida` com as suas origens, e o item não é criado se a soma das origens não fechar com o valor. Grava os 6 CSVs e relê tudo: formato, domínios, id_saida único e soma do rastro por id_saida | `saida.py`, `fechamento.py` | — |
+| 6. Rascunhos de contestação | depois da validação, monta um rascunho de e-mail por contraparte (Orbe e Ponte), com as operações anexadas e uma nota interna para a Helena, e grava em `contestacoes/`, ao lado de `saida/`. Desliga com `--sem-contestacao` | `contestacao.py`, `fechamento.py` | `config/contestacao.yaml` |
 
 Dinheiro é sempre `Decimal` com 2 casas, arredondado linha a linha com ROUND_HALF_UP (R02); a escrita nunca
 arredonda nem troca texto: valor com casas a mais ou texto com `;` é erro.
@@ -184,27 +197,29 @@ arredonda nem troca texto: valor com casas a mais ou texto com `;` é erro.
 
 ## Como rodar outubro
 
-1. Ponha os 6 arquivos de outubro, como chegaram, em `dados/2026-10/`. Os nomes podem mudar, desde que casem
-   com os padrões da tabela de entradas.
-2. Rode:
+O mesmo comando fecha qualquer mês, sem mexer no código: só mudam a competência e as pastas.
+
+1. Ponha os 6 arquivos do mês, como chegaram, numa pasta **fora deste repositório**. Os nomes podem mudar,
+   desde que casem com os padrões da tabela de entradas.
+2. Rode, com a saída também fora do repositório:
    ```bash
-   python -m tarvo fechar --competencia 2026-10 --entrada dados/2026-10 --saida saida/
+   python -m tarvo fechar --competencia 2026-10 --entrada <pasta com os arquivos de outubro> --saida <pasta de saída de outubro>
    ```
-   Isso substitui os CSVs de setembro em `saida/` (setembro continua no git). Para manter os dois meses lado a
-   lado, use outra pasta, por exemplo `--saida saida/2026-10/`.
+   `dados/` (somente leitura) e `saida/` (os 6 CSVs de setembro, que são a entrega) não são tocados.
 3. Siga "Como a analista usa no fechamento", abaixo. Atenção às pendências que vêm de setembro (ver "Limitações").
 
 **Ensaio sem os arquivos reais:** `tests/gerar_outubro.py` gera um outubro simulado a partir de setembro (datas
 +1 mês e quatro casos novos: venda de EC fora da planilha, PIX enviado a favorecido desconhecido, PIX recebido
-de pagador fora da lista, operação da Ponte de CNPJ fora da planilha).
+de pagador fora da lista, operação da Ponte de CNPJ fora da planilha). Tudo vai para uma pasta temporária:
 
 ```bash
-python tests/gerar_outubro.py dados/2026-09 dados/2026-10
-python -m tarvo fechar --competencia 2026-10 --entrada dados/2026-10 --saida saida_outubro/ --sem-ia
+python tests/gerar_outubro.py dados/2026-09 <pasta temporária>/dados/2026-10
+python -m tarvo fechar --competencia 2026-10 --entrada <pasta temporária>/dados/2026-10 --saida <pasta temporária>/saida --sem-ia
+python -m tarvo resumo --saida <pasta temporária>/saida
 ```
 
-O mesmo ensaio roda dentro de `python -m pytest tests/test_outubro.py`, em pasta temporária. Apague
-`dados/2026-10/` antes de colocar os arquivos reais: o simulado não é o outubro de verdade.
+O gerador só lê `dados/2026-09`: nada é gravado no repositório. O mesmo ensaio roda dentro de
+`python -m pytest tests/test_outubro.py`, também em pasta temporária, e o resultado está na seção 7 do `RESULTADOS.md`.
 
 ## Como a analista usa no fechamento
 
@@ -216,11 +231,15 @@ O mesmo ensaio roda dentro de `python -m pytest tests/test_outubro.py`, em pasta
    | tipo | regra | quem decide | o que fazer | set/2026 |
    |------|-------|-------------|-------------|---------:|
    | `NOTA_NAO_EMITIDA` | R06 | Financeiro (Helena) | comissão do mês zero ou negativa: decidir o tratamento (não passa para o mês seguinte) | 1 |
-   | `DEVOLUCAO_LOJISTA` | R03, R10, P23 | Financeiro (Helena) | devolver ao lojista o que foi cobrado acima do contrato | 3 |
+   | `DEVOLUCAO_LOJISTA` | R03, R25, R32 | Financeiro (Helena) | devolver ao lojista o que foi cobrado acima do contrato | 2 |
+   | `DEVOLUCAO_CONCESSAO` | R10, R32, R38 | Financeiro (Helena) | devolver ao lojista a taxa cobrada numa concessão comercial: custo da Tarvo, não se cobra da Orbe | 1 |
+   | `ALERTA_ANTECIPACAO` | R33, P26 | Financeiro (Helena) e Comercial | lojista sem histórico antecipou mais do que vendeu no mês: avaliar o risco (não muda nenhum valor) | 1 |
    | `LOJISTA_SEM_CONTRATO` | R08 | Comercial | EC da Orbe sem taxa contratada: confirmar o contrato antes de faturar | 1 |
    | `LOJISTA_NAO_CADASTRADO` | P04 | Financeiro (Helena) | CNPJ da Ponte fora da planilha: cadastrar (a comissão já entrou na nota) | 0 |
-   | `CONTESTACAO_PONTE` | R12, R15, R16, R18, R23 | Financeiro (Helena) | contestar com a Ponte o spread acima do contrato ou negativo | 5 |
+   | `CONTESTACAO_PONTE` | R12, R15, R16, R18, R23, R34 | Financeiro (Helena) | contestar com a Ponte o spread acima do contrato ou negativo | 5 |
    | `OPERACAO_DUPLICADA` | R13, P19 | Financeiro (Helena) | pedir à Ponte a correção do relatório | 1 |
+   | `AJUSTE_SEM_OPERACAO_ORIGINAL` | R31, P25 | Financeiro (Helena) | ajuste da Ponte cuja operação original não está no relatório: conferir (já abatido da participação) | 0 |
+   | `AJUSTE_SEM_LOJISTA` | R31 | Financeiro (Helena) | ajuste da Ponte sem CNPJ nem operação original: identificar o lojista (não foi abatido) | 0 |
    | `OPERACAO_FORA_DA_COMPETENCIA` | R11 | Financeiro (Helena) | operação contratada em outro mês: conferir | 0 |
    | `CONFERENCIA_REPASSE` | R18, P22 | Financeiro (Helena) | conferir o TED de repasse da Ponte contra a nota de remessa quando cair | 1 |
    | `CREDITO_NAO_IDENTIFICADO` | R20 | Financeiro (Helena) | identificar o PIX recebido; não é receita até lá | 1 |
@@ -233,13 +252,15 @@ O mesmo ensaio roda dentro de `python -m pytest tests/test_outubro.py`, em pasta
    | `REVISAR_SUGESTAO_IA` | P14 | Financeiro | aceitar ou corrigir a conta sugerida pela IA | 0 |
 
 3. **Resolver** cada pendência com quem decide. O código não decide nenhuma delas.
-4. **Ajustar a configuração**, quando a resolução virar regra:
+4. **Enviar as contestações.** A Helena revisa os rascunhos em `contestacoes/` (`orbe.md` e `ponte.md`, com as
+   operações em CSV), apaga o bloco de notas internas e envia (R29).
+5. **Ajustar a configuração**, quando a resolução virar regra:
    - favorecido ou pagador de PIX que é lojista: cadastrar o texto exato do extrato e o CNPJ da planilha em
      `config/favorecidos.yaml` (Aurora, P07) ou `config/pagadores_meridiano.yaml` (Meridiano, P08);
    - tipo de lançamento novo e recorrente: uma regra em `config/bancos.yaml`, com `fonte` R## ou P##;
    - regra de negócio nova: primeiro entra no `HIPOTESES.md` (R## se veio do financeiro, P## se é premissa,
      com o motivo), depois na configuração ou no código, com teste.
-5. **Rodar de novo.** As pendências resolvidas por configuração somem, e o restante continua listado.
+6. **Rodar de novo.** As pendências resolvidas por configuração somem, e o restante continua listado.
 
 ## Limitações conhecidas
 
@@ -260,7 +281,8 @@ O mesmo ensaio roda dentro de `python -m pytest tests/test_outubro.py`, em pasta
   sábado e domingo. Uma transferência na véspera de feriado aparece como em trânsito ou sem par.
 - **A conferência de TED de liquidação (P11)** só considera as datas dentro do período do extrato do Meridiano
   (DTSTART a DTEND).
-- **Vigências na configuração.** A condição especial da Casa do Estudante (R10) vale até 2026-12-31 em
+- **Vigências na configuração.** A concessão comercial da Casa do Estudante (R10, R32, R40: isenção para vendas
+  a partir de 01/09; estorno de venda anterior segue a taxa da venda) vale até 2026-12-31 em
   `config/checkout.yaml`; renovações e contratos novos precisam ser atualizados lá e na planilha de taxas.
 - **Nomes fixos de abas e colunas.** A planilha de taxas precisa ter a aba "Taxas vigentes", e o relatório da
   Ponte, a aba "Operações" com a coluna "Nº Operação". Se o formato mudar, a leitura para com erro.
@@ -272,7 +294,6 @@ O mesmo ensaio roda dentro de `python -m pytest tests/test_outubro.py`, em pasta
   - texto de spread na planilha que não é número nem "padrão" (R14);
   - Nº Operação repetido com valores diferentes além da observação (R13);
   - spread negativo de CNPJ fora da planilha (P05);
-  - lojista com divergências com e sem condição especial no mesmo mês (P23);
   - CNPJ em `favorecidos.yaml` ou `pagadores_meridiano.yaml` que não está na planilha;
   - qualquer saída fora do formato ou que não feche com o rastro.
 
@@ -282,7 +303,13 @@ O mesmo ensaio roda dentro de `python -m pytest tests/test_outubro.py`, em pasta
 ├── README.md
 ├── HIPOTESES.md              regras (R##) e premissas (P##): a fonte de toda regra de negócio
 ├── CLAUDE.md                 regras para quem (pessoa ou IA) mexe no código
-├── PROMPTS/MOMENTOS.md       momentos em que a IA errou ou ajudou, e o que fizemos
+├── RESULTADOS.md             números do fechamento conferidos contra os testes
+├── PROMPTS/
+│   ├── README.md             como o histórico está organizado e os prompts-chave
+│   ├── MOMENTOS.md           momentos em que a IA errou ou ajudou, e o que fizemos
+│   ├── antigravity_resumo_prompts_16-10.txt  resumo dos prompts do Antigravity (16/10)
+│   └── sessoes/              transcripts das sessões de IA (Claude Code e Antigravity)
+├── scripts/exportar_transcript.py  exporta os transcripts sem e-mails pessoais e chaves
 ├── pyproject.toml            pacote, dependências e configuração do pytest
 ├── requirements.txt          as mesmas dependências, em lista
 ├── config/
@@ -292,6 +319,7 @@ O mesmo ensaio roda dentro de `python -m pytest tests/test_outubro.py`, em pasta
 │   ├── bancos.yaml           regras de classificação dos extratos, em ordem
 │   ├── favorecidos.yaml      PIX enviados do Aurora que são repasse a lojista (P07)
 │   ├── pagadores_meridiano.yaml  PIX recebidos no Meridiano de clientes da remessa (P08)
+│   ├── contestacao.yaml      pasta e textos dos rascunhos de contestação (R29)
 │   └── ia.yaml               modelo, limiar e cache da IA (P14)
 ├── src/tarvo/
 │   ├── cli.py, __main__.py   comando `python -m tarvo fechar`
@@ -301,9 +329,11 @@ O mesmo ensaio roda dentro de `python -m pytest tests/test_outubro.py`, em pasta
 │   ├── remessa.py            linha REMESSA (Ponte Câmbio)
 │   ├── bancos.py             classificação dos extratos e conferências cruzadas
 │   ├── ia.py                 sugestão de conta para lançamento sem regra
+│   ├── contestacao.py        rascunhos de contestação por contraparte (R29)
 │   └── saida.py              ItemSaida, escrita e validação dos 6 CSVs
-├── tests/                    303 testes + gerar_outubro.py (outubro simulado)
+├── tests/                    374 testes + gerar_outubro.py (outubro simulado)
 ├── dados/2026-09/            data pack de setembro, como recebido
 ├── cache/ia_sugestoes.json   respostas da IA já obtidas (vazio em setembro)
-└── saida/                    os 6 CSVs de setembro
+├── saida/                    os 6 CSVs de setembro
+└── contestacoes/             rascunhos de contestação para a Helena revisar (R29)
 ```
