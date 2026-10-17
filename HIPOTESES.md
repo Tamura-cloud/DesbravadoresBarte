@@ -81,6 +81,22 @@ Pela regra do CLAUDE.md, só entra no código regra de negócio que esteja aqui.
   - Sem par dentro do período do extrato: PEN-TRANSF-<ref>, TRANSFERENCIA_SEM_PAR.
   - **Motivo:** R20 descreve a transferência do fim do mês que sai do Aurora e cai no Meridiano no dia seguinte. Uma transferência do meio do mês sem par não está em trânsito, é outra coisa, e o tipo diferente evita esconder isso.
 
+**IA como plano B (ia.py, bancos.py; config/ia.yaml)**
+
+- **P14 — IA só sugere, e só para lançamento de extrato sem regra:**
+  - **Onde atua:** só no lançamento que nenhuma regra de config/bancos.yaml cobre (P09). O modelo sugere a contrapartida (R19) entre as contas analíticas do plano (aceita_lancto = S), com confiança de 0 a 1 e uma frase de justificativa. Recebe como contexto as contas analíticas, o texto de R19 deste arquivo e lançamentos do mesmo extrato já classificados por regra (um por regra).
+    - O item sai com metodo IA, a conta sugerida e a confiança dada pelo modelo (não as confianças de P10).
+    - Sempre há pendência PEN-IA-<ref>, tipo REVISAR_SUGESTAO_IA, com a justificativa no motivo e quem decide "Financeiro". Ela entra no lugar da PEN-SEMREGRA-<ref>.
+    - Abaixo do limiar de config/ia.yaml, o motivo diz "baixa confiança".
+  - **Onde não atua:**
+    - Lançamento que alguma regra casou nunca passa pela IA.
+    - Fica de fora de checkout, remessa, divergências, notas e das conferências cruzadas (P11 a P13). Lançamento com sugestão da IA não tem papel nas conferências.
+    - Não cria regra e não mexe nas listas de favorecidos e pagadores (P07, P08). O nome continua sendo só evidência: um PIX de pagador fora da lista não vira cliente da Ponte por causa da IA.
+    - A sugestão é descartada, e o lançamento volta ao fluxo de P09 (A_CLASSIFICAR, HUMANO, PEN-SEMREGRA), quando a conta não existe no plano ou é sintética, a confiança está fora de 0 a 1, o JSON é inválido, a resposta é cortada ou recusada, ou a chamada falha.
+  - **Desligada:** com habilitada: false, com a flag --sem-ia, ou sem ANTHROPIC_API_KEY e sem a resposta no cache, o resultado é exatamente o de P09. Em setembro, todo lançamento casa uma regra: zero chamadas.
+  - **Reprodutível:** a resposta bruta do modelo fica em cache/ia_sugestoes.json, por hash do lançamento (banco, ref_origem, data, descrição, valor) + modelo, e vai para o git. A mesma entrada dá sempre a mesma saída, sem chave e sem nova chamada. A validação roda de novo a cada leitura.
+  - **Motivo:** pelo CLAUDE.md, regra de negócio só vem deste arquivo, e a Helena não deu à IA autoridade para classificar. A IA só adianta o trabalho de quem classifica. Por isso nenhuma sugestão vira lançamento definitivo sem uma pessoa olhar.
+
 ### 2.2 Premissas e achados do HIPOTESES.md do colega (Fonte 1)
 
 O conteúdo da Fonte 1 está reproduzido abaixo. Onde ela contradizia a Helena, o trecho foi ajustado à regra dela, e a versão original ficou registrada em "Conflitos resolvidos" na seção 4. Onde ela diz "confirmado pelo financeiro", a confirmação corresponde às respostas públicas da seção 1, e a regra correspondente está indicada. Os valores numéricos foram calculados pelo colega e **ainda não foram reconferidos pelo nosso código**.

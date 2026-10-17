@@ -39,6 +39,7 @@ class Entradas:
     aurora_meta: dict
     meridiano: pd.DataFrame
     meridiano_meta: dict
+    usar_ia: bool = True  # opção da execução: False com --sem-ia (fallback de IA dos extratos, P14)
 
 
 Modulo = Callable[[Entradas], Iterable[ItemSaida]]
@@ -62,7 +63,7 @@ class ResultadoFechamento:
     itens: int
 
 
-def ler_entradas(entrada, competencia: str, config=CONFIG_PADRAO) -> Entradas:
+def ler_entradas(entrada, competencia: str, config=CONFIG_PADRAO, usar_ia: bool = True) -> Entradas:
     arquivos = localizar_arquivos(Path(entrada), carregar_padroes(Path(config)))
     ponte, ponte_rodape = ler_ponte(arquivos["ponte_eml"])
     aurora, aurora_meta = ler_aurora(arquivos["aurora"])
@@ -79,15 +80,19 @@ def ler_entradas(entrada, competencia: str, config=CONFIG_PADRAO) -> Entradas:
         aurora_meta=aurora_meta,
         meridiano=meridiano,
         meridiano_meta=meridiano_meta,
+        usar_ia=usar_ia,
     )
 
 
 def fechar(entrada, saida, competencia: str, *, config=CONFIG_PADRAO,
-           modulos: Iterable[Modulo] | None = None) -> ResultadoFechamento:
-    """Lê as entradas, roda os módulos, grava os 6 CSVs em saida e falha se validar_saida achar problema."""
+           modulos: Iterable[Modulo] | None = None, usar_ia: bool = True) -> ResultadoFechamento:
+    """Lê as entradas, roda os módulos, grava os 6 CSVs em saida e falha se validar_saida achar problema.
+
+    usar_ia=False força o fluxo sem IA nos extratos (P09 em vez de P14).
+    """
     if not isinstance(competencia, str) or not RE_COMPETENCIA.fullmatch(competencia):
         raise ValueError(f"competência deve ser AAAA-MM, veio {competencia!r}")
-    entradas = ler_entradas(entrada, competencia, config)
+    entradas = ler_entradas(entrada, competencia, config, usar_ia)
     itens: list[ItemSaida] = []
     for modulo in MODULOS if modulos is None else modulos:
         itens.extend(modulo(entradas))

@@ -1,4 +1,4 @@
-"""CLI do fechamento: python -m tarvo fechar --competencia AAAA-MM --entrada <dir> --saida <dir>."""
+"""CLI do fechamento: python -m tarvo fechar --competencia AAAA-MM --entrada <dir> --saida <dir> [--sem-ia]."""
 
 from __future__ import annotations
 
@@ -50,7 +50,8 @@ def cmd_fechar(args: argparse.Namespace) -> int:
         print(f"Diretório de entrada não encontrado: {entrada}", file=sys.stderr)
         return 2
     try:
-        resultado = fechar(entrada, Path(args.saida), args.competencia, config=Path(args.config))
+        resultado = fechar(entrada, Path(args.saida), args.competencia, config=Path(args.config),
+                           usar_ia=not args.sem_ia)
     except ErroEntrada as e:
         print(f"Erro ao localizar arquivos de entrada:\n{e}", file=sys.stderr)
         return 2
@@ -64,6 +65,7 @@ def cmd_fechar(args: argparse.Namespace) -> int:
     print(f"Competência: {args.competencia}")
     print(f"Entrada: {entrada}")
     print(f"Saída: {args.saida}")
+    print(f"IA nos extratos: {'desligada (--sem-ia)' if args.sem_ia else 'conforme config/ia.yaml'}")
     print(f"Arquivos encontrados ({len(resultado.arquivos_entrada)}):")
     for tipo, caminho in resultado.arquivos_entrada.items():
         print(f"  {tipo}: {caminho.name}")
@@ -83,6 +85,8 @@ def construir_parser() -> argparse.ArgumentParser:
     fechar.add_argument("--entrada", required=True, help="Diretório com os arquivos de entrada")
     fechar.add_argument("--saida", required=True, help="Diretório de saída")
     fechar.add_argument("--config", default=str(CONFIG_PADRAO), help="YAML com os padrões de nome")
+    fechar.add_argument("--sem-ia", action="store_true",
+                        help="Não usa a IA nos extratos: lançamento sem regra fica A_CLASSIFICAR/HUMANO (P09)")
     fechar.set_defaults(func=cmd_fechar)
     return parser
 

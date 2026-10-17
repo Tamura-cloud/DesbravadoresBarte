@@ -3,6 +3,8 @@
 Prova que o fechamento roda em outro mês sem retrabalho: mesmo código, mesma config, arquivos novos no
 mesmo formato. NÃO compara totais com setembro (os números mudam legitimamente com as datas): confere
 formato, datas, os quatro casos novos e as condições comerciais com vigência.
+Roda sem IA (--sem-ia): os casos (b) e (c) conferem o fluxo de P09. O fluxo com IA (P14), com cliente falso,
+está em tests/test_ia.py.
 """
 
 import csv
@@ -67,7 +69,7 @@ def pack(tmp_path_factory):
 @pytest.fixture(scope="module")
 def saida(pack, tmp_path_factory):
     pasta = tmp_path_factory.mktemp("saida")
-    fechar(pack["pasta"], pasta, COMPETENCIA)  # ErroFechamento aqui já reprova
+    fechar(pack["pasta"], pasta, COMPETENCIA, usar_ia=False)  # ErroFechamento aqui já reprova
     return pasta
 
 
@@ -175,11 +177,12 @@ def test_cli_fechar_outubro(pack, tmp_path):
     env = {**os.environ, "PYTHONPATH": str(RAIZ / "src"), "PYTHONIOENCODING": "utf-8"}
     r = subprocess.run(
         [sys.executable, "-m", "tarvo", "fechar", "--competencia", COMPETENCIA,
-         "--entrada", str(pack["pasta"]), "--saida", str(tmp_path)],
+         "--entrada", str(pack["pasta"]), "--saida", str(tmp_path), "--sem-ia"],
         capture_output=True, text=True, encoding="utf-8", env=env, cwd=RAIZ,
     )
     assert r.returncode == 0, r.stderr
     assert "validados sem problemas" in r.stdout
+    assert "desligada (--sem-ia)" in r.stdout
 
 
 def test_datas_de_saida_todas_em_outubro_e_nenhuma_de_setembro(pack, saida):

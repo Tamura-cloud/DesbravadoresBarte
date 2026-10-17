@@ -16,7 +16,7 @@ def dinheiro(v: Decimal) -> Decimal:
 
 
 def num_br(s) -> Decimal | None:
-    """Número em formato brasileiro ("1.234,56", "-389,00", "2,59%") ou int/float do Excel para Decimal.
+    """Número em formato brasileiro ("1.234,56", "-1.234,56", "2,59%") ou int/float do Excel para Decimal.
 
     Vazio/None vira None. O "%" é só removido: "2,59%" vira Decimal("2.59").
     Não arredonda; para dinheiro, use dinheiro() em seguida.

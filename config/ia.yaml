@@ -1,0 +1,21 @@
+# Fallback com IA na classificação dos extratos (premissa P14 do HIPOTESES.md).
+#
+# A IA só SUGERE a contrapartida de lançamento que nenhuma regra de config/bancos.yaml cobre (P09).
+# O item sai com metodo IA e SEMPRE vem com a pendência PEN-IA-<ref> para uma pessoa revisar.
+# Sem ANTHROPIC_API_KEY (e sem a resposta no cache), ou com habilitada: false, o fluxo é o de P09
+# (A_CLASSIFICAR, HUMANO). A flag --sem-ia do CLI força esse fluxo.
+
+habilitada: true
+modelo: "claude-sonnet-5-5"
+esforco: "low"                 # output_config.effort: classificação curta não precisa de raciocínio longo
+max_tokens: 2048
+limiar_confianca: "0.80"       # abaixo disso o motivo da pendência diz "baixa confiança"
+max_exemplos: 20               # lançamentos já classificados por regra no mesmo extrato, um por conta
+
+# Regras do HIPOTESES.md enviadas ao modelo como contexto (texto lido do próprio HIPOTESES.md).
+regras_contexto: ["R19"]
+
+# Respostas do modelo por hash do lançamento + modelo. Vai para o git: a banca reproduz sem chave.
+cache: "cache/ia_sugestoes.json"
+
+quem_decide: "Financeiro"

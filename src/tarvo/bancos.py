@@ -3,7 +3,8 @@
 Regras do HIPOTESES.md: R19 a R21; premissas P06 a P13. Regras em config/bancos.yaml; lojistas dos PIX em
 config/favorecidos.yaml (Aurora) e config/pagadores_meridiano.yaml (Meridiano).
 O lojista de um PIX é identificado só pela lista explícita (texto exato do extrato -> CNPJ); a Ponte é casada
-com os PIX pelo CNPJ. Sem IA: o que nenhuma regra cobre fica com metodo HUMANO e vira pendência.
+com os PIX pelo CNPJ. O que nenhuma regra cobre fica com metodo HUMANO e vira pendência (P09); com o
+fallback de IA (P14, tarvo.ia), recebe a conta sugerida com metodo IA e a pendência de revisão PEN-IA-<ref>.
 """
 
 from __future__ import annotations
@@ -19,6 +20,7 @@ from typing import TYPE_CHECKING
 import pandas as pd
 import yaml
 
+from tarvo import ia
 from tarvo.leitores.comum import dinheiro
 from tarvo.remessa import carregar_config as carregar_config_remessa
 from tarvo.remessa import deduplicar, na_competencia
@@ -31,6 +33,7 @@ PASTA_CONFIG = Path(__file__).resolve().parents[2] / "config"
 CONFIG_BANCOS = PASTA_CONFIG / "bancos.yaml"
 CONFIG_FAVORECIDOS = PASTA_CONFIG / "favorecidos.yaml"
 CONFIG_PAGADORES = PASTA_CONFIG / "pagadores_meridiano.yaml"
+CONFIG_IA = ia.CONFIG_IA
 ZERO = Decimal("0.00")
 
 AURORA, MERIDIANO = "AURORA", "MERIDIANO"
@@ -47,6 +50,12 @@ MESES = ("janeiro", "fevereiro", "março", "abril", "maio", "junho", "julho", "a
 MOTIVO_NAO_IDENTIFICADO = "PIX recebido sem identificação: não é receita até identificar a origem (R20)"
 MOTIVO_DEVOLUCAO = "devolução de PIX: repasse que voltou, motivo desconhecido (R20); apurar o motivo (P06)"
 MOTIVO_SEM_REGRA = "nenhuma regra de config/bancos.yaml cobre o lançamento: classificar manualmente (P09)"
+MOTIVO_IA = (
+    "nenhuma regra de config/bancos.yaml cobre o lançamento (P09); sugestão da IA ({modelo}, {nivel} "
+    "{confianca}): {justificativa} Uma pessoa revisa antes de lançar (P14)"
+)
+NIVEL_IA = "confiança"
+NIVEL_IA_BAIXO = "baixa confiança, abaixo do limiar {limiar}:"
 MOTIVO_TED_LIQ = (
     "TEDs LIQ OPERACOES do dia diferentes de valor_brl + iof_brl das operações únicas da Ponte contratadas "
     "no dia (P11); valor = operações - TEDs pagas"
@@ -267,8 +276,53 @@ def _linhas(df: pd.DataFrame, coluna_texto: str) -> list[dict]:
              "descricao": r[coluna_texto], "valor": r["valor"]} for r in df.to_dict("records")]
 
 
-def item_lancamento(l: Lancamento, cfg: ConfigBancos, sem_remessa: set[str]) -> ItemSaida:
-    if l.regra is None:  # P09
+# ---------------------------------------------------------------- fallback com IA (P14)
+
+@dataclass(frozen=True)
+class FallbackIA:
+    """Sugestão de conta para lançamento sem regra (P14). cliente None: SDK anthropic com a chave do ambiente."""
+
+    cfg: ia.ConfigIA
+    contas: dict[str, str]
+    cliente: object | None = None
+
+    def sugerir(self, l: Lancamento, exemplos: list[ia.Exemplo]) -> ia.Sugestao | None:
+        return ia.sugerir_conta(l, self.contas, exemplos, cfg=self.cfg, cliente=self.cliente)
+
+
+def exemplos_ia(lancamentos: list[Lancamento], maximo: int) -> list[ia.Exemplo]:
+    """Um lançamento por regra que casou no extrato, na ordem do arquivo, até maximo."""
+    vistas, exemplos = set(), []
+    for l in lancamentos:
+        if l.regra is None or l.regra in vistas:
+            continue
+        vistas.add(l.regra)
+        exemplos.append(ia.Exemplo(l.descricao, l.valor, l.regra.conta_codigo))
+        if len(exemplos) == maximo:
+            break
+    return exemplos
+
+
+def sugestoes_ia(por_banco: list[list[Lancamento]], fallback: FallbackIA) -> dict[str, ia.Sugestao]:
+    """id_saida -> sugestão válida, só para lançamento sem regra. Cada extrato dá os próprios exemplos."""
+    sugestoes = {}
+    for lancamentos in por_banco:
+        sem_regra = [l for l in lancamentos if l.regra is None]
+        if not sem_regra:
+            continue
+        exemplos = exemplos_ia(lancamentos, fallback.cfg.max_exemplos)
+        for l in sem_regra:
+            s = fallback.sugerir(l, exemplos)
+            if s is not None:
+                sugestoes[l.id_saida] = s
+    return sugestoes
+
+
+def item_lancamento(l: Lancamento, cfg: ConfigBancos, sem_remessa: set[str],
+                    sugestao: ia.Sugestao | None = None) -> ItemSaida:
+    if l.regra is None and sugestao is not None:  # P14: só sugestão, revisada pela pendência PEN-IA
+        conta, metodo, confianca = sugestao.conta_codigo, "IA", sugestao.confianca
+    elif l.regra is None:  # P09
         conta, metodo, confianca = cfg.conta_sem_regra, "HUMANO", cfg.confianca_sem_regra
     else:
         conta, metodo, confianca = l.regra.conta_codigo, "REGRA", l.regra.confianca
@@ -292,11 +346,26 @@ def _pendencia(id_saida: str, tipo: str, refs, motivo: str, valor: Decimal, orig
                      valor, origens)
 
 
-def pendencias_lancamentos(lancamentos: list[Lancamento], cfg: ConfigBancos) -> list[ItemSaida]:
-    """R20 (PIX sem identificação, devolução de PIX) e P09 (lançamento sem regra)."""
+def pendencia_ia(l: Lancamento, s: ia.Sugestao, cfg_ia: ia.ConfigIA) -> ItemSaida:
+    """P14: toda sugestão da IA vira pendência de revisão; abaixo do limiar, o motivo diz "baixa confiança"."""
+    nivel = NIVEL_IA if s.confianca >= cfg_ia.limiar_confianca else NIVEL_IA_BAIXO.format(limiar=cfg_ia.limiar_confianca)
+    motivo = MOTIVO_IA.format(modelo=cfg_ia.modelo, nivel=nivel, confianca=s.confianca, justificativa=s.justificativa)
+    return ItemSaida(f"PEN-IA-{l.ref_origem}", PENDENCIAS.nome,
+                     {"tipo": "REVISAR_SUGESTAO_IA", "ref_origem": l.ref_origem, "motivo": motivo,
+                      "quem_decide": cfg_ia.quem_decide},
+                     l.valor, [l.origem()])
+
+
+def pendencias_lancamentos(lancamentos: list[Lancamento], cfg: ConfigBancos,
+                           sugestoes: dict[str, ia.Sugestao] | None = None,
+                           cfg_ia: ia.ConfigIA | None = None) -> list[ItemSaida]:
+    """R20 (PIX sem identificação, devolução de PIX), P09 (lançamento sem regra) e P14 (sugestão da IA)."""
+    sugestoes = sugestoes or {}
     itens = []
     for l in lancamentos:
-        if l.regra is None:
+        if l.regra is None and l.id_saida in sugestoes:
+            itens.append(pendencia_ia(l, sugestoes[l.id_saida], cfg_ia))
+        elif l.regra is None:
             itens.append(_pendencia(f"PEN-SEMREGRA-{l.ref_origem}", "LANCAMENTO_SEM_REGRA", l.ref_origem,
                                     MOTIVO_SEM_REGRA, l.valor, [l.origem()], cfg))
         elif l.papel == "credito_nao_identificado":
@@ -417,7 +486,8 @@ def conferir_transferencias(aurora: list[Lancamento], meridiano: list[Lancamento
 # ---------------------------------------------------------------- módulo
 
 def calcular_bancos(aurora: pd.DataFrame, meridiano: pd.DataFrame, meridiano_meta: dict, ponte: pd.DataFrame,
-                    competencia: str, cfg: ConfigBancos, cfg_remessa) -> list[ItemSaida]:
+                    competencia: str, cfg: ConfigBancos, cfg_remessa,
+                    fallback: FallbackIA | None = None) -> list[ItemSaida]:
     aur = classificar(AURORA, _linhas(aurora, "descricao"), cfg)
     mer = classificar(MERIDIANO, _linhas(meridiano, "memo"), cfg)
     inicio, fim = meridiano_meta.get("dtstart"), meridiano_meta.get("dtend")
@@ -427,8 +497,9 @@ def calcular_bancos(aurora: pd.DataFrame, meridiano: pd.DataFrame, meridiano_met
     unicas, _ = deduplicar(ponte, cfg_remessa)  # R13: a duplicata conta uma vez
     pend_pix, sem_remessa = conferir_pix_remessas(mer, [op for op in unicas if na_competencia(op, competencia)], cfg)
 
-    itens = [item_lancamento(l, cfg, sem_remessa) for l in aur + mer]
-    itens += pendencias_lancamentos(aur + mer, cfg)
+    sugestoes = sugestoes_ia([aur, mer], fallback) if fallback is not None else {}
+    itens = [item_lancamento(l, cfg, sem_remessa, sugestoes.get(l.id_saida)) for l in aur + mer]
+    itens += pendencias_lancamentos(aur + mer, cfg, sugestoes, fallback.cfg if fallback else None)
     itens += conferir_ted_liquidacao(mer, unicas, inicio, fim, cfg)
     itens += pend_pix
     itens += conferir_transferencias(aur, mer, fim, cfg)
@@ -436,8 +507,16 @@ def calcular_bancos(aurora: pd.DataFrame, meridiano: pd.DataFrame, meridiano_met
 
 
 def bancos(entradas: Entradas, config=CONFIG_BANCOS, favorecidos=CONFIG_FAVORECIDOS,
-           pagadores=CONFIG_PAGADORES) -> list[ItemSaida]:
-    """Módulo do fechamento: lançamentos classificados e pendências bancárias."""
+           pagadores=CONFIG_PAGADORES, config_ia=CONFIG_IA, cliente_ia=None) -> list[ItemSaida]:
+    """Módulo do fechamento: lançamentos classificados e pendências bancárias.
+
+    Fallback de IA (P14) só com entradas.usar_ia (o CLI desliga com --sem-ia) e habilitada em config/ia.yaml.
+    """
     cfg = carregar_config(entradas.plano_contas, entradas.taxas, config, favorecidos, pagadores)
+    fallback = None
+    if entradas.usar_ia:
+        cfg_ia = ia.carregar_config(config_ia)
+        if cfg_ia.habilitada:
+            fallback = FallbackIA(cfg_ia, ia.contas_analiticas(entradas.plano_contas), cliente_ia)
     return calcular_bancos(entradas.aurora, entradas.meridiano, entradas.meridiano_meta, entradas.ponte,
-                           entradas.competencia, cfg, carregar_config_remessa())
+                           entradas.competencia, cfg, carregar_config_remessa(), fallback)
