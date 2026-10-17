@@ -81,10 +81,10 @@ O conteúdo da Fonte 1 está reproduzido abaixo. Onde ela contradizia a Helena, 
   - **Cobrança indevida:** como a Orbe não foi parametrizada a tempo, cobrou indevidamente R$ 15.391,27 nas 119 movimentações do mês.
   - **Estorno TX88445133:** em 07/09/2026, a Orbe estornou um débito de -R$ 369,39, referente a venda de 21/08/2026.
     - Pela regra de que o estorno usa a taxa vigente na data_venda_original, vale 1,49% (agosto, antes da isenção). O estorno gera comissão contratada de -R$ 5,50 em setembro, sem divergência de taxa.
-    - As demais 118 transações de setembro têm taxa contratada de 0,00%. Elas geram R$ 15.397,32 de divergência a devolver ao lojista, pelo cálculo arredondado linha a linha.
+    - As demais 118 transações de setembro têm taxa contratada de 0,00%. Elas geram R$ 15.397,42 de divergência a devolver ao lojista, pelo cálculo arredondado linha a linha. *(Corrigido: a Fonte 1 dizia R$ 15.397,32; o valor certo, 15.397,42, foi conferido pelo checkout.py e por uma análise independente.)*
   - **Consequência:** o saldo líquido de comissão de Checkout de setembro fica negativo (-R$ 5,50). Não se emite NF de Checkout, e o saldo negativo e a devolução das taxas cobradas pela Orbe vão para pendencias.csv.
   - **Nota nossa:**
-    - Os dois totais são compatíveis: R$ 15.391,27 é o que a Orbe cobrou nas 119 linhas (inclui os -R$ 5,50 do estorno), e R$ 15.397,32 é a divergência arredondada nas 118 linhas.
+    - Os dois totais são compatíveis: R$ 15.391,27 é o que a Orbe cobrou nas 119 linhas (inclui os -R$ 5,50 do estorno), e R$ 15.397,42 é a divergência arredondada nas 118 linhas. *(Corrigido: a Fonte 1 dizia R$ 15.397,32; conferido pelo checkout.py e por uma análise independente.)*
     - A linha da Casa do Estudante na aba vigente tem vigência desde 01/01/2026 e Débito de 1,49%, o que sustenta a taxa de agosto usada no estorno.
 - **F1-H04 — Zeros à esquerda em CNPJs:** ver seção 5.
 
@@ -97,7 +97,7 @@ O conteúdo da Fonte 1 está reproduzido abaixo. Onde ela contradizia a Helena, 
   - **Truncamento:** diferenças de R$ 0,01 causadas só pelo truncamento da Orbe não são divergência.
   - **Quando há divergência:** só quando taxa_aplicada_pct ≠ taxa_contratada_pct. O valor é ROUND_HALF_UP(valor_bruto × (taxa_aplicada_pct − taxa_contratada_pct) / 100, 2).
   - **Casos encontrados:** 3 lojistas no Checkout.
-    1. **Casa do Estudante (EC 1018325654):** cobrança de MDR e antecipação durante a tarifa 0,00%. São 118 transações de setembro, R$ 15.397,32.
+    1. **Casa do Estudante (EC 1018325654):** cobrança de MDR e antecipação durante a tarifa 0,00%. São 118 transações de setembro, R$ 15.397,42. *(Corrigido: a Fonte 1 dizia R$ 15.397,32; ver F1-H03.)*
     2. **Rota Global Intercâmbio Ltda (EC 1074504011):** cobrança indevida de +0,50 p.p. a partir de 12/09/2026, sem reajuste contratual. São 87 transações, com diferença líquida de R$ 1.546,28.
     3. **Escola Bridge de Idiomas Ltda (EC 1075624862):** cobrança de 2,59% em vez da taxa renegociada de 2,19% (vigente a partir de 15/09/2026) em 5 vendas de Crédito à Vista entre 15/09 e 18/09, somando R$ 29,95.
   - **Nota nossa:** a planilha confirma a renegociação da Bridge. Há duas linhas com o mesmo CNPJ e EC: Crédito à vista de 2,59% "até 14/09/2026" e de 2,19% "a partir de 15/09/2026" ("só mudou o crédito à vista"). A Helena não comentou a Bridge; o caso decorre de R03 aplicada à planilha.

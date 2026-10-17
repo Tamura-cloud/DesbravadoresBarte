@@ -20,6 +20,13 @@ def test_sem_modulos_grava_os_6_arquivos_validos(tmp_path):
     assert validar_saida(tmp_path) == []
 
 
+def test_grava_direto_na_pasta_de_saida_sem_subpasta_da_competencia(tmp_path):
+    resultado = fechar(ENTRADA, tmp_path, "2026-09")
+    assert resultado.arquivos_saida == {e.nome: tmp_path / e.nome for e in ARQUIVOS}
+    assert sorted(p.name for p in tmp_path.iterdir()) == sorted(e.nome for e in ARQUIVOS)
+    assert not any(p.is_dir() for p in tmp_path.iterdir())
+
+
 def test_modulos_registrados():
     assert MODULOS == [checkout]
 

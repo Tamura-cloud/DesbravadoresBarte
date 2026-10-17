@@ -28,3 +28,7 @@ def test_cli_fechar_lista_os_6_arquivos(tmp_path):
 
     assert resultado.returncode == 0, resultado.stderr
     assert "Arquivos encontrados (6)" in resultado.stdout
+    # os 6 CSVs ficam direto em --saida, sem subpasta da competência
+    assert sorted(p.name for p in tmp_path.iterdir()) == sorted(
+        ["comissoes_por_lojista.csv", "divergencias_taxa.csv", "notas_a_emitir.csv",
+         "lancamentos_classificados.csv", "pendencias.csv", "rastro.csv"])
