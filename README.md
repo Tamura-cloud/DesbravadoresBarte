@@ -19,14 +19,16 @@ e a execução falha se algum valor não fechar com o rastro.
 Três causas, cada uma com um caso de setembro:
 
 1. **A regra está fora do sistema.** O acordo de tarifa zero da Casa do Estudante (setembro a dezembro) existia só
-   num comentário da célula A13 da planilha de taxas e na cabeça do comercial. Ninguém avisou a Orbe, que cobrou:
-   são **R$ 15.396,77** que a Tarvo devolve ao lojista (R10, R32). Nas palavras da Helena: "quase tudo que vocês já
-   descobriram aqui no canal estava só na minha cabeça".
+   num comentário da célula A13 da planilha de taxas e na cabeça do comercial. A Orbe cobrou a taxa contratada, como
+   devia: quem abriu mão da receita foi a Tarvo, e são **R$ 15.396,77** que ela devolve ao lojista do próprio bolso
+   (R10, R32, R38). Como a concessão não estava em lugar nenhum do fechamento, esse custo não aparecia. Nas palavras
+   da Helena: "quase tudo que vocês já descobriram aqui no canal estava só na minha cabeça".
 2. **Ninguém confere a cobrança contra o contrato, então ninguém contesta.** A Orbe cobrou 0,5 p.p. a mais da Rota
    Global desde 12/09, sem reajuste de contrato (**R$ 1.545,86** a devolver, R09). A Ponte aplicou 1,50% na Mundo
    Aberto, que tem 1,20% registrado desde julho (**R$ 1.418,85**, R15, R16). A Bridge renegociou para 2,19% a
    partir de 15/09, mas a Orbe seguiu cobrando 2,59% até 18/09, porque o aviso chegou atrasado (**R$ 29,94**; "o
-   aviso atrasado é problema nosso de processo", R32). Hoje a cobrança errada só aparece quando o lojista reclama.
+   aviso atrasado é problema nosso de processo", R32). Hoje ninguém tem a função de contestar: "o comercial fecha
+   e, quando lembra, manda um e-mail para a Orbe ou a Ponte" (Helena, R29).
 3. **O cruzamento é manual.** Dos 8 dias de fechamento, a comissão de checkout leva uns 3: metade casando à mão o
    nome do lojista com o EC e o CNPJ, metade refazendo trabalho quando a planilha está desatualizada
    (`HIPOTESES.md`, seção 6). A solução casa só por código (`cod_estabelecimento` e CNPJ), nunca por nome.
