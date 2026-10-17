@@ -90,6 +90,20 @@ class ErroBancos(ValueError):
     """Dado de entrada ou configuração que impede classificar os extratos."""
 
 
+class ErroDadoBancos(ErroBancos, dep.ErroDado):
+    """Dado de um extrato, da Ponte ou da planilha que impede aplicar a regra a um lançamento ou a uma operação
+    (R44): no fechamento, vira PEN-REGRA e o resto fecha."""
+
+
+EFEITO_SEM_DESCRICAO = "o lançamento ficou fora de lancamentos_classificados.csv e das conferências - valor = o do lançamento"
+EFEITO_OPERACAO_CONF = ("a operação ficou fora das conferências P11 e P12 (TEDs de liquidação e PIX × remessas) - valor "
+                        "0,00: a operação continua no relatório da Ponte")
+EFEITO_PERIODO = ("as conferências P11 (TEDs de liquidação) e P13 (transferências) não foram feitas; os lançamentos do "
+                  "Meridiano e a conferência P12 saíram normalmente - nenhum valor muda")
+EFEITO_LISTA = ("o favorecido ou pagador continua na lista, sem a conferência do CNPJ com a planilha (P07, P08) - nenhum "
+                "valor muda")
+
+
 # ---------------------------------------------------------------- configuração
 
 @dataclass(frozen=True)
@@ -169,7 +183,8 @@ def _regra(bruto: dict, campo: str, contas: set[str]) -> Regra:
                  fonte, lista, papel)
 
 
-def _contrapartes(bruto: dict, nome: str, cnpjs_planilha: set[str] | None) -> dict[str, Contraparte]:
+def _contrapartes(bruto: dict, nome: str, cnpjs_planilha: set[str] | None,
+                  problemas: list | None = None) -> dict[str, Contraparte]:
     if not isinstance(bruto, dict) or not bruto:
         raise ErroBancos(f"config: lista {nome} vazia ou ausente")
     lista = {}
@@ -183,7 +198,10 @@ def _contrapartes(bruto: dict, nome: str, cnpjs_planilha: set[str] | None) -> di
             if not isinstance(cnpj, str) or not re.fullmatch(r"[0-9]{14}", cnpj):
                 raise ErroBancos(f"config: {campo}.cnpj deveria ser texto com 14 dígitos, veio {cnpj!r}")
             if cnpjs_planilha is not None and cnpj not in cnpjs_planilha:
-                raise ErroBancos(f"config: {campo}.cnpj {cnpj} não está na planilha de taxas")
+                mensagem = f"config: {campo}.cnpj {cnpj} não está na planilha de taxas"
+                if problemas is None:
+                    raise ErroBancos(mensagem)
+                problemas.append((nome, texto, cnpj, mensagem))  # R44: a planilha perdeu o lojista; a lista segue
             if sem_contrato:
                 raise ErroBancos(f"config: {campo}: com CNPJ da planilha não pode ser sem_contrato")
         elif not (isinstance(ec, str) and ec.isdigit() and sem_contrato is True):
@@ -193,10 +211,13 @@ def _contrapartes(bruto: dict, nome: str, cnpjs_planilha: set[str] | None) -> di
 
 
 def carregar_config(plano: pd.DataFrame, taxas: pd.DataFrame | None, caminho=CONFIG_BANCOS,
-                    favorecidos=CONFIG_FAVORECIDOS, pagadores=CONFIG_PAGADORES) -> ConfigBancos:
+                    favorecidos=CONFIG_FAVORECIDOS, pagadores=CONFIG_PAGADORES, problemas: list | None = None,
+                    cnpjs_rejeitados=()) -> ConfigBancos:
     """Lê as regras e as listas. Falha se uma conta não existir no plano ou não aceitar lançamento,
     ou se um CNPJ das listas não estiver na planilha de taxas. Sem a planilha (fonte bloqueada, R44), os CNPJs das
-    listas não são conferidos (a PEN-BLOQUEIO-TAXAS diz isso)."""
+    listas não são conferidos (a PEN-BLOQUEIO-TAXAS diz isso). Com problemas (o fechamento, R44), CNPJ das listas
+    fora da planilha vai para a lista (lista, texto, CNPJ, mensagem) em vez de parar; cnpjs_rejeitados são os CNPJs
+    de linhas da planilha que o leitor não converteu, que existem nela."""
     bruto = _ler_yaml(caminho)
     contas = _contas_lancaveis(plano)
     regras = {}
@@ -205,10 +226,10 @@ def carregar_config(plano: pd.DataFrame, taxas: pd.DataFrame | None, caminho=CON
         if not lista:
             raise ErroBancos(f"config: regras.{banco} vazia ou ausente")
         regras[banco] = tuple(_regra(r, f"regras.{banco}[{i}]", contas) for i, r in enumerate(lista))
-    cnpjs = set(taxas["cnpj"]) if taxas is not None else None
+    cnpjs = set(taxas["cnpj"]) | set(cnpjs_rejeitados) if taxas is not None else None
     listas = {
-        "favorecidos": _contrapartes(_ler_yaml(favorecidos).get(LISTAS["favorecidos"]), "favorecidos", cnpjs),
-        "pagadores": _contrapartes(_ler_yaml(pagadores).get(LISTAS["pagadores"]), "pagadores", cnpjs),
+        "favorecidos": _contrapartes(_ler_yaml(favorecidos).get(LISTAS["favorecidos"]), "favorecidos", cnpjs, problemas),
+        "pagadores": _contrapartes(_ler_yaml(pagadores).get(LISTAS["pagadores"]), "pagadores", cnpjs, problemas),
     }
     sem_cnpj = [t for t, c in listas["pagadores"].items() if c.cnpj is None]
     if sem_cnpj:
@@ -260,13 +281,21 @@ def _casar(regra: Regra, texto: str, valor: Decimal, cfg: ConfigBancos) -> tuple
     return contraparte is not None, contraparte
 
 
-def classificar(banco: str, linhas: list[dict], cfg: ConfigBancos) -> list[Lancamento]:
-    """linhas: dicts com arquivo_origem, ref_origem, data, descricao, valor. A primeira regra que casa vence."""
+def classificar(banco: str, linhas: list[dict], cfg: ConfigBancos,
+                problemas: list[tuple[str, dict, dep.ErroDado]] | None = None) -> list[Lancamento]:
+    """linhas: dicts com arquivo_origem, ref_origem, data, descricao, valor. A primeira regra que casa vence.
+
+    Lançamento sem descrição é erro; com problemas (o fechamento, R44), fica de fora e vai para a lista."""
     lancamentos = []
     for linha in linhas:
         texto, valor = linha["descricao"], linha["valor"]
         if not isinstance(texto, str) or not texto.strip():
-            raise ErroBancos(f"{linha['ref_origem']}: lançamento sem descrição")
+            erro = ErroDadoBancos(dep.LINHA, f"{banco} {linha['ref_origem']} ({linha['arquivo_origem']}): lançamento "
+                                  "sem descrição")
+            if problemas is None:
+                raise erro
+            problemas.append((banco, linha, erro))
+            continue
         escolhida, contraparte = None, None
         for regra in cfg.regras[banco]:
             casou, contraparte = _casar(regra, texto, valor, cfg)
@@ -516,20 +545,48 @@ def calcular_bancos(aurora: pd.DataFrame | None, meridiano: pd.DataFrame | None,
                     bloqueadas: frozenset[str] = frozenset()) -> list[ItemSaida]:
     """Lançamentos e conferências dos produtos pedidos (todos, no fechamento completo). Fonte bloqueada vem None.
 
-    Conferência fora de produtos (uma fonte dela bloqueada) vira PEN-SEMCONF com o lado que existe (R44)."""
-    aur = classificar(AURORA, _linhas(aurora, "descricao"), cfg) if "lancamentos_aurora" in produtos else []
-    mer = classificar(MERIDIANO, _linhas(meridiano, "memo"), cfg) if "lancamentos_meridiano" in produtos else []
+    Conferência fora de produtos (uma fonte dela bloqueada) vira PEN-SEMCONF com o lado que existe (R44).
+    Dado que impede a regra (lançamento sem descrição, operação da Ponte sem data ou valor, extrato sem período)
+    tira só o item e vira PEN-REGRA (R44)."""
+    problemas: list[tuple[str, dict, dep.ErroDado]] = []
+    pendencias_regra: list[ItemSaida] = []
+    aur = classificar(AURORA, _linhas(aurora, "descricao"), cfg, problemas) if "lancamentos_aurora" in produtos else []
+    mer = classificar(MERIDIANO, _linhas(meridiano, "memo"), cfg, problemas) if "lancamentos_meridiano" in produtos else []
+    for banco, linha, erro in problemas:
+        pendencias_regra.append(dep.pendencia_regra(erro.tipo, f"{PREFIXO_ID[banco]}-{linha['ref_origem']}", str(erro),
+                                                    EFEITO_SEM_DESCRICAO, linha["valor"],
+                                                    [(linha["arquivo_origem"], linha["ref_origem"], linha["valor"])]))
     inicio = fim = None
     if "lancamentos_meridiano" in produtos:
         inicio, fim = meridiano_meta.get("dtstart"), meridiano_meta.get("dtend")
-        if inicio is None or fim is None:
-            raise ErroBancos("extrato do Meridiano sem DTSTART/DTEND: não há período para as conferências")
+        if inicio is None or fim is None:  # R44: sem período não há P11 nem P13; o resto sai
+            arquivo = meridiano["arquivo_origem"].iloc[0] if len(meridiano) else "extrato do Meridiano"
+            pendencias_regra.append(dep.pendencia_regra(
+                dep.PERIODO, "MERIDIANO", f"{arquivo}: extrato do Meridiano sem DTSTART/DTEND, não há período para "
+                "as conferências", EFEITO_PERIODO, ZERO, [(arquivo, "DTSTART/DTEND", ZERO)]))
+            produtos = produtos - {"conferencia_ted_liquidacao", "conferencia_transferencias"}
 
     unicas = unicas_mes = None
     if ponte is not None:
-        unicas, _ = deduplicar(ponte, cfg_remessa)  # R13: a duplicata conta uma vez
-        unicas, _ = separar_ajustes(unicas, cfg_remessa)  # R31: ajuste não é operação (sem TED nem PIX)
+        conflitos, separacao, fora_conf = [], [], []
+        unicas, _ = deduplicar(ponte, cfg_remessa, conflitos)  # R13: a duplicata conta uma vez
+        unicas, _ = separar_ajustes(unicas, cfg_remessa, separacao)  # R31: ajuste não é operação (sem TED nem PIX)
+        fora_conf = [(c.copias[0], c.mensagem) for c in conflitos] + [(p.op, str(p.erro)) for p in separacao]
+        usaveis = []
+        for op in unicas:  # R44: operação sem data ou sem valor fica fora das conferências, as outras são conferidas
+            vazios = [c for c in ("data_contratacao", "valor_brl", "iof_brl") if op[c] is None]
+            if vazios:
+                fora_conf.append((op, f"operação {op['ref_origem']} (linha {op['linha_planilha']} do relatório da "
+                                      f"Ponte): {', '.join(vazios)} vazio"))
+            else:
+                usaveis.append(op)
+        unicas = usaveis
         unicas_mes = [op for op in unicas if na_competencia(op, competencia)]
+        if produtos & {"conferencia_ted_liquidacao", "conferencia_pix_remessas"}:
+            for op, mensagem in sorted(fora_conf, key=lambda x: x[0]["ref_origem"]):
+                pendencias_regra.append(dep.pendencia_regra(
+                    dep.LINHA, f"CONF-{op['ref_origem']}", mensagem, EFEITO_OPERACAO_CONF, ZERO,
+                    [(op["arquivo_origem"], op["ref_origem"], ZERO)]))
     pend_pix = (conferir_pix_remessas(mer, unicas_mes, cfg) if "conferencia_pix_remessas" in produtos else [])
 
     sugestoes = sugestoes_ia([aur, mer], fallback) if fallback is not None else {}
@@ -558,7 +615,7 @@ def calcular_bancos(aurora: pd.DataFrame | None, meridiano: pd.DataFrame | None,
             ("as transferências enviadas do Aurora", papel(aur, "transferencia_enviada")),
             ("as TEDs de mesma titularidade recebidas no Meridiano", papel(mer, "transferencia_recebida"))],
             bloqueadas, cfg)
-    return itens
+    return itens + pendencias_regra
 
 
 def bancos(entradas: Entradas, config=CONFIG_BANCOS, favorecidos=CONFIG_FAVORECIDOS,
@@ -571,7 +628,12 @@ def bancos(entradas: Entradas, config=CONFIG_BANCOS, favorecidos=CONFIG_FAVORECI
     produtos = frozenset(p for p in TODOS_PRODUTOS if dep.gera(p, entradas))
     if not produtos & {"lancamentos_aurora", "lancamentos_meridiano"}:
         return []  # sem extrato legível ou sem plano de contas: a PEN-BLOQUEIO diz o que não saiu
-    cfg = carregar_config(entradas.plano_contas, entradas.taxas, config, favorecidos, pagadores)
+    problemas_lista: list = []
+    cfg = carregar_config(entradas.plano_contas, entradas.taxas, config, favorecidos, pagadores, problemas_lista,
+                          {r.cnpj for r in entradas.rejeitadas.get("taxas", ())})
+    regra_lista = [dep.pendencia_regra(dep.CADASTRO, f"LISTA-{lista}-{cnpj}", mensagem, EFEITO_LISTA, ZERO,
+                                       [(Path(favorecidos if lista == "favorecidos" else pagadores).name, texto, ZERO)])
+                   for lista, texto, cnpj, mensagem in problemas_lista]
     fallback = None
     if entradas.usar_ia:
         cfg_ia = ia.carregar_config(config_ia)
@@ -579,4 +641,4 @@ def bancos(entradas: Entradas, config=CONFIG_BANCOS, favorecidos=CONFIG_FAVORECI
             fallback = FallbackIA(cfg_ia, ia.contas_analiticas(entradas.plano_contas), cliente_ia)
     return calcular_bancos(entradas.aurora, entradas.meridiano, entradas.meridiano_meta, entradas.ponte,
                            entradas.competencia, cfg, carregar_config_remessa(), fallback, produtos,
-                           dep.bloqueadas(entradas.bloqueios))
+                           dep.bloqueadas(entradas.bloqueios)) + regra_lista

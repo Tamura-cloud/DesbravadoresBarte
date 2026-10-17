@@ -7,14 +7,17 @@ são preservados como vieram e interpretados depois.
 from __future__ import annotations
 
 import re
+import zipfile
 from datetime import date, datetime
 from pathlib import Path
 
 import openpyxl
 import pandas as pd
+from openpyxl.utils.exceptions import InvalidFileException
 
 from tarvo.leitores.comum import cnpj14, data_br, pct, sem_acento
 from tarvo.leitores.layout import avisos_layout
+from tarvo.leitores.rejeitadas import LinhaRejeitada
 
 # Só esta aba. A aba histórica (2025) nunca é lida.
 ABA = "Taxas vigentes"
@@ -85,6 +88,13 @@ def _ec(v) -> str | None:
     return str(v).strip()
 
 
+def _ec_seguro(v) -> str | None:
+    try:
+        return _ec(v)
+    except (TypeError, ValueError):
+        return None
+
+
 def _cnpj(v) -> str:
     c = cnpj14(v)
     if c is None:
@@ -126,13 +136,19 @@ def _converter(valores: dict, arquivo_origem: str, linha: int) -> dict:
     }
 
 
-def ler_taxas(caminho, avisos: list[str] | None = None) -> pd.DataFrame:
+def ler_taxas(caminho, avisos: list[str] | None = None,
+              rejeitadas: list[LinhaRejeitada] | None = None) -> pd.DataFrame:
     """Lê a aba "Taxas vigentes". ref_origem = "linha N" do Excel. Para na primeira linha sem lojista.
 
-    avisos (opcional) recebe as colunas a mais ou fora de ordem (a leitura é pelo nome, R44).
+    avisos (opcional) recebe as colunas a mais ou fora de ordem (a leitura é pelo nome, R44). Com rejeitadas, a linha
+    com dado inválido e CNPJ legível vai para a lista e a leitura segue: o lojista daquele CNPJ fica fora do checkout
+    e da remessa (R44). Sem CNPJ legível não há como saber de quem é a linha, e a planilha inteira é erro.
     """
     caminho = Path(caminho)
-    wb = openpyxl.load_workbook(caminho, data_only=True)
+    try:
+        wb = openpyxl.load_workbook(caminho, data_only=True)
+    except (zipfile.BadZipFile, InvalidFileException, KeyError) as e:  # não é um xlsx (ou está corrompido)
+        raise ValueError(f"{caminho.name}: não é um xlsx legível ({type(e).__name__}: {e})") from None
     try:
         if ABA not in wb.sheetnames:
             raise ValueError(f"{caminho.name}: aba {ABA!r} não encontrada (abas: {wb.sheetnames})")
@@ -148,7 +164,12 @@ def ler_taxas(caminho, avisos: list[str] | None = None) -> pd.DataFrame:
             try:
                 registros.append(_converter(valores, caminho.name, linha))
             except ValueError as e:
-                raise ValueError(f"{caminho.name}, aba {ABA!r}, linha {linha}: {e}") from None
+                erro = f"{caminho.name}, aba {ABA!r}, linha {linha}: {e}"
+                cnpj = cnpj14(valores["cnpj"])
+                if rejeitadas is None or cnpj is None:
+                    raise ValueError(erro) from None
+                rejeitadas.append(LinhaRejeitada(caminho.name, f"linha {linha}", erro, cnpj=cnpj,
+                                                 ec=_ec_seguro(valores["ec"])))
     finally:
         wb.close()
     # dtype=object: mantém Decimal, date e None (sem virar float/NaN)

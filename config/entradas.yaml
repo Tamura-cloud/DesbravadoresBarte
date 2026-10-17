@@ -27,3 +27,6 @@ bloqueio:
   quem_decide: "Financeiro (Helena)"
   quem_decide_por_fonte:
     taxas: "Comercial e Financeiro (Helena)"   # R28: taxa e condição comercial, o Comercial aprova
+  # R44: item fora por erro de dado (PEN-REGRA). Cadastro, vigência e taxa: o Comercial decide antes (R28);
+  # o resto (linha ilegível, duplicata com valores diferentes, extrato sem período), o Financeiro.
+  quem_decide_cadastro: "Comercial e Financeiro (Helena)"

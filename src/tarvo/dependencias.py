@@ -8,6 +8,10 @@ produto não é gerado e o resto do fechamento segue. Fonte bloqueada:
 - ILEGIVEL: coluna obrigatória faltando ou erro de leitura.
 Na Orbe, que aceita vários arquivos (O05), um arquivo de ajustes com problema fica bloqueado sozinho: os outros são
 lidos e o checkout sai PROVISÓRIO (coluna extra situacao). Coluna a mais ou fora de ordem é só aviso (PEN-AVISO-LAYOUT).
+
+Erro de dado no nível do item (R44): uma linha com dado inválido (rejeitada pelo leitor) ou um dado que impede
+aplicar uma regra a um lojista ou a uma linha (ErroDado, levantado pelos módulos) não para o fechamento. O item fica
+fora de comissão, nota e divergência e vira PEN-REGRA-<tipo>-<id>; o resto fecha, e o fechamento sai PARCIAL.
 """
 
 from __future__ import annotations
@@ -31,6 +35,23 @@ AUSENTE, AMBIGUA, ILEGIVEL = "AUSENTE", "AMBIGUA", "ILEGIVEL"
 COLUNA_SITUACAO, PROVISORIO = "situacao", "PROVISORIO"
 
 NATUREZAS = {AUSENTE: "ausente", AMBIGUA: "ambígua", ILEGIVEL: "ilegível"}
+TIPO_ITEM_BLOQUEADO = "ITEM_BLOQUEADO"  # tipo das pendências PEN-REGRA em pendencias.csv
+CADASTRO, VIGENCIA, TAXA, LINHA, DUPLICADA, PERIODO, ANTERIOR = (
+    "CADASTRO", "VIGENCIA", "TAXA", "LINHA", "DUPLICADA", "PERIODO", "ANTERIOR")
+TIPOS_COMERCIAL = frozenset((CADASTRO, VIGENCIA, TAXA))  # R28: taxa e cadastro, o Comercial decide antes
+
+
+class ErroDado(ValueError):
+    """Dado de entrada que impede aplicar uma regra a um item (R44): vira PEN-REGRA, não para o fechamento.
+
+    do_lojista: o problema é do cadastro ou do contrato do lojista (todas as transações dele saem), e não só da linha.
+    Erro de programa nunca é ErroDado: continua parando o fechamento.
+    """
+
+    def __init__(self, tipo: str, mensagem: str, do_lojista: bool = False):
+        super().__init__(mensagem)
+        self.tipo = tipo
+        self.do_lojista = do_lojista
 
 
 @dataclass(frozen=True)
@@ -83,6 +104,28 @@ PASSO = {
     AUSENTE: "pôr na pasta o arquivo de {fonte}, como chegou, com um nome que case com '{padrao}'",
     ILEGIVEL: "pedir a quem mandou o arquivo de {fonte} a versão no layout esperado e pôr na pasta no lugar deste",
 }
+PASSO_REGRA = {
+    CADASTRO: "o Comercial corrige o cadastro do lojista (planilha de taxas ou config/checkout.yaml, ec_sem_codigo)",
+    VIGENCIA: "o Comercial deixa exatamente uma linha vigente por lojista e data na planilha de taxas",
+    TAXA: "o Comercial informa a taxa que falta (na planilha de taxas ou nas faixas de config/checkout.yaml)",
+    LINHA: "pedir a quem mandou o arquivo a linha corrigida",
+    DUPLICADA: "a Helena confirma com quem mandou o arquivo qual das versões vale (o fechamento não escolhe)",
+    PERIODO: "pedir ao banco o extrato com o período (DTSTART e DTEND)",
+    ANTERIOR: "corrigir os arquivos da competência anterior",
+}
+MOTIVO_REGRA = (
+    "erro de dado (R44): {dado} - {efeito} - o resto do fechamento foi gerado normalmente - próximo passo: {passo}; "
+    "depois rodar o fechamento de novo - quem libera é a Helena{comercial}"
+)
+EFEITO_LINHA = {
+    "orbe": "a transação ficou fora do checkout (comissão, nota, divergência){provisorio}",
+    "ponte_eml": "a operação ficou fora da remessa (comissão, nota da Ponte, divergência) e das conferências P11 e P12; "
+                 "a nota da Ponte saiu PROVISÓRIA",
+    "aurora": "o lançamento ficou fora de lancamentos_classificados.csv e das conferências",
+    "meridiano": "o lançamento ficou fora de lancamentos_classificados.csv e das conferências",
+    "taxas": "as transações do lojista (CNPJ {cnpj}) ficaram fora do checkout e da remessa (pendências PEN-REGRA-CADASTRO "
+             "do lojista, quando ele tem transação no mês)",
+}
 PASSO_ORBE_LAYOUT = "pedir à Orbe o arquivo no mesmo layout do relatório e pôr na pasta no lugar deste"
 PASSO_ORBE_CONFLITO = ("a Helena confirma com a Orbe qual versão da transação vale e deixa na pasta só os arquivos "
                        "certos (o fechamento não escolhe)")
@@ -116,9 +159,13 @@ class ConfigBloqueio:
     quem_decide: str
     quem_decide_por_fonte: dict[str, str]
     descricoes: dict[str, str]
+    quem_decide_cadastro: str = "Comercial e Financeiro (Helena)"
 
     def quem(self, fonte: str) -> str:
         return self.quem_decide_por_fonte.get(fonte, self.quem_decide)
+
+    def quem_regra(self, tipo: str) -> str:
+        return self.quem_decide_cadastro if tipo in TIPOS_COMERCIAL else self.quem_decide
 
 
 def carregar_config(caminho=CONFIG_ENTRADAS) -> ConfigBloqueio:
@@ -126,7 +173,7 @@ def carregar_config(caminho=CONFIG_ENTRADAS) -> ConfigBloqueio:
         bruto = yaml.safe_load(f)
     bloqueio = bruto["bloqueio"]
     return ConfigBloqueio(bloqueio["quem_decide"], dict(bloqueio.get("quem_decide_por_fonte") or {}),
-                          dict(bruto.get("descricoes") or {}))
+                          dict(bruto.get("descricoes") or {}), bloqueio["quem_decide_cadastro"])
 
 
 # ---------------------------------------------------------------- o que pode ser gerado
@@ -159,9 +206,31 @@ def _provisorios(bloqueios: Iterable[Bloqueio]) -> list[Produto]:
     return [p for p in PRODUTOS if not set(p.fontes) & fora and set(p.fontes) & parciais]
 
 
-def marcar_provisorio(itens: Iterable[ItemSaida]) -> list[ItemSaida]:
-    """Coluna extra situacao = PROVISORIO em cada item (só aparece nos CSVs quando há item provisório)."""
-    return [replace(i, campos={**i.campos, COLUNA_SITUACAO: PROVISORIO}) for i in itens]
+def marcar_provisorio(itens: Iterable[ItemSaida], cnpjs: Iterable[str] | None = None) -> list[ItemSaida]:
+    """Coluna extra situacao = PROVISORIO (só aparece nos CSVs quando há item provisório). Com cnpjs, só os itens
+    desses lojistas (pelo campo cnpj ou tomador_cnpj, ou pelo CNPJ no fim do id_saida)."""
+    alvo = None if cnpjs is None else set(cnpjs)
+
+    def do_lojista(i: ItemSaida) -> bool:
+        return alvo is None or bool({i.campos.get("cnpj"), i.campos.get("tomador_cnpj"), i.id_saida.rsplit("-", 1)[-1]}
+                                    & alvo)
+    return [replace(i, campos={**i.campos, COLUNA_SITUACAO: PROVISORIO}) if do_lojista(i) else i for i in itens]
+
+
+def pendencia_regra(tipo: str, chave: str, dado: str, efeito: str, valor: Decimal, origens, refs=None,
+                    cfg: ConfigBloqueio | None = None, rotulo: str | None = None) -> ItemSaida:
+    """PEN-REGRA-<rotulo ou tipo>-<chave> (R44): o dado exato, o que ficou de fora, o próximo passo e quem decide
+    (R28, pelo tipo)."""
+    cfg = cfg or carregar_config()
+    origens = list(origens)
+    comercial = " (taxa e cadastro: o Comercial decide antes, R28)" if tipo in TIPOS_COMERCIAL else ""
+    motivo = MOTIVO_REGRA.format(dado=" ".join(dado.split()), efeito=efeito, passo=PASSO_REGRA[tipo],
+                                 comercial=comercial)
+    return ItemSaida(f"PEN-REGRA-{rotulo or tipo}-{_id(chave)}", PENDENCIAS.nome,
+                     {"tipo": TIPO_ITEM_BLOQUEADO,
+                      "ref_origem": list(refs) if refs else list(dict.fromkeys(o[1] for o in origens)),
+                      "motivo": texto_saida(motivo), "quem_decide": cfg.quem_regra(tipo)},
+                     valor, origens)
 
 
 # ---------------------------------------------------------------- pendências
@@ -207,6 +276,33 @@ def pendencias_bloqueio(entradas: Entradas, cfg: ConfigBloqueio | None = None) -
     return itens
 
 
+def pendencias_rejeitadas(entradas: Entradas, cfg: ConfigBloqueio | None = None) -> list[ItemSaida]:
+    """PEN-REGRA-LINHA-<FONTE>-<ref>: cada linha que o leitor não conseguiu converter (R44). Valor = o da linha,
+    quando deu para ler (extratos); senão 0,00. A planilha de taxas é cadastro: o Comercial decide antes (R28)."""
+    cfg = cfg or carregar_config()
+    usados: set[str] = set()
+    itens = []
+    for fonte, rejeitadas in entradas.rejeitadas.items():
+        for r in rejeitadas:
+            base = f"{fonte.upper()}-{r.arquivo}-{r.ref}" if fonte == "orbe" else f"{fonte.upper()}-{r.ref}"
+            chave, n = base, 1
+            while _id(chave) in usados:
+                n += 1
+                chave = f"{base}-{n}"
+            usados.add(_id(chave))
+            provisorio = (f"; o checkout do lojista do EC {r.ec} saiu PROVISÓRIO" if r.ec else "")
+            efeito = EFEITO_LINHA[fonte].format(provisorio=provisorio, cnpj=r.cnpj)
+            valor = r.valor if r.valor is not None else ZERO
+            itens.append(pendencia_regra(CADASTRO if fonte == "taxas" else LINHA, chave, r.erro, efeito, valor,
+                                         [(r.arquivo, r.ref, valor)], [r.ident or r.ref], cfg, rotulo=LINHA))
+    return itens
+
+
+def regras(itens: Iterable[ItemSaida]) -> list[str]:
+    """id_saida das pendências PEN-REGRA (itens fora por erro de dado)."""
+    return [i.id_saida for i in itens if i.campos.get("tipo") == TIPO_ITEM_BLOQUEADO]
+
+
 def pendencias_aviso(entradas: Entradas, cfg: ConfigBloqueio | None = None) -> list[ItemSaida]:
     """PEN-AVISO-LAYOUT-<FONTE>: coluna a mais ou fora de ordem, a leitura seguiu pelo nome (R44). Valor 0,00."""
     cfg = cfg or carregar_config()
@@ -227,16 +323,23 @@ def pendencias_aviso(entradas: Entradas, cfg: ConfigBloqueio | None = None) -> l
 
 # ---------------------------------------------------------------- quadro final
 
-def quadro(bloqueios: Iterable[Bloqueio]) -> str:
-    """"FECHAMENTO COMPLETO" ou "FECHAMENTO PARCIAL — fontes bloqueadas: ...; não gerado: ...; ver pendências PEN-BLOQUEIO"."""
-    bloqueios = list(bloqueios)
-    if not bloqueios:
+def quadro(bloqueios: Iterable[Bloqueio], pendencias_regra: Iterable[str] = ()) -> str:
+    """"FECHAMENTO COMPLETO" ou "FECHAMENTO PARCIAL — fontes bloqueadas: ...; não gerado: ...; ver pendências PEN-BLOQUEIO".
+
+    Com itens fora por erro de dado (PEN-REGRA), o fechamento também é parcial e o quadro diz quantos e quais."""
+    bloqueios, pendencias_regra = list(bloqueios), list(pendencias_regra)
+    if not bloqueios and not pendencias_regra:
         return "FECHAMENTO COMPLETO"
     fontes = []
     for b in bloqueios:
         fontes.append(f"{b.fonte} (só o arquivo {b.arquivo})" if b.parcial else f"{b.fonte} ({NATUREZAS[b.natureza]})")
-    linhas = [f"FECHAMENTO PARCIAL — fontes bloqueadas: {', '.join(fontes)}; "
-              f"não gerado: {_descricoes(nao_gerados(bloqueios))}; ver pendências PEN-BLOQUEIO"]
+    itens_fora = ""
+    if pendencias_regra:
+        itens_fora = (f"itens fora por erro de dado: {len(pendencias_regra)} pendência(s) "
+                      f"({', '.join(pendencias_regra)}); ")
+    ver = "PEN-BLOQUEIO e PEN-REGRA" if pendencias_regra and bloqueios else ("PEN-REGRA" if pendencias_regra else "PEN-BLOQUEIO")
+    linhas = [f"FECHAMENTO PARCIAL — fontes bloqueadas: {', '.join(fontes) or 'nenhuma'}; {itens_fora}"
+              f"não gerado: {_descricoes(nao_gerados(bloqueios))}; ver pendências {ver}"]
     provisorios = _provisorios(bloqueios)
     if provisorios:
         linhas.append(f"  provisório (coluna situacao = PROVISORIO nos CSVs; aviso nas notas do rascunho): "

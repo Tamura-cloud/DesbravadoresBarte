@@ -1,7 +1,9 @@
 """Orquestra o fechamento: lê as entradas, junta os itens dos módulos registrados, grava e valida a saída.
 
 Fechamento parcial (R44): uma fonte ausente, ambígua ou ilegível fica bloqueada; o que depende dela não é gerado
-(mapa em tarvo.dependencias) e o resto fecha normalmente, com uma pendência PEN-BLOQUEIO por fonte.
+(mapa em tarvo.dependencias) e o resto fecha normalmente, com uma pendência PEN-BLOQUEIO por fonte. Um dado que
+impede a regra de um item (linha ilegível, cadastro ou contrato inconsistente) tira só o item: PEN-REGRA.
+Erro de programa continua parando: a leitura só trata ValueError (dado) e OSError (arquivo).
 """
 
 from __future__ import annotations
@@ -28,6 +30,7 @@ from tarvo.leitores.meridiano import ler_meridiano
 from tarvo.leitores.orbe import FIM_CONFLITO, ErroArquivoOrbe, Repetida, ler_orbe_parcial
 from tarvo.leitores.plano_contas import ler_plano
 from tarvo.leitores.ponte import ler_ponte
+from tarvo.leitores.rejeitadas import LinhaRejeitada
 from tarvo.leitores.taxas import ler_taxas
 from tarvo.remessa import remessa
 from tarvo.saida import ItemSaida, gravar_saida, validar_saida
@@ -55,6 +58,8 @@ class Entradas:
     orbe_repetidas: tuple[Repetida, ...] = ()  # id_transacao igual em dois arquivos da Orbe, contado uma vez (P27)
     bloqueios: tuple[dep.Bloqueio, ...] = ()   # fontes (ou arquivos da Orbe) que não entraram (R44)
     avisos: tuple[dep.Aviso, ...] = ()         # coluna a mais ou fora de ordem; a leitura seguiu pelo nome (R44)
+    # linhas que o leitor não converteu, por fonte (R44): ficam fora e viram PEN-REGRA-LINHA
+    rejeitadas: dict[str, tuple[LinhaRejeitada, ...]] = field(default_factory=dict)
 
 
 Modulo = Callable[[Entradas], Iterable[ItemSaida]]
@@ -78,15 +83,16 @@ class ResultadoFechamento:
     itens: int
     arquivos_contestacao: dict[str, Path] = field(default_factory=dict)  # R29; vazio com contestacoes=False
     arquivos_ignorados: list[tuple[Path, str]] = field(default_factory=list)  # na entrada, não lidos (só aviso)
-    bloqueios: tuple[dep.Bloqueio, ...] = ()   # R44: vazio = fechamento completo
+    bloqueios: tuple[dep.Bloqueio, ...] = ()   # R44: fontes bloqueadas
     avisos: tuple[str, ...] = ()               # R44: diferenças de layout que não bloquearam
+    regras: tuple[str, ...] = ()               # R44: pendências PEN-REGRA (itens fora por erro de dado)
 
     @property
     def completo(self) -> bool:
-        return not self.bloqueios
+        return not self.bloqueios and not self.regras
 
     def quadro(self) -> str:
-        return dep.quadro(self.bloqueios)
+        return dep.quadro(self.bloqueios, self.regras)
 
 
 def _erro(e: Exception) -> str:
@@ -94,34 +100,41 @@ def _erro(e: Exception) -> str:
     return texto if isinstance(e, ValueError) and texto else f"{type(e).__name__}: {texto}"
 
 
-# Leitor de cada tipo de arquivo único: (caminho, lista de avisos de layout) -> o que o leitor devolve.
+# Leitor de cada tipo de arquivo único: (caminho, avisos de layout, linhas rejeitadas) -> o que o leitor devolve.
 LEITORES = {
     "taxas": ler_taxas,
     "ponte_eml": ler_ponte,
-    "plano_de_contas": ler_plano,
+    # plano de contas: a linha ilegível bloqueia o plano (a conta dela pode ser a de uma regra de config/bancos.yaml)
+    "plano_de_contas": lambda caminho, avisos, _rejeitadas: ler_plano(caminho, avisos),
     "aurora": ler_aurora,
-    "meridiano": lambda caminho, _avisos: ler_meridiano(caminho),  # OFX: tags, sem cabeçalho de colunas
+    "meridiano": lambda caminho, _avisos, rejeitadas: ler_meridiano(caminho, rejeitadas),  # OFX: sem colunas
 }
+ERROS_DE_LEITURA = (ValueError, OSError)  # dado inválido (inclui encoding) e arquivo; o resto é erro de programa
 
 
-def _ler(fonte: str, arquivo: Path, leitor, bloqueios: list, avisos: list):
-    """Roda o leitor da fonte; qualquer erro de leitura bloqueia a fonte (ILEGIVEL) e devolve None."""
+def _ler(fonte: str, arquivo: Path, leitor, bloqueios: list, avisos: list, rejeitadas: dict):
+    """Roda o leitor da fonte. Erro de leitura do arquivo bloqueia a fonte (ILEGIVEL) e devolve None; linha com
+    dado inválido fica de fora sozinha (rejeitadas)."""
     textos: list[str] = []
+    linhas: list[LinhaRejeitada] = []
     try:
-        resultado = leitor(arquivo, textos)
-    except Exception as e:  # noqa: BLE001 - xlsx corrompido, e-mail sem anexo, encoding: tudo é arquivo ilegível
+        resultado = leitor(arquivo, textos, linhas)
+    except ERROS_DE_LEITURA as e:
         bloqueios.append(dep.Bloqueio(fonte, dep.ILEGIVEL, _erro(e), ((arquivo.name, "arquivo"),),
                                       dep.PASSO[dep.ILEGIVEL].format(fonte=fonte)))
         return None
     avisos += [dep.Aviso(fonte, arquivo.name, t) for t in textos]
+    if linhas:
+        rejeitadas[fonte] = tuple(linhas)
     return resultado
 
 
-def _ler_orbe(arquivos: tuple[Path, ...], bloqueios: list, avisos: list):
-    """Relatório e ajustes da Orbe (O05). Arquivo de ajustes com problema fica bloqueado sozinho (R44)."""
+def _ler_orbe(arquivos: tuple[Path, ...], bloqueios: list, avisos: list, rejeitadas: dict):
+    """Relatório e ajustes da Orbe (O05). Arquivo de ajustes com problema fica bloqueado sozinho, e linha com dado
+    inválido fica de fora sozinha (R44)."""
     try:
         leitura = ler_orbe_parcial(arquivos)
-    except Exception as e:  # noqa: BLE001 - o relatório (primeiro arquivo) ilegível bloqueia a fonte inteira
+    except ERROS_DE_LEITURA as e:  # o relatório (primeiro arquivo) ilegível bloqueia a fonte inteira
         linha = f"L{e.linha}" if isinstance(e, ErroArquivoOrbe) else "arquivo"
         bloqueios.append(dep.Bloqueio("orbe", dep.ILEGIVEL, _erro(e), ((arquivos[0].name, linha),),
                                       dep.PASSO[dep.ILEGIVEL].format(fonte="orbe")))
@@ -132,6 +145,8 @@ def _ler_orbe(arquivos: tuple[Path, ...], bloqueios: list, avisos: list):
             "orbe", dep.ILEGIVEL, b.erro, b.origens, dep.PASSO_ORBE_CONFLITO if conflito else dep.PASSO_ORBE_LAYOUT,
             arquivo=b.arquivo, linhas=b.linhas, refs=tuple(dict.fromkeys(r for _, r in b.origens)) if conflito else ()))
     avisos += [dep.Aviso("orbe", arquivos[0].name, t) for t in leitura.avisos]
+    if leitura.rejeitadas:
+        rejeitadas["orbe"] = tuple(leitura.rejeitadas)
     return leitura.quadro, tuple(leitura.repetidas)
 
 
@@ -151,8 +166,9 @@ def ler_entradas(entrada, competencia: str, config=CONFIG_PADRAO, usar_ia: bool 
             bloqueios.append(dep.Bloqueio(tipo, dep.AUSENTE, erro, ((p.padrao, "nenhum arquivo"),),
                                           dep.PASSO[dep.AUSENTE].format(fonte=tipo, padrao=p.padrao)))
 
-    orbe, repetidas = _ler_orbe(arquivos["orbe"], bloqueios, avisos) if "orbe" in arquivos else (None, ())
-    lidos = {tipo: _ler(tipo, arquivos[tipo], leitor, bloqueios, avisos) if tipo in arquivos else None
+    rejeitadas: dict[str, tuple[LinhaRejeitada, ...]] = {}
+    orbe, repetidas = _ler_orbe(arquivos["orbe"], bloqueios, avisos, rejeitadas) if "orbe" in arquivos else (None, ())
+    lidos = {tipo: _ler(tipo, arquivos[tipo], leitor, bloqueios, avisos, rejeitadas) if tipo in arquivos else None
              for tipo, leitor in LEITORES.items()}
     taxas, ponte, plano, aurora, meridiano = (lidos[t] for t in LEITORES)
     ordem = {tipo: i for i, tipo in enumerate(carregar_padroes(Path(config)))}
@@ -172,6 +188,7 @@ def ler_entradas(entrada, competencia: str, config=CONFIG_PADRAO, usar_ia: bool 
         orbe_repetidas=repetidas,
         bloqueios=tuple(sorted(bloqueios, key=lambda b: (ordem.get(b.fonte, len(ordem)), b.arquivo or ""))),
         avisos=tuple(avisos),
+        rejeitadas=rejeitadas,
     )
 
 
@@ -209,7 +226,7 @@ def fechar(entrada, saida, competencia: str, *, config=CONFIG_PADRAO,
     itens: list[ItemSaida] = []
     for modulo in MODULOS if modulos is None else modulos:  # cada módulo gera só os produtos com as fontes dele
         itens.extend(modulo(entradas))
-    itens += dep.pendencias_bloqueio(entradas) + dep.pendencias_aviso(entradas)  # R44
+    itens += dep.pendencias_bloqueio(entradas) + dep.pendencias_rejeitadas(entradas) + dep.pendencias_aviso(entradas)
 
     saida = Path(saida).resolve()
     saida.parent.mkdir(parents=True, exist_ok=True)
@@ -227,4 +244,4 @@ def fechar(entrada, saida, competencia: str, *, config=CONFIG_PADRAO,
         gravados = _publicar(preparados, saida)
         rascunhos = _publicar(rascunhos_preparados, destino_contestacoes) if destino_contestacoes else {}
     return ResultadoFechamento(entradas.arquivos, gravados, len(itens), rascunhos, ignorados, entradas.bloqueios,
-                               tuple(a.texto for a in entradas.avisos))
+                               tuple(a.texto for a in entradas.avisos), tuple(dep.regras(itens)))

@@ -5,10 +5,10 @@
 | | |
 |---|---|
 | Data | 2026-10-17 |
-| Commit do código | branch `regras-helena-2`, sobre `9d0db60` (O05). Esta rodada aplica R41 a R45 (Helena, 11h49 a 12h50): mudam só os valores das duas PEN-DEVOL-CHK (centavos, R45) e textos (ver abaixo) |
+| Commit do código | o commit que contém este arquivo (`git log -1 --format=%h -- RESULTADOS.md`; um hash escrito aqui ficaria velho no commit seguinte). O resumo gerado (`python -m tarvo resumo`, `resumo.versao_do_codigo`) imprime o commit atual (`git rev-parse --short HEAD`) e a branch; sem git, "commit indisponível" |
 | Fechamento | `python -m tarvo fechar --competencia 2026-09 --entrada dados/2026-09 --saida saida/` (IA conforme `config/ia.yaml`; em setembro todo lançamento casa uma regra, então a IA não é chamada nenhuma vez, P14) |
 | Resumo | `python -m tarvo resumo --saida saida` |
-| pytest | **437 passed** (`python -m pytest -q`) |
+| pytest | **456 passed** (`python -m pytest -q`) |
 | `validar_saida(saida/)` | `[]`, **sem problemas** |
 | Rastro | 371 de 371 itens com soma do rastro por id_saida = valor reportado |
 
@@ -206,7 +206,7 @@ Testes que fixavam números ou um arquivo só, e mudaram:
 **O01 a O04 (Organização, 17/10, canal de Logística): nenhum número mudou.** Linhas e totais dos 6 CSVs iguais aos de antes; `rastro.csv`, os 5 outros CSVs e os 4 arquivos de `contestacoes/` idênticos byte a byte. Em `pendencias.csv` mudaram só textos:
 - **motivo (O04, toda pendência com próximo passo):** PEN-NF-CHK, PEN-CONCESSAO-CHK, as 2 PEN-DEVOL-CHK, PEN-ALERTA-ANTEC, as 4 PEN-NEG-REM e PEN-NAOID-L50 ganharam "próximo passo: <quem faz o quê>". As outras 6 já traziam a ação e não mudaram.
 - **quem_decide:** PEN-CONCESSAO-CHK-00520815000100 passou de "Financeiro (Helena)" para "Financeiro (Helena) e Comercial" (R32: a Helena paga a devolução; parametrizar a Orbe é com o Comercial, R28).
-- **Execução (O01):** o fechamento grava numa pasta temporária, valida e só então substitui `saida/` e `contestacoes/`; entrada ambígua ou faltando para com a instrução do que fazer; arquivo que não casa nenhum padrão só gera aviso. Testes: 374 → 393 (13 com a rodada O01 a O04; 6 com o pacote `anthropic` opcional, a saída em UTF-8 e a linha "Se estiver errada, para a Helena" em toda premissa ativa).
+- **Execução (O01):** o fechamento grava numa pasta temporária, valida e só então substitui `saida/` e `contestacoes/`; entrada ambígua ou faltando parava com a instrução do que fazer (desde a R44, bloqueia só aquela fonte, com a PEN-BLOQUEIO, e a CLI sai com 3); arquivo que não casa nenhum padrão só gera aviso. Testes: 374 → 393 (13 com a rodada O01 a O04; 6 com o pacote `anthropic` opcional, a saída em UTF-8 e a linha "Se estiver errada, para a Helena" em toda premissa ativa).
 
 **R32 a R40 e P26 (Helena, 17/10, 11h37 a 11h41): os números de setembro mudam.**
 
@@ -246,19 +246,19 @@ Auditoria das regras novas contra este fechamento:
 | R26 | os 44 repasses (PIX ENVIADO, Aurora) estão em 2.1.01.001 e saíram entre os dias 08 e 10 ou 22 e 24; o Meridiano não tem repasse a lojista | OK |
 | R27, R31 | o relatório de setembro não tem linha de ajuste (Helena, 11h33). Um ajuste em outubro, como linha nova com Nº próprio e observação "AJUSTE REF PC-...", abate a COM-REM do lojista e a NF-REM, sem PEN-NEG, divergência nem nota complementar (`test_ajuste_ponte.py`) | OK; texto da PEN-CONTEST-REM ajustado |
 | R28 | campo "Aprovado por" em R01 a R30; P01 a P23 aguardando aprovação | registrado no HIPOTESES.md |
-| R29 | o fechamento não gera o rascunho de e-mail por contraparte | **CONFLITO, não corrigido** (ver HIPOTESES.md, seção 4) |
+| R29 | o fechamento gera o rascunho de e-mail por contraparte | corrigido: o fechar gera contestacoes/ (orbe.md, orbe_operacoes.csv, ponte.md, ponte_operacoes.csv) |
 | R30 | 57 linhas no rastro da PEN-SEMCONTRATO-39566044000119, primeira transação em 2026-09-10 | OK; texto corrigido |
 
 **R29 — rascunhos de contestação (`contestacoes/`, ao lado de `saida/`).** O `fechar` grava 4 arquivos a partir dos itens já calculados; `saida/` continua com os 6 CSVs. Todo total do texto é a soma do CSV ao lado (`test_contestacao.py`):
 
 | arquivo | conteúdo | linhas | total | Esperado | teste de origem | |
 |---|---|---:|---:|---|---|:-:|
-| orbe_operacoes.csv | DIV-CHK: Casa 118, Rota 87, Bridge 5 | 210 | 16.973,65 | 210 · 16.973,65 (= divergências de CHECKOUT, seção 4); estornos 5 · -107,53 | `test_contestacao.py::test_orbe_totais_do_texto_saem_do_csv`, `::test_orbe_estornos_ficam_no_total_e_sao_explicados` | ✓ |
-| ponte_operacoes.csv · SPREAD_ACIMA_CONTRATADO | DIV-REM: Mundo Aberto | 23 | 1.418,85 | 23 · 1.418,85 (= PEN-CONTEST-REM) | `test_contestacao.py::test_ponte_csv_bate_com_divergencias_e_pendencias` | ✓ |
-| ponte_operacoes.csv · SPREAD_NEGATIVO | PEN-NEG-REM (R23) | 4 | -3.565,98 | 4 · -3.565,98 | idem | ✓ |
-| ponte_operacoes.csv · OPERACAO_DUPLICADA | PEN-DUP-REM-PC-0926-0162 | 1 | 821,88 | 1 · 821,88 | idem | ✓ |
+| orbe_operacoes.csv | DIV-CHK: Rota 87, Bridge 5 (a Casa saiu com a R32) | 92 | 1.576,23 | 92 · 1.576,23 (= divergências de CHECKOUT, seção 4); estornos 4 · -98,44 | `test_contestacao.py::test_orbe_csv_tem_as_divergencias_de_checkout_com_o_mesmo_id_e_ref`, `::test_orbe_estornos_reduzem_o_total_sem_sinal_negativo_no_texto` | ✓ |
+| ponte_operacoes.csv · SPREAD_ACIMA_CONTRATADO | DIV-REM: Mundo Aberto 23 | 23 | 1.418,85 | 23 · 1.418,85 (= PEN-CONTEST-REM) | `test_contestacao.py::test_ponte_csv_bate_com_divergencias_e_pendencias` | ✓ |
+| ponte_operacoes.csv · SPREAD_NEGATIVO | PEN-NEG-REM (R23): Canguru, Dublin Hub, Novo Horizonte, Ponte Aérea, 1 cada | 4 | -3.565,98 | 4 · -3.565,98 | idem | ✓ |
+| ponte_operacoes.csv · OPERACAO_DUPLICADA | PEN-DUP-REM-PC-0926-0162 (Bagagem Livre) | 1 | 821,88 | 1 · 821,88 | idem | ✓ |
 
-Cada .md abre com um bloco "NOTAS PARA A HELENA — apagar antes de enviar" (avisos, valor a devolver pela R25, ressalvas); o corpo não fala de aviso do Comercial. Orbe: "Comunicação de condição comercial" (Casa, 0% de 2026-09-01 a 2026-12-31) e "Taxas aplicadas acima do contrato" (Bridge e Rota). Ponte: Mundo Aberto como comunicação de condição, mais os spreads negativos e a duplicada como contestação. Os destinatários são `<e-mail da Orbe>` e `<e-mail da Ponte>`.
+Valores lidos dos arquivos gravados em contestacoes/ (não digitados). Cada .md abre com um bloco "NOTAS PARA A HELENA — apagar antes de enviar" (avisos, valor a devolver pela R25 e R45, ressalvas); o corpo não fala de aviso do Comercial. Orbe: uma seção, "1. Taxas aplicadas acima do contrato" (Bridge e Rota); a Casa fica só nas notas, em "Concessões comerciais (fora do e-mail, R32)". Ponte: "1. Contestação: spread acima do contratado" (Mundo Aberto, R32), "2. Contestação: spreads negativos" e "3. Contestação: operação repetida no relatório". Os destinatários são `<e-mail da Orbe>` e `<e-mail da Ponte>`.
 
 Colunas novas no ponte_operacoes.csv (P24, exibição, aguardando aprovação):
 
@@ -277,21 +277,23 @@ O `fechar` pelo CLI lista os 4 arquivos gravados e aceita `--sem-contestacao` (`
 | `test_ajuste_ponte.py` | 2 testes, que supunham a linha de ajuste com o mesmo Nº de Operação e a mesma data da original | 23 testes: 7 com o pack de outubro (Mundo Aberto, original em setembro, original inexistente) e 16 sintéticos (nota zerada ou negativa, regressão da R23, sem CNPJ, percentual configurável, pasta anterior) |
 | demais (`test_remessa.py`, `test_outubro.py`, ...) | 345 | 345, todos verdes |
 
-Exemplo, caso (a): ajuste "AJUSTE REF PC-0926-0434", Spread R$ -235,74, sem CNPJ, no outubro simulado (PC-1026-9101); mais um ajuste B de -20,00 do Canguru com original inexistente (PC-1026-9102). Sem os ajustes: 506 itens.
+Exemplo, caso (a), rodado de novo com as fixtures `base` e `com` de `tests/test_ajuste_ponte.py` (o outubro simulado de hoje: R32, arquivo 06 da Orbe deslocado e R45). No pack de outubro entram três ajustes: A, "AJUSTE REF PC-0926-0434", Spread R$ -235,74, sem CNPJ (PC-1026-9101); B, -20,00 do Canguru, com original inexistente (PC-1026-9102); C, -50,00, sem CNPJ e sem original (PC-1026-9103). Sem os ajustes: 387 itens.
 
 | arquivo | linha | sem ajuste | com ajuste |
 |---|---|---:|---:|
 | comissoes_por_lojista.csv | COM-REM-17217888000111 (Mundo Aberto) | 3.547,69 | 3.429,82 (-117,87) |
 | comissoes_por_lojista.csv | COM-REM-53857560000123 (Canguru) | 3.764,05 | 3.754,05 (-10,00) |
 | notas_a_emitir.csv | NF-REM-75374179000146 | 39.664,95 | 39.537,08 (-127,87) |
+| pendencias.csv | PEN-TED-PONTE | 39.664,95 | 39.537,08 (-127,87) |
 | pendencias.csv | PEN-AJUSTE-SEMORIG-PC-1026-9102 (original inexistente) | não existe | -10,00 |
-| (itens) | | 506 | 507 |
+| pendencias.csv | PEN-AJUSTE-SEMLOJISTA-PC-1026-9103 (sem CNPJ e sem original: não abate) | não existe | -25,00 |
+| (itens) | | 387 | 389 |
 
 Rastro da COM-REM da Mundo Aberto (e da NF-REM, que repete as mesmas linhas):
 
 ```
-COM-REM-17217888000111;...out2026.eml#...102026.xlsx;PC-1026-9101;-117.87
-COM-REM-17217888000111;...set2026.eml#...092026.xlsx;PC-0926-0434;0.00
+COM-REM-17217888000111;03_email_ponte_cambio_relatorio_out2026.eml#PonteCambio_Relatorio_TARVO_102026.xlsx;PC-1026-9101;-117.87
+COM-REM-17217888000111;03_email_ponte_cambio_relatorio_set2026.eml#PonteCambio_Relatorio_TARVO_092026.xlsx;PC-0926-0434;0.00
 ```
 
 A NF-REM traz na discriminação: "... competência 2026-10 - líquida de ajuste da Ponte: AJUSTE REF PC-0926-0434 (operação de 2026-09, contestada em 2026-09) - AJUSTE REF PC-0926-9999 (operação original não encontrada em 2026-09)". O rastro.csv não tem coluna de descrição; por isso a descrição vai na discriminação da nota e no motivo da PEN-AJUSTE-SEMORIG.
@@ -634,7 +636,7 @@ Para cada caso, a tabela lista todos os id_saida que têm a referência nova no 
 Os números mudam com o deslocamento das datas, como prevê `test_outubro.py`. Nenhum dos id_saida abaixo usa referência nova no rastro.
 
 - **PEN-NF-CHK da Casa do Estudante: 0,00 em vez de -5,50.** O estorno TX88445133 era de venda de 21/08 (taxa de 1,49%). Em outubro a venda original cai em 21/09, dentro da isenção (R40). A comissão do estorno vira 0,00, e os -5,50 entram na devolução da concessão (PEN-CONCESSAO-CHK: 119 refs, 15.391,27). Não há divergência da Casa (R32).
-- **Bridge: 13 divergências e devolução de 108,84, contra 5 e 29,95.** A Orbe cobrou 2,59% em 13 vendas de crédito à vista. Em setembro, 8 delas (de 01 a 13/09) estavam dentro do contrato antigo, que valia até 14/09. Em outubro todas caem depois de 15/09 e passam a valer a taxa renegociada de 2,19%, então as 13 viram divergência (`test_outubro.py::test_bridge_vendas_de_outubro_na_taxa_nova`).
+- **Bridge: 13 divergências (108,84) e devolução de 108,80 (R45: o descontado de fato), contra 5 divergências (29,95) e devolução de 29,94.** A Orbe cobrou 2,59% em 13 vendas de crédito à vista. Em setembro, 8 delas (de 01 a 13/09) estavam dentro do contrato antigo, que valia até 14/09. Em outubro todas caem depois de 15/09 e passam a valer a taxa renegociada de 2,19%, então as 13 viram divergência (`test_outubro.py::test_bridge_vendas_de_outubro_na_taxa_nova`).
 - **PEN-SEMCONTRATO-39566044000119 (R30, R39):** o motivo cita a competência 2026-11 e a data 2026-10-10, porque no pack simulado a Atlas começa em 10/10. O valor (7.876,05) não muda.
 - **PEN-TRANSF-L93:** a transferência do fim do mês passa a cair em 02/11, a conferir no extrato de novembro.
 

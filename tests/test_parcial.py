@@ -164,7 +164,7 @@ def test_arquivo_06_com_cabecalho_diferente(completo, copia, tmp_path, capsys):
     assert {s for i, s in situacao.items() if i.startswith("COM-REM")} == {""}
     assert "**PROVISÓRIO:**" in (tmp_path / "contestacoes" / "orbe.md").read_text(encoding="utf-8")
     resumo = resumir(saida)
-    assert resumo.splitlines()[2].startswith("**Status do fechamento: PARCIAL**")
+    assert any(l.startswith("**Status do fechamento: PARCIAL**") for l in resumo.splitlines()[:6])
     assert validar_saida(saida) == []
 
 
@@ -272,3 +272,19 @@ def test_resultados_md_mostra_no_topo_o_status_da_saida_de_setembro():
     situacao = status(ler_saida(RAIZ / "saida"))[0]
     topo = (RAIZ / "RESULTADOS.md").read_text(encoding="utf-8").splitlines()[:6]
     assert any(f"Status do fechamento: {situacao}" in l for l in topo), topo
+
+
+def test_resultados_md_tabela_dos_rascunhos_bate_com_contestacoes():
+    """A tabela da R29 no RESULTADOS.md repete o que está nos arquivos de contestacoes/ (linhas e total)."""
+    from decimal import Decimal
+    from tarvo.resumo import brl
+    texto = (RAIZ / "RESULTADOS.md").read_text(encoding="utf-8")
+    orbe = _ler(RAIZ / "contestacoes", "orbe_operacoes.csv")
+    total = sum((Decimal(l["diferenca_brl"]) for l in orbe), Decimal("0.00"))
+    assert f"| orbe_operacoes.csv | DIV-CHK: " in texto and f" | {len(orbe)} | {brl(total)} | " in texto
+    ponte = _ler(RAIZ / "contestacoes", "ponte_operacoes.csv")
+    for natureza in {l["natureza"] for l in ponte}:
+        ls = [l for l in ponte if l["natureza"] == natureza]
+        soma = sum((Decimal(l["valor_brl"]) for l in ls), Decimal("0.00"))
+        linha = next(l for l in texto.splitlines() if l.startswith(f"| ponte_operacoes.csv · {natureza} |"))
+        assert f" | {len(ls)} | {brl(soma)} | " in linha, linha
