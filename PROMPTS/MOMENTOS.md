@@ -1,4 +1,4 @@
-# MOMENTOS.md — Registro de Interações Decisivas com a IA (15% da Avaliação)
+# MOMENTOS.md — Registro de Interações Decisivas com a IA (critério "Uso de IA", 20% da avaliação)
 
 > **Instrução do Edital:** Marque de 2 a 4 momentos que importaram durante a preparação e construção. Para cada um, descreva em uma ou duas frases: **o que você pediu**, **o que a IA devolveu** e **o que você fez com isso**. **Obrigatório incluir pelo menos um momento em que a IA errou ou tentou te levar para o lugar errado e você corrigiu.**
 
@@ -28,8 +28,10 @@
 
 ---
 
-## Momento 4 — `[Reservado para registrar durante a implementação do código / classificação bancária]`
+## Momento 4 — Menos ferramenta, mais foco: recusamos o Graphify e isolamos o contexto da IA (Decisão Humana)
 
-* **O que pedimos:** `[Preencher durante o desenvolvimento]`
-* **O que a IA devolveu:** `[Preencher durante o desenvolvimento]`
-* **O que nós fizemos com isso:** `[Preencher durante o desenvolvimento]`
+* **O que pedimos:** No Antigravity, em 16/10 às 21h32, pedimos uma avaliação da skill Graphify (grafo do código para o Claude Code) e, logo depois, que a IA dissesse se os 5 dossiês de pesquisa sobre a Barte (mais de 40 mil tokens) iriam atrapalhar a construção.
+* **O que a IA devolveu:** Explicou que o Graphify só compensa em repositórios grandes e legados, e que os dossiês (Tap-to-Pay, Buser, cultura) poluiriam o contexto do Claude Code com assuntos fora do case.
+* **O que nós fizemos com isso:** Decidimos não usar o Graphify ("então não vamos usar") e isolar os dossiês: backup na branch `backup-dossies-barte`, pasta `_referencias_internas/` ignorada pelo git e pelo Claude (`.gitignore` e `.claudeignore`), e um `CLAUDE.md` só com as regras da Tarvo (commit `7d06117`). Transcript: `PROMPTS/sessoes/*_antigravity_*`.
+
+> **Candidato reserva:** a revisão adversarial feita na branch `pix`, que questionou 7 premissas (P15–P21) e manteve cada uma com o número alternativo calculado. Pode substituir um dos momentos acima quando o transcript dessa sessão estiver em `PROMPTS/sessoes/`.

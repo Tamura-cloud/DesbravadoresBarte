@@ -1,0 +1,486 @@
+================================================================================
+HISTÓRICO COMPLETO DE PROMPTS — SURGIMENTO E EVOLUÇÃO DO PROJETO
+DESAFIO BARTE AI — CASE TARVO PAGAMENTOS (FECHAMENTO SETEMBRO/2026)
+================================================================================
+
+Este documento registra a trajetória integral de prompts executados desde a
+primeira interação na sessão do Antigravity (preparação, pesquisa, infraestrutura,
+análise do case, engenharia reversa das regras da Helena no Slack e blindagem
+matemática em Python).
+
+Finalidade: Fornecer ao Claude Code e à equipe o histórico exato e cronológico
+de todas as decisões, comandos, correções e intenções que deram origem ao projeto,
+atendendo aos requisitos do edital (registro de prompts e momentos decisivos com IA).
+
+--------------------------------------------------------------------------------
+SUMÁRIO CRONOLÓGICO DOS PROMPTS
+--------------------------------------------------------------------------------
+
+FASE 1: PESQUISA, CULTURA BARTE E SETUP DE AMBIENTE
+  #1  | 16/10 16:54 BRT | Setup de ambiente + Pesquisa profunda Barte & AI Services + Dossiês
+  #2  | 16/10 17:55 BRT | Resolução de permissões do GitHub CLI e primeiro Push remoto
+  #3  | 16/10 18:02 BRT | Análise conceitual do papel de Jev vs. Laya em finanças autônomas
+  #4  | 16/10 18:05 BRT | Criação da proposta de arquitetura de IA (System 1 vs. System 2)
+
+FASE 2: LANÇAMENTO DO CASE TARVO E ANÁLISE PRELIMINAR
+  #5  | 16/10 19:34 BRT | Recepção e internalização do Data Pack oficial do Case Tarvo
+  #6  | 16/10 19:58 BRT | Análise crítica do relatório preliminar do Antonio e das 14 dúvidas
+
+FASE 3: ARQUITETURA DE CONTEXTO E OTIMIZAÇÃO PARA O CLAUDE CODE
+  #7  | 16/10 21:32 BRT | Análise e avaliação da skill Graphify para o Claude Code
+  #8  | 16/10 21:35 BRT | Decisão de descarte do Graphify (eliminação de overengineering)
+  #9  | 16/10 21:39 BRT | Diagnóstico de inchaço de contexto e proposta de segregação em branch
+  #10 | 16/10 21:44 BRT | Execução do isolamento (backup-dossies-barte, .claudeignore, CLAUDE.md)
+
+FASE 4: ENGENHARIA DE REGRAS DO SLACK E AUDITORIA DETERMINÍSTICA
+  #11 | 16/10 21:54 BRT | Estratégia de monitoramento do canal oficial #tarvo-financeiro (Slack)
+  #12 | 16/10 21:59 BRT | Triagem inicial do primeiro bloco de mensagens do Slack
+  #13 | 16/10 22:15 BRT | Análise crítica profunda das 184 linhas do Slack e descobertas (Helena)
+  #14 | 16/10 22:26 BRT | Auditoria 100% em Python nos dados brutos + Trava matemática no Git
+
+FASE 5: SINCRONIZAÇÃO DE EQUIPE, CONFLITOS E CONVERGÊNCIA TOTAL
+  #15 | 16/10 22:57 BRT | Análise dos commits da branch origin/pix do Antonio e mapeamento de conflitos
+  #16 | 16/10 23:02 BRT | Incorporação das respostas finais da Helena (22h35), provas e push final
+  #17 | 17/10 08:20 BRT | Geração deste dossiê completo de prompts para leitura pelo Claude Code
+
+================================================================================
+DETALHAMENTO DE CADA PROMPT (O QUE FOI PEDIDO | COMO FOI FEITO | PRA QUÊ)
+================================================================================
+
+--------------------------------------------------------------------------------
+PROMPT #1 — SETUP COMPLETO, PESQUISA PROFUNDA BARTE E CRIAÇÃO DOS DOSSIÊS
+--------------------------------------------------------------------------------
+* Data/Hora: 16/10/2026 às 16:54:59 BRT (19:54:59 UTC)
+* Etapa do Projeto: Fase 1 — Pesquisa e Infraestrutura Local
+
+* O que foi pedido pelo usuário:
+  "olá, vou realizar um case e preciso instalar varios programas, como vscode,
+  claude, python etc.. vou passar a pagina do case e a empresa e voce vai
+  internalizar e tambem procurar na internet sobre a empresa e o que ela faz.
+  https://luma.com/krxpb49i esse é o link do case. https://www.barte.com/ai-services
+  esse é o site da barte. com base nisso quero que pesquise tudo sobre a barte,
+  olhe cada produto dela e como esse produto funciona, como envolve i.a, qual o
+  perfil de trabalho, a aplicação da i.a. etc. para cada detalhe adquirido sobre a
+  barte, quero que voce crie um md para eu mandar para outra i.a sobre isso, essa
+  outra i.a vai orquestrar a criação de um esqueleto organizacional para meu grupo
+  na criação do case. criei um git https://github.com/Tamura-cloud/DesbravadoresBarte.git
+  sobre o projeto. veja videos sobre a barte ai no youtube, veja noticias sobre a
+  barte ai, veja aplicações dela e possiveis cases. e tambem faça o download do
+  vscode, todos programas que vao ser necessario para criação do projeto."
+
+* Como foi feito pela IA:
+  1. Instalação e configuração de ferramentas no PATH do Windows: Git, Node.js,
+     GitHub CLI (`gh`), Claude Code CLI, `uv`, Python 3.14 e pacotes essenciais
+     (`pandas`, `openpyxl`, `fastapi`, `pydantic`, `anthropic`, `openai`, etc.).
+  2. Inicialização do subagente de pesquisa profunda na web para coletar todos
+     os detalhes sobre a Barte: história, fundadores (Raphael Dyxklay, Caetano
+     Lacerda), lideranças de AI Services (Manuel Freitas, Beny Braun, Túlio
+     Lancaster), arquitetura de pagamentos, perfil de FDE (Forward Deployed
+     Engineer) e modelo cultural.
+  3. Redação estruturada de 5 dossiês mestres:
+     - `00_MASTER_DOSSIE_BARTE_PARA_IA_ORQUESTRADORA.md`
+     - `01_PRODUTOS_E_ECOSSISTEMA_BARTE.md`
+     - `02_BARTE_AI_SERVICES_FINANCAS_AUTONOMAS_E_CASES.md`
+     - `03_CULTURA_PERFIL_FDE_E_DESAFIO_BARTE_AI.md`
+     - `04_MIDIA_VIDEOS_PODCASTS_E_NOTICIAS.md`
+
+* Pra quê / Objetivo no Projeto:
+  Garantir que a máquina estivesse 100% pronta para desenvolvimento e municiar a
+  equipe com o contexto cultural e de produto da Barte, alinhando a solução final
+  à visão de "Finanças Autônomas" e Engenharia Financeira exigida pelos avaliadores.
+
+--------------------------------------------------------------------------------
+PROMPT #2 — AUTENTICAÇÃO E PRIMEIRO PUSH PARA O REPOSITÓRIO GITHUB
+--------------------------------------------------------------------------------
+* Data/Hora: 16/10/2026 às 17:55:21 BRT (20:55:21 UTC)
+* Etapa do Projeto: Fase 1 — Conectividade Git
+
+* O que foi pedido pelo usuário:
+  "nao to conseguindo dar push, ta privado como fazer ?"
+
+* Como foi feito pela IA:
+  Executou diagnóstico via terminal, configurou credenciais usando o GitHub CLI
+  (`gh auth setup-git`), autenticou o usuário `Tamura-cloud`, associou o branch
+  remoto `main` ao repositório `https://github.com/Tamura-cloud/DesbravadoresBarte.git`
+  e realizou o primeiro commit e push com sucesso.
+
+* Pra quê / Objetivo no Projeto:
+  Destravar a sincronização remota do repositório, garantindo versionamento e
+  permitindo colaboração imediata com os outros integrantes do grupo.
+
+--------------------------------------------------------------------------------
+PROMPT #3 — PAPEL DOS MODELOS CONCEITUAIS (JEV VS. LAYA) EM FINANÇAS
+--------------------------------------------------------------------------------
+* Data/Hora: 16/10/2026 às 18:02:16 BRT (21:02:16 UTC)
+* Etapa do Projeto: Fase 1 — Concepção Arquitetural de IA
+
+* O que foi pedido pelo usuário:
+  "qual papel de jev ou laya nesse case voce diria ?"
+
+* Como foi feito pela IA:
+  Análise comparativa das duas abordagens:
+  - Laya: Agente conversacional e contextual (leitura de notas, interação com
+    usuário, síntese executiva).
+  - Jev: Motor especializado/determinístico (regras rígidas, decisão binária,
+    reconciliação sem risco de alucinação numérica).
+
+* Pra quê / Objetivo no Projeto:
+  Estabelecer uma tese técnica de produto para o case: sistemas financeiros
+  exigem determinismo rígido para conciliação matemática (código puro), usando
+  LLMs apenas para camadas de orquestração, explicação de anomalias e decisões
+  contextuais onde há ambiguidade humana.
+
+--------------------------------------------------------------------------------
+PROMPT #4 — PROPOSTA DE ARQUITETURA HYBRID SYSTEM 1 / SYSTEM 2
+--------------------------------------------------------------------------------
+* Data/Hora: 16/10/2026 às 18:05:14 BRT (21:05:14 UTC)
+* Etapa do Projeto: Fase 1 — Documentação da Tese do Projeto
+
+* O que foi pedido pelo usuário:
+  "crie uma md para um possivel projeto envolvendo laya ou jev. acredito que laya
+  precisa de fine tunning. veja qual é o melhor para o case que pode ser proposto
+  dentro da barte."
+
+* Como foi feito pela IA:
+  Criação do documento `PROJETO_SYSTEM_ONE_BARTE_JEV_LAYA.md`, desenhando uma
+  arquitetura em duas camadas inspirada nos princípios de Finanças Autônomas da Barte:
+  - System 1 (Rápido, Determinístico, Zero Alucinação): Python, Decimal, regras contábeis.
+  - System 2 (Raciocínio Lento, LLM/Laya): Leitura de exceções, classificação de
+    históricos bancários sem padrão e geração de relatórios ao CFO.
+
+* Pra quê / Objetivo no Projeto:
+  Construir material rico para a apresentação/pitch da equipe, provando para a banca
+  da Barte que o grupo domina tanto a engenharia determinística quanto a IA agêntica.
+
+--------------------------------------------------------------------------------
+PROMPT #5 — RECEPÇÃO DO CASE OFICIAL TARVO PAGAMENTOS (DATA PACK SET/2026)
+--------------------------------------------------------------------------------
+* Data/Hora: 16/10/2026 às 19:34:21 BRT (22:34:21 UTC)
+* Etapa do Projeto: Fase 2 — Entrada Oficial do Case
+
+* O que foi pedido pelo usuário:
+  "adicionei mais 2 arquivos na pasta, sobre o case. da foto em anexo. analise-os
+  e internalize, veja como ele se encaixa nos nossos arquivos antecipados. mas
+  nao altere nada"
+
+* Como foi feito pela IA:
+  Inspeção visual da foto enviada e análise dos arquivos oficiais disponibilizados
+  pela Barte às 19h00: `01_instrucoes_participantes.docx` e `Tarvo_Data_Pack_set2026.zip`.
+  A IA mapeou a operação da Tarvo Pagamentos Ltda (subadquirente em agências de
+  intercâmbio), suas duas frentes de receita (Checkout Orbe e Câmbio Ponte), e
+  os 5 arquivos CSV obrigatórios de entrega (`comissoes_por_lojista.csv`,
+  `divergencias_taxa.csv`, `notas_a_emitir.csv`, `lancamentos_classificados.csv`,
+  `pendencias.csv`), sem alterar nada no disco conforme solicitado.
+
+* Pra quê / Objetivo no Projeto:
+  Fim da fase exploratória e início imediato do foco operacional no fechamento real
+  de setembro de 2026 da Tarvo.
+
+--------------------------------------------------------------------------------
+PROMPT #6 — ANÁLISE DO RELATÓRIO PRELIMINAR DO COLEGA E DAS 14 DÚVIDAS
+--------------------------------------------------------------------------------
+* Data/Hora: 16/10/2026 às 19:58:01 BRT (22:58:01 UTC)
+* Etapa do Projeto: Fase 2 — Avaliação Crítica das Hipóteses da Equipe
+
+* O que foi pedido pelo usuário:
+  "adicionei o relatorio que meu colega fez, quero que analise ele mas nao leve nada
+  em conta ainda, só pense sobre, n tome o relatorio como fio condutor do projeto.
+  tambem ele mandou varias perguntas que a i.a dele repassou sobre o case, vou enviar:
+  [Bloco 1: Atlas, Horizonte/Kiwi, comissão Orbe vs. contratada, estornos]
+  [Bloco 2: Spreads negativos, padrão 1.50%, 50% spread, datas 30/09, Mundo Aberto]
+  [Bloco 3: Folha/tributos passivo vs. despesa, PIX 7.350, devolução 12.400, Ponte Aérea 18.240, transf 300k, quem decide pendências]"
+
+* Como foi feito pela IA:
+  Leitura do PDF de exploração preliminar do Antonio (`Tarvo Pagamentos - Relatório
+  técnico do case...`) e exame detalhado das 14 perguntas. A IA apontou que o relatório
+  possuía excelentes intuições de cruzamento, mas continha premissas perigosas (como
+  usar a taxa cobrada pela Orbe como base de faturamento da Tarvo) e organizou a
+  estratégia de perguntas para validar com a Helena no Slack.
+
+* Pra quê / Objetivo no Projeto:
+  Impedir que a equipe seguisse caminhos incorretos antes de checar as regras do
+  cliente, separando fatos verificáveis de suposições não confirmadas.
+
+--------------------------------------------------------------------------------
+PROMPT #7 — AVALIAÇÃO DA SKILL GRAPHIFY PARA O CLAUDE CODE
+--------------------------------------------------------------------------------
+* Data/Hora: 16/10/2026 às 21:32:38 BRT (17/10 00:32:38 UTC)
+* Etapa do Projeto: Fase 3 — Estratégia de Ferramental do Claude Code
+
+* O que foi pedido pelo usuário:
+  "vou usar o claude durante a construçao, primeiro quero deixar tudo organizado e
+  otimizado. eu vi sobre graphify uma skill para o claude, o que voce entende dessa
+  skill e como aplicar e suas limitaçoes. pesquise videos na internet sobre o uso
+  dela e a melhor forma de otimizar em nosso projeto, porque sei que se selecionar
+  todas pastas nao vai ajudar."
+
+* Como foi feito pela IA:
+  Pesquisa técnica na web e no ecossistema de agentes sobre a ferramenta `graphify`
+  (geração de grafos de dependência e AST para navegação de código por LLMs). A IA
+  avaliou criticamente o custo-benefício: o Graphify é útil em monorepos legados
+  gigantescos, mas num projeto enxuto de hackathon geraria gasto excessivo de tokens,
+  latência desnecessária e complexidade de manutenção.
+
+* Pra quê / Objetivo no Projeto:
+  Tomar uma decisão consciente sobre ferramentas para não sobrecarregar o Claude Code.
+
+--------------------------------------------------------------------------------
+PROMPT #8 — DESCARTE DEFINITIVO DO GRAPHIFY
+--------------------------------------------------------------------------------
+* Data/Hora: 16/10/2026 às 21:35:07 BRT (17/10 00:35:07 UTC)
+* Etapa do Projeto: Fase 3 — Simplificação Operacional
+
+* O que foi pedido pelo usuário:
+  "entao nao vamos usar. acho melhor q nao"
+
+* Como foi feito pela IA:
+  Acatamento da decisão e direcionamento imediato para a solução enxuta e comprovada:
+  governança do Claude Code via `CLAUDE.md`, `.claudeignore` e scripts Python diretos.
+
+* Pra quê / Objetivo no Projeto:
+  Focar 100% da energia no pipeline de dados e nas regras financeiras da Tarvo.
+
+--------------------------------------------------------------------------------
+PROMPT #9 — ESTRATÉGIA DE SEGREGAÇÃO DE CONTEXTO E CRIAÇÃO DO CLAUDE.MD
+--------------------------------------------------------------------------------
+* Data/Hora: 16/10/2026 às 21:39:03 BRT (17/10 00:39:03 UTC)
+* Etapa do Projeto: Fase 3 — Design da Arquitetura do Repositório
+
+* O que foi pedido pelo usuário:
+  "dado tudo isso entao, crie um claude.md, levando tudo que fizemos e internalizaçoes.
+  ainda nao decidimos o que vamos fazer, mas por enquanto crie para dar direcionamento,
+  nao um definitivo, mas objetivo para a criação inicial do esqueleto e o que queremos
+  alcançar. o que acha ? seja critico e analista, veja os arquivos md e compare com o
+  case fornecido e nossos objetivos impostos. reveja os .md e veja se o direcionamento
+  previo antes dos arquivos do case está coerente. os arquivos .md estao muito grande,
+  sera que vao atrapalhar futuramente ? o que podemos fazer em relaçao a isso se houver
+  um problema grave ? graphify resolve ? ou claude.md somente. veja isso e me aponte
+  primeiramente e depois dou inicio as alterações, de sugestoes tambem."
+
+* Como foi feito pela IA:
+  Diagnóstico rigoroso de contexto: os 5 dossiês de pesquisa da Barte somavam mais
+  de 40 mil tokens e falavam de Tap-to-Pay, multiprocessamento e Buser, o que
+  inevitavelmente poluiria o contexto do Claude Code e causaria alucinações no Case Tarvo.
+  A IA propôs um plano cirúrgico em 4 passos:
+  1. Criar branch de backup no GitHub (`backup-dossies-barte`) para preservar 100% dos dossiês.
+  2. Mover esses arquivos para a pasta `_referencias_internas/`.
+  3. Adicionar `_referencias_internas/` ao `.claudeignore` e `.gitignore`.
+  4. Redigir um `CLAUDE.md` conciso e estritamente focado nos dados e nas regras da Tarvo.
+
+* Pra quê / Objetivo no Projeto:
+  Limpar e proteger a memória operacional do Claude Code, deixando a IA rápida, precisa
+  e focada apenas nos dados contábeis de setembro de 2026.
+
+--------------------------------------------------------------------------------
+PROMPT #10 — EXECUÇÃO DO ISOLAMENTO, BACKUP E ESQUELETO DO REPOSITÓRIO
+--------------------------------------------------------------------------------
+* Data/Hora: 16/10/2026 às 21:44:48 BRT (17/10 00:44:48 UTC)
+* Etapa do Projeto: Fase 3 — Implementação da Estrutura Limpa
+
+* O que foi pedido pelo usuário:
+  "pode ser feito, mas vai sumir algo ? ou é possivel recuperar caso de merda.
+  vai dar push ? se nao perder nada e achar melhor pode ficar a vontade. faça isso
+  tudo q vc falou e veja a melhor forma de direcionar a i.a sem contexto irrelevante
+  ou demasiado nos md. estamos estruturando primeiramente essa parte otimizaçao e
+  direcionamento do case"
+
+* Como foi feito pela IA:
+  1. Criação do branch `backup-dossies-barte` e envio ao GitHub para segurança total.
+  2. Movimentação dos dossiês e do PDF do Antonio para `_referencias_internas/`.
+  3. Descompactação dos dados brutos em `dados/` (`01_orbe...csv`, `02_tabela...xlsx`,
+     `03_email...eml`, `04_plano...csv`, `05a_extrato...csv`, `05b_extrato...ofx`).
+  4. Criação dos arquivos `.claudeignore`, `.gitignore`, `CLAUDE.md`, `HIPOTESES.md`,
+     `README.md`, `PROMPTS/MOMENTOS.md`, e estrutura de diretórios (`src/`, `tests/`,
+     `saida/`) com `.gitkeep`.
+  5. Commit (`7d06117`) e push para `origin/main`.
+
+* Pra quê / Objetivo no Projeto:
+  Entregar um repositório profissional, enxuto, sem ruído cognitivo e pronto para
+  codificação direta pelo Claude Code.
+
+--------------------------------------------------------------------------------
+PROMPT #11 — ESTRATÉGIA DE MONITORAMENTO DO SLACK OFICIAL DA COMPETIÇÃO
+--------------------------------------------------------------------------------
+* Data/Hora: 16/10/2026 às 21:54:14 BRT (17/10 00:54:14 UTC)
+* Etapa do Projeto: Fase 4 — Captura de Regras de Negócio Ocultas
+
+* O que foi pedido pelo usuário:
+  "foi criado um slake para responder as duvidas, teria como monitorar as duvidas
+  ou de alguma forma baixar o arquivo de conversa para te mandar, pois lá tem as
+  duvidas e tem uma i.a que responde as duvidas que pode ser interessante para nos."
+
+* Como foi feito pela IA:
+  Orientou o usuário a copiar o texto das threads do Slack e colar em um arquivo
+  local `slack_tarvo.txt.txt` na raiz, para que a IA pudesse processar o texto e
+  extrair os pronunciamentos da persona "Helena, financeiro da Tarvo".
+
+* Pra quê / Objetivo no Projeto:
+  Acessar a única fonte autorizada das regras de negócio implícitas do case,
+  conforme declarado expressamente no arquivo `dados/00_LEIA-ME.md`.
+
+--------------------------------------------------------------------------------
+PROMPT #12 — TRIAGEM PRELIMINAR DO SLACK
+--------------------------------------------------------------------------------
+* Data/Hora: 16/10/2026 às 21:59:53 BRT (17/10 00:59:53 UTC)
+* Etapa do Projeto: Fase 4 — Primeira Análise de Mensagens
+
+* O que foi pedido pelo usuário:
+  "fiz so ctrl c ctr v num bloco de notas com o nome slack tarvo, olhe ele e veja
+  se tem alguma informaçao util e que a gente nao sabia"
+
+* Como foi feito pela IA:
+  Leitura inicial das primeiras postagens no arquivo, identificando as primeiras
+  definições sobre comissão de Checkout pela taxa contratada.
+
+* Pra quê / Objetivo no Projeto:
+  Validar a estrutura do arquivo de captura de dados do Slack.
+
+--------------------------------------------------------------------------------
+PROMPT #13 — ANÁLISE CRÍTICA DAS 184 LINHAS DO SLACK E DESCOBERTA DAS REGRAS REAIS
+--------------------------------------------------------------------------------
+* Data/Hora: 16/10/2026 às 22:15:01 BRT (17/10 01:15:01 UTC)
+* Etapa do Projeto: Fase 4 — Engenharia Reversa e Auditoria Crítica
+
+* O que foi pedido pelo usuário:
+  "PRONTO, coloquei as perguntas e respostas. no final tem as perguntas que ainda
+  nao foram respondidas, ignore o prompt ou atualizações anteriores sobre o
+  slack_tarvo.txt. pois agora esta certo, analise as perguntas, veja a autenticidade
+  e se é ideal a pergunta para o case e analise as respostas tambem. veja o que é
+  util e o que mudou de direcionamento, se houve uma nova ideia ou uma resolução
+  de problema que foi solucionado a partir das respostas fornecidas ou alguma
+  pergunta que levantou uma nova hipotese. seja tambem critico as respostas e
+  perguntas, nao deixe-se levar ao pe da letra, revise e direcione a gente,"
+
+* Como foi feito pela IA:
+  1. Análise minuciosa de todas as threads (respostas da Helena e de Manuel Freitas).
+  2. Execução de scripts Python temporários cruzando as respostas com a base real:
+     - DESCOBERTA BOMBA: Casa do Estudante (`EC 1018325654`) possui taxa ZERO (0,00%)
+       no Checkout de setembro a dezembro (revelada pelo comentário na célula A13),
+       gerando R$ 15.391,27 em 119 transações a devolver ao lojista e NF zero!
+     - Atlas Idiomas (`EC 1076801732`): Helena proibiu faturamento até confirmação
+       do contrato pelo Comercial (Diego).
+     - Confirmação dos 3 ECs sem código: 1043300981 (Novo Horizonte), 1043396662
+       (Horizonte Viagens), 1038867654 (Kiwi Experience).
+     - Regra de arredondamento: Tarvo adota `ROUND_HALF_UP` linha por linha,
+       enquanto a Orbe trunca centavos (truncamento NÃO é divergência!).
+     - Assimetria Checkout vs. Remessa: Checkout fatura pela taxa contratada,
+       Remessa fatura pelo realizado (50% do Spread R$ da Ponte), excluindo os
+       4 spreads negativos e a duplicata `PC-0926-0162`.
+     - Prova do cálculo de Remessa do Lucca Landeiro: 228 operações válidas somam
+       exatamente `R$ 39.543,45` de comissão.
+     - Contabilidade: apenas Folha e tributos de agosto estavam provisionados
+       (baixam passivo); despesas de setembro vão direto para resultado (4.x).
+
+* Pra quê / Objetivo no Projeto:
+  Destruir todas as falsas premissas herdadas do relatório preliminar, dotando a
+  equipe de conhecimento exato sobre o gabarito das regras da Helena.
+
+--------------------------------------------------------------------------------
+PROMPT #14 — AUDITORIA 100% DOS DADOS EM PYTHON E TRAVA NO REPOSITÓRIO
+--------------------------------------------------------------------------------
+* Data/Hora: 16/10/2026 às 22:26:55 BRT (17/10 01:26:55 UTC)
+* Etapa do Projeto: Fase 4 — Blindagem Matemática e Atualização do Repositório
+
+* O que foi pedido pelo usuário:
+  "podemos, faça se ter 100% de certeza"
+
+* Como foi feito pela IA:
+  A IA não se contentou com teoria: escreveu e executou scripts Python de varredura
+  em 100% das linhas dos dados brutos:
+  - Descobriu que `04_plano_de_contas...csv` e `05b_extrato_banco_meridiano...ofx`
+    estão codificados em `cp1252` (evitando erro fatal de `UnicodeDecodeError`).
+  - Detectou que os CNPJs de Fluente Idiomas e Campus Global estavam como inteiros
+    de 13 dígitos na planilha Excel (necessidade de `zfill(14)`).
+  - Identificou as 5 divergências ocultas de Crédito à Vista da Bridge Idiomas
+    (taxa cobrada de 2,59% vs. 2,19% renegociada em 15/09 = R$ 29,95).
+  - Descobriu o estorno `TX88445133` de agosto na Casa do Estudante, provando por que
+    o saldo de comissão da Casa fica em `-R$ 5,50` (negativo), acionando a regra
+    de não emitir NF.
+  - Atualizou `CLAUDE.md`, `HIPOTESES.md`, `.gitignore` e `.claudeignore`.
+  - Fez commit (`d425cd4`) e push para a `origin/main`.
+
+* Pra quê / Objetivo no Projeto:
+  Travar os dados com 100% de certeza e reprodutibilidade, garantindo que o código
+  já nascesse com testes de conferência determinísticos.
+
+--------------------------------------------------------------------------------
+PROMPT #15 — ANÁLISE DOS COMMITS DO ANTONIO NA BRANCH ORIGIN/PIX
+--------------------------------------------------------------------------------
+* Data/Hora: 16/10/2026 às 22:57:30 BRT (17/10 01:57:30 UTC)
+* Etapa do Projeto: Fase 5 — Sincronização de Equipe
+
+* O que foi pedido pelo usuário:
+  "analise e faça o push das modificações ate entao."
+
+* Como foi feito pela IA:
+  Executou `git fetch --all` e constatou que as alterações locais já haviam sido
+  enviadas no commit `d425cd4`. Em seguida, analisou a nova branch remota criada
+  pelo colega Antonio (`origin/pix`, commits `05f0482`, `7ebefb0` e `6399313`):
+  - Viu que o Antonio copiou integralmente o nosso `HIPOTESES.md` como "Fonte 1".
+  - Analisou os módulos de código criados por ele (`comum.py` com funções Decimal
+    e testes pytest).
+  - Identificou os 3 conflitos conceituais listados pelo Antonio (`C1`, `C2`, `C3`)
+    e a dúvida matemática sobre a diferença de R$ 0,56 no repasse da Ponte.
+
+* Pra quê / Objetivo no Projeto:
+  Manter o alinhamento dos membros do time, evitando retrabalho e mapeando
+  divergências antes de integrar o código.
+
+--------------------------------------------------------------------------------
+PROMPT #16 — RESPOSTAS FINAIS DA HELENA (22H35), PROVAS E RESOLUÇÃO DE CONFLITOS
+--------------------------------------------------------------------------------
+* Data/Hora: 16/10/2026 às 23:02:55 BRT (17/10 02:02:55 UTC)
+* Etapa do Projeto: Fase 5 — Resolução Definitiva e Alinhamento Global
+
+* O que foi pedido pelo usuário:
+  "modifiquei o txt. colocando as respostas das perguntas nao respondidas, analise
+  novamente e depois faça o gith, que depois vou pedir para o antonio analisar com
+  o proprio claude dele todos os arquivos do git."
+
+* Como foi feito pela IA:
+  1. Leitura das respostas oficiais às 4 perguntas finais no `slack_tarvo.txt.txt`:
+     - Resposta a Lucca Landeiro: não supor desconto prévio no repasse da Ponte;
+       conferir o TED de outubro quando cair é a pendência correta.
+     - Resposta a Insper AI (prazo): prazo de contestação de 5 dias úteis está
+       válido; listar operações e valores em pendências.
+     - Resposta a Insper AI (Aurora/Orbe): Orbe deposita em D+1 (débito/PIX) e
+       D+30 parcelado; saldo negativo é conta garantida; conciliação parcela a
+       parcela está fora de escopo.
+     - Resposta a Fox AI: comissão é taxa contratada inteira, sem custos da Orbe.
+  2. Execução de script Python demonstrando a prova matemática exata do PIX de
+     R$ 18.240,00 da Ponte Aérea Estudantil (`MRD2026090425` em 17/09): os 5 PIX
+     de terça-feira somam exatamente `R$ 452.249,03` (igual à soma das 15 remessas
+     no relatório de câmbio), provando que o 6º PIX é 100% excedente.
+  3. Resolução formal dos Conflitos C1, C2 e C3 da branch `pix`.
+  4. Atualização de `CLAUDE.md` e `HIPOTESES.md`, commit (`f73937d`) e push para `main`.
+
+* Pra quê / Objetivo no Projeto:
+  Deixar a `origin/main` impecável, com provas matemáticas completas e conflitos
+  resolvidos para que o Claude do Antonio validasse tudo sem hesitação.
+
+--------------------------------------------------------------------------------
+PROMPT #17 — GERAÇÃO DO DOSSIÊ COMPLETO DE PROMPTS
+--------------------------------------------------------------------------------
+* Data/Hora: 17/10/2026 às 08:20:21 BRT (11:20:21 UTC)
+* Etapa do Projeto: Fase 5 — Auditoria e Atendimento aos Critérios de Avaliação
+
+* O que foi pedido pelo usuário:
+  "eu criei um arquivo que cita os prompts usados e como ele foi feito e pra que.
+  o case pede. preciso que voce procure todos prompts utilizados desde o inicio,
+  mostrando o surgimento do projeto. crie um txt. para eu mandar para o claude
+  para ele ler, nao altere nenhum arquivo."
+
+* Como foi feito pela IA:
+  Extração automatizada de todos os passos e interações do transcript bruto
+  do sistema (`transcript.jsonl`), estruturação cronológica de cada momento,
+  análise das ações executadas e compilação neste arquivo de texto dedicado,
+  sem modificar nenhum outro arquivo do projeto.
+
+* Pra quê / Objetivo no Projeto:
+  Permitir que o Claude Code leia o histórico factual completo e integre as
+  evidências aos arquivos `PROMPTS/README.md` e `PROMPTS/MOMENTOS.md`, garantindo
+  a nota máxima no critério de 15% da avaliação da banca sobre o uso de IA.
+
+================================================================================
+FIM DO DOCUMENTO
+================================================================================
