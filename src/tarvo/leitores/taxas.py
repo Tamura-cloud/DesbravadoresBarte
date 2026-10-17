@@ -14,6 +14,7 @@ import openpyxl
 import pandas as pd
 
 from tarvo.leitores.comum import cnpj14, data_br, pct, sem_acento
+from tarvo.leitores.layout import avisos_layout
 
 # Só esta aba. A aba histórica (2025) nunca é lida.
 ABA = "Taxas vigentes"
@@ -91,10 +92,11 @@ def _cnpj(v) -> str:
     return c
 
 
-def _localizar_cabecalho(ws) -> tuple[int, dict[str, int]]:
-    """Linha do cabeçalho (a que tem a célula "Lojista") e coluna de cada campo."""
+def _localizar_cabecalho(ws) -> tuple[int, dict[str, int], list[str]]:
+    """Linha do cabeçalho (a que tem a célula "Lojista"), coluna de cada campo e os nomes lidos (sem acento)."""
     for row in ws.iter_rows():
         if any(sem_acento(c.value) == "LOJISTA" for c in row if isinstance(c.value, str)):
+            nomes = [sem_acento(c.value) if isinstance(c.value, str) else "" for c in row]
             colunas = {}
             for c in row:
                 if isinstance(c.value, str) and sem_acento(c.value) in CABECALHOS:
@@ -102,7 +104,7 @@ def _localizar_cabecalho(ws) -> tuple[int, dict[str, int]]:
             faltando = sorted(set(CABECALHOS.values()) - set(colunas))
             if faltando:
                 raise ValueError(f"aba {ABA!r}, linha {row[0].row}: cabeçalhos ausentes: {faltando}")
-            return row[0].row, colunas
+            return row[0].row, colunas, nomes
     raise ValueError(f"aba {ABA!r}: célula 'Lojista' não encontrada")
 
 
@@ -124,15 +126,20 @@ def _converter(valores: dict, arquivo_origem: str, linha: int) -> dict:
     }
 
 
-def ler_taxas(caminho) -> pd.DataFrame:
-    """Lê a aba "Taxas vigentes". ref_origem = "linha N" do Excel. Para na primeira linha sem lojista."""
+def ler_taxas(caminho, avisos: list[str] | None = None) -> pd.DataFrame:
+    """Lê a aba "Taxas vigentes". ref_origem = "linha N" do Excel. Para na primeira linha sem lojista.
+
+    avisos (opcional) recebe as colunas a mais ou fora de ordem (a leitura é pelo nome, R44).
+    """
     caminho = Path(caminho)
     wb = openpyxl.load_workbook(caminho, data_only=True)
     try:
         if ABA not in wb.sheetnames:
             raise ValueError(f"{caminho.name}: aba {ABA!r} não encontrada (abas: {wb.sheetnames})")
         ws = wb[ABA]
-        linha_cab, colunas = _localizar_cabecalho(ws)
+        linha_cab, colunas, nomes = _localizar_cabecalho(ws)
+        if avisos is not None:
+            avisos += avisos_layout(f"{caminho.name}, aba {ABA!r}", nomes, CABECALHOS)
         registros = []
         for linha in range(linha_cab + 1, ws.max_row + 1):
             valores = {campo: ws.cell(row=linha, column=col).value for campo, col in colunas.items()}

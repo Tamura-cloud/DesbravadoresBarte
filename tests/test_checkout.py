@@ -20,6 +20,7 @@ from tarvo.checkout import (
     calcular_linhas,
     carregar_config,
     checkout,
+    pico_antecipacao,
 )
 from tarvo.fechamento import ler_entradas
 from tarvo.leitores import orbe as leitor_orbe
@@ -188,7 +189,7 @@ def test_concessao_zera_a_comissao_mas_a_divergencia_e_contra_o_contrato(taxas, 
     assert conc.valor_reportado == D("20.00") and conc.campos["ref_origem"] == ["T1", "AN"]
     assert conc.campos["tipo"] == "DEVOLUCAO_CONCESSAO"
     assert conc.campos["motivo"].startswith(
-        "concessão comercial - custo da Tarvo - não é divergência - não se cobra da Orbe (RX, R32, R38)")
+        "concessão comercial - custo da Tarvo - não é divergência - não se cobra da Orbe (RX, R32, R38, R41)")
     assert "R25" not in conc.campos["motivo"]
     # O04 e R32: próximo passo da Helena com o Comercial, que decide a parametrização na Orbe
     assert "próximo passo: a Helena paga a devolução ao lojista e decide com o Comercial" in conc.campos["motivo"]
@@ -217,10 +218,16 @@ def test_concessao_com_taxa_acima_do_contrato_separa_divergencia_e_concessao(tax
     assert _por_prefixo(itens, "PEN-CONCESSAO-")[f"PEN-CONCESSAO-CHK-{CNPJ_B}"].valor_reportado == D("10.00")
 
 
-def test_devolucao_sem_condicao_continua_pela_formula_da_r03(taxas, cfg):
+def test_devolucao_e_o_descontado_de_fato_e_a_divergencia_continua_pela_formula(taxas, cfg):
+    # R45: devolve-se o que saiu do bolso do lojista, transação a transação: valor_taxa da Orbe (20,01, truncado)
+    # menos a comissão pela taxa contratada (1.000,55 × 1,00% = 10,01) = 10,00. A divergência continua pela fórmula
+    # da R03: 1.000,55 × (2,00% - 1,00%) = 10,0055 -> 10,01.
     itens = _rodar([_orbe("T1", EC_B, "1000.55", "2.00")], taxas, cfg)
+    assert _por_prefixo(itens, "DIV-")["DIV-CHK-T1"].valor_reportado == D("10.01")
     devol = _por_prefixo(itens, "PEN-DEVOL-")[f"PEN-DEVOL-CHK-{CNPJ_B}"]
-    assert devol.valor_reportado == D("10.01")
+    assert devol.valor_reportado == D("10.00") and [(o.ref_origem, o.valor) for o in devol.origens] == [("T1", D("10.00"))]
+    assert "valor_taxa descontado pela Orbe menos a comissão pela taxa contratada, transação a transação (R45)" \
+        in devol.campos["motivo"]
     assert devol.campos["motivo"].endswith("(R03, R25, R29, R32)")
     assert "a devolver ao lojista" in devol.campos["motivo"]  # R25
     assert "próximo passo: a Helena devolve o valor ao lojista e contesta com a Orbe" in devol.campos["motivo"]  # O04
@@ -247,7 +254,8 @@ def test_alerta_de_antecipacao_so_para_lojista_sem_historico(taxas, cfg):
     alerta = _por_prefixo(itens, "PEN-ALERTA-ANTEC-")[f"PEN-ALERTA-ANTEC-{CNPJ_B}"]
     assert (alerta.campos["tipo"], alerta.valor_reportado, alerta.campos["ref_origem"]) == ("ALERTA_ANTECIPACAO", D("0.00"), ["AN"])
     assert alerta.campos["quem_decide"] == "Financeiro (Helena) e Comercial"
-    assert "R$ 500.00 brutos" in alerta.campos["motivo"] and "R$ 100.00 de vendas" in alerta.campos["motivo"]
+    assert "pico em 2031-03-06: R$ 500.00 antecipados contra R$ 100.00 vendidos" in alerta.campos["motivo"]
+    assert "nenhuma reversão no mês" in alerta.campos["motivo"] and "R$ 100.00 de vendas" in alerta.campos["motivo"]
     # com histórico (uma linha ligada a venda anterior ao mês), não acende
     com_historico = novo + [_orbe("E1", EC_B, "-10.00", "1.00", tipo="ESTORNO", id_referencia="V0",
                                   data_venda_original=date(2031, 2, 27), dia=date(2031, 3, 7))]
@@ -255,9 +263,36 @@ def test_alerta_de_antecipacao_so_para_lojista_sem_historico(taxas, cfg):
     # primeira transação no dia 1 e contrato anterior ao mês: não acende
     no_dia_1 = [_orbe("V1", EC_B, "100.00", "1.00", dia=date(2031, 3, 1)), novo[1]]
     assert not _por_prefixo(_rodar(no_dia_1, taxas, cfg), "PEN-ALERTA-")
-    # antecipou menos do que vendeu: não acende
+    # antecipou menos do que vendeu em todas as datas: não acende
     pouco = [_orbe("V1", EC_B, "1000.00", "1.00", dia=date(2031, 3, 5)), novo[1]]
     assert not _por_prefixo(_rodar(pouco, taxas, cfg), "PEN-ALERTA-")
+
+
+def test_alerta_acende_pelo_pico_e_a_reversao_posterior_nao_apaga(taxas, cfg):
+    # P26, R43: no fim do mês o antecipado líquido (600 - 500 = 100) fica abaixo das vendas (100 + 900 = 1.000), mas em
+    # 06/03 o antecipado acumulado (600) passou as vendas acumuladas (100): o alerta acende pelo pico e cita a reversão
+    linhas = [_orbe("V1", EC_B, "100.00", "1.00", dia=date(2031, 3, 5)),
+              _orbe("AN", EC_B, "600.00", "2.00", tipo="ANTECIPACAO", dia=date(2031, 3, 6)),
+              _orbe("V2", EC_B, "900.00", "1.00", dia=date(2031, 3, 8)),
+              _orbe("RV", EC_B, "-500.00", "2.00", tipo="REVERSAO ANTECIPACAO", id_referencia="AN",
+                    data_venda_original=date(2031, 3, 6), dia=date(2031, 3, 9))]
+    alerta = _por_prefixo(_rodar(linhas, taxas, cfg), "PEN-ALERTA-ANTEC-")[f"PEN-ALERTA-ANTEC-{CNPJ_B}"]
+    motivo = alerta.campos["motivo"]
+    assert "pico em 2031-03-06: R$ 600.00 antecipados contra R$ 100.00 vendidos" in motivo
+    assert "reversões, que não apagam o alerta: AN revertida em 2031-03-09 (RV)" in motivo
+    assert "fim do mês: R$ 100.00 antecipados, líquidos das reversões, contra R$ 1000.00 de vendas" in motivo
+    assert (alerta.valor_reportado, alerta.campos["ref_origem"]) == (D("0.00"), ["AN"])
+
+
+def test_pico_e_a_data_de_maior_excesso_com_a_reversao_ja_feita_descontada(taxas, cfg):
+    # antes do pico a reversão já desconta: 06/03 = 500 - 0 contra 100; 07/03 = 500 - 400 + 700 = 800 contra 100
+    linhas = [_orbe("V1", EC_B, "100.00", "1.00", dia=date(2031, 3, 5)),
+              _orbe("A1", EC_B, "500.00", "2.00", tipo="ANTECIPACAO", dia=date(2031, 3, 6)),
+              _orbe("R1", EC_B, "-400.00", "2.00", tipo="REVERSAO ANTECIPACAO", id_referencia="A1",
+                    data_venda_original=date(2031, 3, 6), dia=date(2031, 3, 7)),
+              _orbe("A2", EC_B, "700.00", "2.00", tipo="ANTECIPACAO", dia=date(2031, 3, 7))]
+    pico = pico_antecipacao(calcular_linhas(_df(linhas, leitor_orbe.COLUNAS_SAIDA), taxas, cfg))
+    assert pico == (date(2031, 3, 7), D("800.00"), D("100.00"))
 
 
 def test_alerta_usa_a_competencia_anterior_quando_ela_existe(taxas, cfg):
@@ -393,10 +428,12 @@ def test_set_divergencias(itens):
         ROTA_GLOBAL: [87, D("1546.28")],
         BRIDGE: [5, D("29.95")],
     }
+    # R45: a devolução é o descontado de fato (valor_taxa da Orbe menos a comissão contratada), não a fórmula:
+    # Rota 1.546,28 -> 1.545,86 e Bridge 29,95 -> 29,94 (a Orbe trunca o valor_taxa, P03)
     pen = _por_prefixo(itens, "PEN-DEVOL-")
     assert {k: (len(v.origens), v.valor_reportado) for k, v in pen.items()} == {
-        f"PEN-DEVOL-CHK-{ROTA_GLOBAL}": (87, D("1546.28")),
-        f"PEN-DEVOL-CHK-{BRIDGE}": (5, D("29.95")),
+        f"PEN-DEVOL-CHK-{ROTA_GLOBAL}": (87, D("1545.86")),
+        f"PEN-DEVOL-CHK-{BRIDGE}": (5, D("29.94")),
     }
 
 
@@ -453,7 +490,12 @@ def test_set_alerta_de_antecipacao_so_a_atlas(itens):
     a = alertas[f"PEN-ALERTA-ANTEC-{CNPJ_ATLAS}"]
     assert a.valor_reportado == D("0.00") and len(a.origens) == 5
     assert "primeira transação em 2026-09-10" in a.campos["motivo"]
-    assert "R$ 235943.10 brutos (R$ 127230.96 líquidos das reversões) contra R$ 135428.90 de vendas" in a.campos["motivo"]
+    # P26, R43: pelo pico (15/09) e não pelo total do mês; as reversões depois do pico não apagam o alerta
+    assert "pico em 2026-09-15: R$ 179592.82 antecipados contra R$ 55357.50 vendidos" in a.campos["motivo"]
+    assert ("reversões, que não apagam o alerta: AN88445637 revertida em 2026-09-17 (AN88446030), "
+            "AN88446517 revertida em 2026-09-26 (AN88446660)") in a.campos["motivo"]
+    assert ("fim do mês: R$ 127230.96 antecipados, líquidos das reversões, contra R$ 135428.90 de vendas "
+            "(R$ 235943.10 antecipados brutos)") in a.campos["motivo"]
 
 
 def test_set_reversao_anula_exatamente_a_antecipacao(entradas):

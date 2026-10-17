@@ -5,6 +5,8 @@ config/favorecidos.yaml (Aurora) e config/pagadores_meridiano.yaml (Meridiano).
 O lojista de um PIX é identificado só pela lista explícita (texto exato do extrato -> CNPJ); a Ponte é casada
 com os PIX pelo CNPJ. O que nenhuma regra cobre fica com metodo HUMANO e vira pendência (P09); com o
 fallback de IA (P14, tarvo.ia), recebe a conta sugerida com metodo IA e a pendência de revisão PEN-IA-<ref>.
+Fechamento parcial (R44): cada extrato e cada conferência (P11 a P13) sai só com as fontes dele (tarvo.dependencias);
+a conferência que perdeu um dos lados vira PEN-SEMCONF, com o que ficou sem conferir.
 """
 
 from __future__ import annotations
@@ -15,11 +17,12 @@ from dataclasses import dataclass
 from datetime import date, timedelta
 from decimal import Decimal
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Iterable
 
 import pandas as pd
 import yaml
 
+from tarvo import dependencias as dep
 from tarvo import ia
 from tarvo.leitores.comum import dinheiro
 from tarvo.remessa import carregar_config as carregar_config_remessa
@@ -72,6 +75,10 @@ MOTIVO_PIX_DIFERENCA = (
 MOTIVO_TRANSITO = (
     "transferência entre contas sem TED de mesma titularidade no Meridiano até {fim}: pela R20 cai no "
     "Meridiano em {chegada} - conferir no extrato de {mes}"
+)
+MOTIVO_SEM_CONFERENCIA = (
+    "{conferencia} não feita: a fonte {fontes} está bloqueada ({pendencias}, R44) - valor = {lado} sem conferir - "
+    "próximo passo: a Helena libera a fonte bloqueada e o fechamento roda de novo; a conferência sai sozinha"
 )
 MOTIVO_SEM_PAR = (
     "transferência entre contas sem TED de mesma titularidade e mesmo valor no Meridiano na mesma data "
@@ -162,7 +169,7 @@ def _regra(bruto: dict, campo: str, contas: set[str]) -> Regra:
                  fonte, lista, papel)
 
 
-def _contrapartes(bruto: dict, nome: str, cnpjs_planilha: set[str]) -> dict[str, Contraparte]:
+def _contrapartes(bruto: dict, nome: str, cnpjs_planilha: set[str] | None) -> dict[str, Contraparte]:
     if not isinstance(bruto, dict) or not bruto:
         raise ErroBancos(f"config: lista {nome} vazia ou ausente")
     lista = {}
@@ -175,7 +182,7 @@ def _contrapartes(bruto: dict, nome: str, cnpjs_planilha: set[str]) -> dict[str,
         if cnpj is not None:
             if not isinstance(cnpj, str) or not re.fullmatch(r"[0-9]{14}", cnpj):
                 raise ErroBancos(f"config: {campo}.cnpj deveria ser texto com 14 dígitos, veio {cnpj!r}")
-            if cnpj not in cnpjs_planilha:
+            if cnpjs_planilha is not None and cnpj not in cnpjs_planilha:
                 raise ErroBancos(f"config: {campo}.cnpj {cnpj} não está na planilha de taxas")
             if sem_contrato:
                 raise ErroBancos(f"config: {campo}: com CNPJ da planilha não pode ser sem_contrato")
@@ -185,10 +192,11 @@ def _contrapartes(bruto: dict, nome: str, cnpjs_planilha: set[str]) -> dict[str,
     return lista
 
 
-def carregar_config(plano: pd.DataFrame, taxas: pd.DataFrame, caminho=CONFIG_BANCOS,
+def carregar_config(plano: pd.DataFrame, taxas: pd.DataFrame | None, caminho=CONFIG_BANCOS,
                     favorecidos=CONFIG_FAVORECIDOS, pagadores=CONFIG_PAGADORES) -> ConfigBancos:
     """Lê as regras e as listas. Falha se uma conta não existir no plano ou não aceitar lançamento,
-    ou se um CNPJ das listas não estiver na planilha de taxas."""
+    ou se um CNPJ das listas não estiver na planilha de taxas. Sem a planilha (fonte bloqueada, R44), os CNPJs das
+    listas não são conferidos (a PEN-BLOQUEIO-TAXAS diz isso)."""
     bruto = _ler_yaml(caminho)
     contas = _contas_lancaveis(plano)
     regras = {}
@@ -197,7 +205,7 @@ def carregar_config(plano: pd.DataFrame, taxas: pd.DataFrame, caminho=CONFIG_BAN
         if not lista:
             raise ErroBancos(f"config: regras.{banco} vazia ou ausente")
         regras[banco] = tuple(_regra(r, f"regras.{banco}[{i}]", contas) for i, r in enumerate(lista))
-    cnpjs = set(taxas["cnpj"])
+    cnpjs = set(taxas["cnpj"]) if taxas is not None else None
     listas = {
         "favorecidos": _contrapartes(_ler_yaml(favorecidos).get(LISTAS["favorecidos"]), "favorecidos", cnpjs),
         "pagadores": _contrapartes(_ler_yaml(pagadores).get(LISTAS["pagadores"]), "pagadores", cnpjs),
@@ -476,25 +484,80 @@ def conferir_transferencias(aurora: list[Lancamento], meridiano: list[Lancamento
 
 # ---------------------------------------------------------------- módulo
 
-def calcular_bancos(aurora: pd.DataFrame, meridiano: pd.DataFrame, meridiano_meta: dict, ponte: pd.DataFrame,
-                    competencia: str, cfg: ConfigBancos, cfg_remessa,
-                    fallback: FallbackIA | None = None) -> list[ItemSaida]:
-    aur = classificar(AURORA, _linhas(aurora, "descricao"), cfg)
-    mer = classificar(MERIDIANO, _linhas(meridiano, "memo"), cfg)
-    inicio, fim = meridiano_meta.get("dtstart"), meridiano_meta.get("dtend")
-    if inicio is None or fim is None:
-        raise ErroBancos("extrato do Meridiano sem DTSTART/DTEND: não há período para as conferências")
+# Conferências cruzadas (R44): produto do mapa -> (id da PEN-SEMCONF, nome, papel no Meridiano/Aurora, lado da Ponte)
+CONFERENCIAS = {
+    "conferencia_ted_liquidacao": ("PEN-SEMCONF-TED-LIQ", "conferência das TEDs de liquidação com as operações "
+                                   "da Ponte (P11)"),
+    "conferencia_pix_remessas": ("PEN-SEMCONF-PIX-REM", "conferência dos PIX recebidos com as remessas (P12)"),
+    "conferencia_transferencias": ("PEN-SEMCONF-TRANSF", "conferência das transferências Aurora × Meridiano (P13)"),
+}
+TODOS_PRODUTOS = frozenset(("lancamentos_aurora", "lancamentos_meridiano", *CONFERENCIAS))
 
-    unicas, _ = deduplicar(ponte, cfg_remessa)  # R13: a duplicata conta uma vez
-    unicas, _ = separar_ajustes(unicas, cfg_remessa)  # R31: ajuste não é operação (sem TED nem PIX)
-    pend_pix = conferir_pix_remessas(mer, [op for op in unicas if na_competencia(op, competencia)], cfg)
+
+def _sem_conferencia(chave: str, lados: list[tuple[str, list[tuple[str, str, Decimal]]]], bloqueadas: Iterable[str],
+                     cfg: ConfigBancos) -> list[ItemSaida]:
+    """PEN-SEMCONF-<...>: a conferência não saiu, e o que ficou sem conferir é o lado que existe (R44)."""
+    lados = [(nome, origens) for nome, origens in lados if origens]
+    if not lados:
+        return []
+    id_saida, conferencia = CONFERENCIAS[chave]
+    fontes = sorted(set(dep.POR_CHAVE[chave].fontes) & set(bloqueadas))
+    origens = [o for _, os_ in lados for o in os_]
+    motivo = MOTIVO_SEM_CONFERENCIA.format(
+        conferencia=conferencia, fontes=" e ".join(fontes),
+        pendencias=", ".join(f"PEN-BLOQUEIO-{f.upper()}" for f in fontes), lado=" e ".join(n for n, _ in lados))
+    return [_pendencia(id_saida, "CONFERENCIA_NAO_FEITA", [o[1] for o in origens], motivo,
+                       _soma(o[2] for o in origens), origens, cfg)]
+
+
+def calcular_bancos(aurora: pd.DataFrame | None, meridiano: pd.DataFrame | None, meridiano_meta: dict | None,
+                    ponte: pd.DataFrame | None, competencia: str, cfg: ConfigBancos, cfg_remessa,
+                    fallback: FallbackIA | None = None, produtos: frozenset[str] = TODOS_PRODUTOS,
+                    bloqueadas: frozenset[str] = frozenset()) -> list[ItemSaida]:
+    """Lançamentos e conferências dos produtos pedidos (todos, no fechamento completo). Fonte bloqueada vem None.
+
+    Conferência fora de produtos (uma fonte dela bloqueada) vira PEN-SEMCONF com o lado que existe (R44)."""
+    aur = classificar(AURORA, _linhas(aurora, "descricao"), cfg) if "lancamentos_aurora" in produtos else []
+    mer = classificar(MERIDIANO, _linhas(meridiano, "memo"), cfg) if "lancamentos_meridiano" in produtos else []
+    inicio = fim = None
+    if "lancamentos_meridiano" in produtos:
+        inicio, fim = meridiano_meta.get("dtstart"), meridiano_meta.get("dtend")
+        if inicio is None or fim is None:
+            raise ErroBancos("extrato do Meridiano sem DTSTART/DTEND: não há período para as conferências")
+
+    unicas = unicas_mes = None
+    if ponte is not None:
+        unicas, _ = deduplicar(ponte, cfg_remessa)  # R13: a duplicata conta uma vez
+        unicas, _ = separar_ajustes(unicas, cfg_remessa)  # R31: ajuste não é operação (sem TED nem PIX)
+        unicas_mes = [op for op in unicas if na_competencia(op, competencia)]
+    pend_pix = (conferir_pix_remessas(mer, unicas_mes, cfg) if "conferencia_pix_remessas" in produtos else [])
 
     sugestoes = sugestoes_ia([aur, mer], fallback) if fallback is not None else {}
     itens = [item_lancamento(l, cfg, sugestoes.get(l.id_saida)) for l in aur + mer]
     itens += pendencias_lancamentos(aur + mer, cfg, sugestoes, fallback.cfg if fallback else None)
-    itens += conferir_ted_liquidacao(mer, unicas, inicio, fim, cfg)
+    if "conferencia_ted_liquidacao" in produtos:
+        itens += conferir_ted_liquidacao(mer, unicas, inicio, fim, cfg)
     itens += pend_pix
-    itens += conferir_transferencias(aur, mer, fim, cfg)
+    if "conferencia_transferencias" in produtos:
+        itens += conferir_transferencias(aur, mer, fim, cfg)
+
+    def papel(lancamentos, p):
+        return [l.origem() for l in lancamentos if l.papel == p]
+
+    ops = sorted(unicas_mes or [], key=lambda o: o["ref_origem"])
+    lado_ponte = ("as operações únicas da Ponte contratadas no mês (valor_brl + iof_brl)",
+                  [_origem_op(op, +1) for op in ops])
+    if "conferencia_ted_liquidacao" not in produtos:
+        itens += _sem_conferencia("conferencia_ted_liquidacao", [
+            ("as TEDs LIQ OPERACOES do Meridiano", papel(mer, "ted_liquidacao")), lado_ponte], bloqueadas, cfg)
+    if "conferencia_pix_remessas" not in produtos:
+        itens += _sem_conferencia("conferencia_pix_remessas", [
+            ("os PIX recebidos de clientes no Meridiano", papel(mer, "pix_cliente")), lado_ponte], bloqueadas, cfg)
+    if "conferencia_transferencias" not in produtos:
+        itens += _sem_conferencia("conferencia_transferencias", [
+            ("as transferências enviadas do Aurora", papel(aur, "transferencia_enviada")),
+            ("as TEDs de mesma titularidade recebidas no Meridiano", papel(mer, "transferencia_recebida"))],
+            bloqueadas, cfg)
     return itens
 
 
@@ -503,7 +566,11 @@ def bancos(entradas: Entradas, config=CONFIG_BANCOS, favorecidos=CONFIG_FAVORECI
     """Módulo do fechamento: lançamentos classificados e pendências bancárias.
 
     Fallback de IA (P14) só com entradas.usar_ia (o CLI desliga com --sem-ia) e habilitada em config/ia.yaml.
+    Gera só os produtos do mapa (tarvo.dependencias) cujas fontes estão disponíveis (R44).
     """
+    produtos = frozenset(p for p in TODOS_PRODUTOS if dep.gera(p, entradas))
+    if not produtos & {"lancamentos_aurora", "lancamentos_meridiano"}:
+        return []  # sem extrato legível ou sem plano de contas: a PEN-BLOQUEIO diz o que não saiu
     cfg = carregar_config(entradas.plano_contas, entradas.taxas, config, favorecidos, pagadores)
     fallback = None
     if entradas.usar_ia:
@@ -511,4 +578,5 @@ def bancos(entradas: Entradas, config=CONFIG_BANCOS, favorecidos=CONFIG_FAVORECI
         if cfg_ia.habilitada:
             fallback = FallbackIA(cfg_ia, ia.contas_analiticas(entradas.plano_contas), cliente_ia)
     return calcular_bancos(entradas.aurora, entradas.meridiano, entradas.meridiano_meta, entradas.ponte,
-                           entradas.competencia, cfg, carregar_config_remessa(), fallback)
+                           entradas.competencia, cfg, carregar_config_remessa(), fallback, produtos,
+                           dep.bloqueadas(entradas.bloqueios))

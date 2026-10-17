@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 
 from tarvo.cli import localizar_pela_config
-from tarvo.leitores.orbe import COLUNAS_SAIDA, Repetida, ler_orbe, ler_orbe_arquivos
+from tarvo.leitores.orbe import COLUNAS_SAIDA, ErroArquivoOrbe, Repetida, ler_orbe, ler_orbe_arquivos, ler_orbe_parcial
 
 ENTRADA = Path(__file__).resolve().parents[1] / "dados" / "2026-09"
 
@@ -184,3 +184,40 @@ def test_cabecalho_com_coluna_a_mais_tambem_para(tmp_path):
     b = _arquivo(tmp_path, "06_orbe_b.csv", VENDA_2 + ";x", cabecalho=CABECALHO + ";observacao")
     with pytest.raises(ValueError, match=r"06_orbe_b\.csv: cabeçalho diferente.*15 colunas, o 01_orbe_a\.csv tem 14"):
         ler_orbe_arquivos([a, b])
+
+
+# ---------------------------------------------------------------- R44: bloqueio só do arquivo de ajustes
+
+def test_parcial_ajustes_com_id_diferente_ficam_de_fora_e_o_relatorio_entra(tmp_path):
+    a = _arquivo(tmp_path, "01_orbe_a.csv", VENDA_1)
+    b = _arquivo(tmp_path, "06_orbe_b.csv", VENDA_2, VENDA_1.replace("1.000,00;1,49;14,90;985,10", "1.100,00;1,49;16,39;1.083,61"))
+    leitura = ler_orbe_parcial([a, b])
+    assert list(leitura.quadro["ref_origem"]) == ["TX1"] and leitura.lidos == ["01_orbe_a.csv"]
+    (bloq,) = leitura.bloqueados
+    assert bloq.arquivo == "06_orbe_b.csv" and bloq.linhas == 2
+    assert bloq.origens == (("01_orbe_a.csv", "TX1"), ("06_orbe_b.csv", "TX1"))
+    assert "01_orbe_a.csv (linha física 2)" in bloq.erro and "06_orbe_b.csv (linha física 3)" in bloq.erro
+
+
+def test_parcial_cabecalho_diferente_bloqueia_so_o_posterior(tmp_path):
+    a = _arquivo(tmp_path, "01_orbe_a.csv", VENDA_1)
+    b = _arquivo(tmp_path, "06_orbe_b.csv", VENDA_2 + ";x", cabecalho=CABECALHO + ";observacao")
+    leitura = ler_orbe_parcial([a, b])
+    assert list(leitura.quadro["ref_origem"]) == ["TX1"]
+    assert [x.arquivo for x in leitura.bloqueados] == ["06_orbe_b.csv"]
+    assert "15 colunas, o 01_orbe_a.csv tem 14" in leitura.bloqueados[0].erro
+
+
+def test_parcial_relatorio_ilegivel_bloqueia_a_fonte(tmp_path):
+    a = _arquivo(tmp_path, "01_orbe_a.csv", VENDA_1, cabecalho=CABECALHO.replace("valor_taxa", "vlr_taxa"))
+    b = _arquivo(tmp_path, "06_orbe_b.csv", VENDA_2)
+    with pytest.raises(ErroArquivoOrbe) as erro:
+        ler_orbe_parcial([a, b])
+    assert erro.value.linha == 1 and "colunas ausentes no cabeçalho: ['valor_taxa']" in str(erro.value)
+
+
+def test_parcial_coluna_a_mais_no_relatorio_so_avisa(tmp_path):
+    a = _arquivo(tmp_path, "01_orbe_a.csv", VENDA_1 + ";x", cabecalho=CABECALHO + ";observacao")
+    leitura = ler_orbe_parcial([a])
+    assert list(leitura.quadro["ref_origem"]) == ["TX1"] and not leitura.bloqueados
+    assert leitura.avisos == ["01_orbe_a.csv: coluna(s) fora do layout esperado: observacao (não usadas pelo fechamento)"]

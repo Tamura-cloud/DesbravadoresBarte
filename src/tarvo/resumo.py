@@ -30,6 +30,8 @@ from tarvo.saida import (
 
 ZERO = Decimal("0.00")
 MAIORES = 5
+TIPOS_BLOQUEIO = ("FONTE_BLOQUEADA", "ARQUIVO_BLOQUEADO")  # pendências PEN-BLOQUEIO (R44)
+COLUNA_SITUACAO = "situacao"  # coluna extra dos itens provisórios (R44)
 
 
 class ErroResumo(Exception):
@@ -120,6 +122,23 @@ def _nomes_por_cnpj(lidos) -> dict[tuple[str, str], str]:
 
 
 # ---------------------------------------------------------------- seções
+
+def status(lidos) -> tuple[str, list[str], int]:
+    """("COMPLETO" ou "PARCIAL", id das pendências de bloqueio, itens provisórios), pelos próprios CSVs (R44)."""
+    bloqueios = [l["id_saida"] for l in lidos[PENDENCIAS.nome] if l["tipo"] in TIPOS_BLOQUEIO]
+    provisorios = sum(1 for e in ARQUIVOS_ITENS for l in lidos[e.nome] if l.get(COLUNA_SITUACAO))
+    return ("PARCIAL" if bloqueios else "COMPLETO"), bloqueios, provisorios
+
+
+def _secao_status(lidos) -> list[str]:
+    situacao, bloqueios, provisorios = status(lidos)
+    if situacao == "COMPLETO":
+        return ["**Status do fechamento: COMPLETO** — nenhuma fonte bloqueada."]
+    texto = f"**Status do fechamento: PARCIAL** — fontes bloqueadas: {', '.join(bloqueios)}."
+    if provisorios:
+        texto += f" Itens provisórios (coluna situacao): {provisorios}."
+    return [texto + " O que não foi gerado e o próximo passo estão no motivo de cada PEN-BLOQUEIO."]
+
 
 def _secao_comissoes(lidos) -> list[str]:
     linhas = lidos[COMISSOES.nome]
@@ -262,6 +281,7 @@ def resumir(pasta) -> str:
     problemas = validar_saida(pasta)
     secoes = [
         [f"# Resumo da saída — {pasta.name or pasta}", ""],
+        _secao_status(lidos),
         _secao_comissoes(lidos),
         _secao_notas(lidos),
         _secao_divergencias(lidos),

@@ -16,6 +16,7 @@ import openpyxl
 import pandas as pd
 
 from tarvo.leitores.comum import cnpj14, data_br, dinheiro, num_br, pct
+from tarvo.leitores.layout import avisos_layout
 
 ABA = "Operações"
 CABECALHO_REF = "Nº Operação"
@@ -84,7 +85,7 @@ def _corpo(msg: EmailMessage) -> str | None:
 
 
 def _linha_cabecalho(linhas: list[tuple]) -> tuple[int, dict[str, int]]:
-    """Índice da linha que tem "Nº Operação" e mapa coluna_saida -> índice da célula."""
+    """Índice da linha que tem "Nº Operação" e mapa coluna_saida -> índice da célula. Falta de coluna é erro."""
     for i, linha in enumerate(linhas):
         textos = [_texto(v) for v in linha]
         if CABECALHO_REF in textos:
@@ -151,11 +152,12 @@ def _converter(bruto: dict, onde: str) -> dict:
     return reg
 
 
-def ler_ponte(caminho_eml) -> tuple[pd.DataFrame, dict]:
+def ler_ponte(caminho_eml, avisos: list[str] | None = None) -> tuple[pd.DataFrame, dict]:
     """Lê o .eml da Ponte Câmbio. Devolve (operações, metadados do e-mail e do rodapé).
 
     Cada linha da aba "Operações" entre o cabeçalho e a primeira linha vazia vira uma linha do
     DataFrame, inclusive duplicatas e spreads negativos. O rodapé não é operação: vai para os metadados.
+    avisos (opcional) recebe as colunas a mais ou fora de ordem (a leitura é pelo nome, R44).
     """
     caminho = Path(caminho_eml)
     with open(caminho, "rb") as f:
@@ -174,6 +176,8 @@ def ler_ponte(caminho_eml) -> tuple[pd.DataFrame, dict]:
         wb.close()
 
     i_cab, indices = _linha_cabecalho(linhas)
+    if avisos is not None:
+        avisos += avisos_layout(f"{arquivo_origem}, aba '{ABA}'", [_texto(v) for v in linhas[i_cab]], COLUNAS)
 
     registros = []
     i = i_cab + 1

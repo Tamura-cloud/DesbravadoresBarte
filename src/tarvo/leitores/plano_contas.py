@@ -7,12 +7,19 @@ from pathlib import Path
 
 import pandas as pd
 
+from tarvo.leitores.layout import avisos_layout
+
 COLUNAS = ["cod_conta", "descricao", "tipo", "natureza", "aceita_lancto", "cod_superior"]
+# Layout do arquivo do ERP, na ordem: as colunas lidas e DT_CRIACAO, que vem no arquivo e o fechamento não usa.
+LAYOUT = [c.upper() for c in COLUNAS] + ["DT_CRIACAO"]
 _SIM_NAO = {"S": True, "N": False}
 
 
-def ler_plano(caminho) -> pd.DataFrame:
-    """Lê o plano de contas. cod_conta e cod_superior ficam como texto; aceita_lancto S/N vira bool."""
+def ler_plano(caminho, avisos: list[str] | None = None) -> pd.DataFrame:
+    """Lê o plano de contas. cod_conta e cod_superior ficam como texto; aceita_lancto S/N vira bool.
+
+    avisos (opcional) recebe as colunas a mais ou fora de ordem (a leitura é pelo nome, R44).
+    """
     caminho = Path(caminho)
     with open(caminho, encoding="cp1252", newline="") as f:
         leitor = csv.DictReader(f, delimiter=";")
@@ -20,6 +27,8 @@ def ler_plano(caminho) -> pd.DataFrame:
         faltando = [c for c in COLUNAS if c.upper() not in titulos]
         if faltando:
             raise ValueError(f"{caminho.name}: colunas ausentes: {faltando}")
+        if avisos is not None:
+            avisos += avisos_layout(caminho.name, list(titulos), LAYOUT)
 
         registros = []
         for n, linha in enumerate(leitor, start=2):

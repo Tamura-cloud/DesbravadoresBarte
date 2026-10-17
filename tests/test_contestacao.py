@@ -181,8 +181,13 @@ def test_orbe_notas_avisos_e_valor_a_devolver_vindo_das_pendencias(saida, cont):
     notas = _partes(cont, "orbe.md")[0]
     assert "Escola Bridge de Idiomas Ltda: foi avisada só alguns dias depois do início da vigência (2026-09-15)" in notas
     pen = {l["id_saida"]: D(l["valor_brl"]) for l in _ler(saida, "pendencias.csv")}
-    assert pen[f"PEN-DEVOL-CHK-{BRIDGE}"] == D("29.95") and f"Bridge de Idiomas Ltda: {_rs(D('29.95'))}." in notas
-    assert pen[f"PEN-DEVOL-CHK-{ROTA}"] == D("1546.28") and f"Rota Global Intercâmbio Ltda: {_rs(D('1546.28'))}." in notas
+    # R45: as notas mostram o descontado de fato (PEN-DEVOL), e o e-mail cobra da Orbe a fórmula (DIV-CHK)
+    assert pen[f"PEN-DEVOL-CHK-{BRIDGE}"] == D("29.94")
+    assert (f"Escola Bridge de Idiomas Ltda: **{_rs(D('29.94'))}**. O e-mail cobra da Orbe {_rs(D('29.95'))}" in notas
+            and f"A diferença de {_rs(D('0.01'))} é arredondamento" in notas)
+    assert pen[f"PEN-DEVOL-CHK-{ROTA}"] == D("1545.86")
+    assert f"Rota Global Intercâmbio Ltda: **{_rs(D('1545.86'))}**. O e-mail cobra da Orbe {_rs(D('1546.28'))}" in notas
+    assert "Pela R10" not in notas and "(R25, R45, pendências PEN-DEVOL-CHK)" in notas
     assert f"PEN-DEVOL-CHK-{CASA}" not in pen  # R32: a Casa não tem divergência; a devolução dela é a PEN-CONCESSAO
 
 

@@ -9,6 +9,7 @@ from pathlib import Path
 import pandas as pd
 
 from tarvo.leitores.comum import cnpj14, data_br, dinheiro, num_br, sem_acento
+from tarvo.leitores.layout import avisos_layout
 
 COLUNAS = ["arquivo_origem", "ref_origem", "data", "descricao", "documento", "valor", "saldo"]
 
@@ -42,11 +43,12 @@ def _metadado(campos: list[str], meta: dict) -> None:
             meta["cnpj_titular"] = cnpj14(valor)
 
 
-def ler_aurora(caminho) -> tuple[pd.DataFrame, dict]:
+def ler_aurora(caminho, avisos: list[str] | None = None) -> tuple[pd.DataFrame, dict]:
     """Lê o extrato do Aurora. Devolve (lançamentos, metadados).
 
     Lançamento é a linha cuja 1ª coluna é uma data e cuja descrição não é "SALDO ANTERIOR".
     ref_origem = "L" + número da linha física no arquivo (a primeira linha é a L1).
+    avisos (opcional) recebe as colunas a mais ou fora de ordem (a leitura é pelo nome, R44).
     """
     caminho = Path(caminho)
     with open(caminho, encoding="utf-8", newline="") as f:
@@ -67,6 +69,8 @@ def ler_aurora(caminho) -> tuple[pd.DataFrame, dict]:
                 if faltando:
                     raise ValueError(f"{caminho.name} L{n}: colunas ausentes no título: {faltando}")
                 idx = {nome: normalizados.index(t) for nome, t in _TITULOS.items()}
+                if avisos is not None:
+                    avisos += avisos_layout(f"{caminho.name} L{n}", normalizados, _TITULOS.values())
             else:
                 _metadado(campos, meta)
             continue

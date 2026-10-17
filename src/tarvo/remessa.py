@@ -18,6 +18,7 @@ from typing import TYPE_CHECKING
 import pandas as pd
 import yaml
 
+from tarvo import dependencias as dep
 from tarvo.leitores.comum import dinheiro, sem_acento
 from tarvo.resumo import brl
 from tarvo.saida import COMISSOES, DIVERGENCIAS, NOTAS, PENDENCIAS, ItemSaida, texto_saida
@@ -523,7 +524,12 @@ def calcular_remessa(ponte: pd.DataFrame, taxas: pd.DataFrame, competencia: str,
 
 
 def remessa(entradas: Entradas, config=CONFIG_REMESSA) -> list[ItemSaida]:
-    """Módulo do fechamento: itens da linha REMESSA a partir da Ponte e da planilha de taxas."""
+    """Módulo do fechamento: itens da linha REMESSA a partir da Ponte e da planilha de taxas.
+
+    Sem uma das duas (fonte bloqueada), não gera nada (R44)."""
+    if not dep.gera("remessa", entradas):
+        return []
     cfg = carregar_config(config)
-    return calcular_remessa(entradas.ponte, entradas.taxas, entradas.competencia,
-                            entradas.ponte_rodape["arquivo_origem"], cfg, carregar_anterior(entradas, cfg))
+    itens = calcular_remessa(entradas.ponte, entradas.taxas, entradas.competencia,
+                             entradas.ponte_rodape["arquivo_origem"], cfg, carregar_anterior(entradas, cfg))
+    return dep.marcar_provisorio(itens) if dep.provisorio("remessa", entradas) else itens

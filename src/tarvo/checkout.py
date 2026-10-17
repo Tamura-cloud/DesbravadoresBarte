@@ -1,6 +1,6 @@
 """Linha CHECKOUT (Orbe): comissão pela taxa contratada, divergências, notas e pendências por lojista.
 
-Regras do HIPOTESES.md, seção 1: R01 a R10, R25, R30, R32, R33 e R35 a R40; premissas P23 e P26. Mapeamentos e condições especiais em config/checkout.yaml.
+Regras do HIPOTESES.md, seção 1: R01 a R10, R25, R30, R32, R33, R35 a R41, R43 a R45; premissas P23 e P26. Mapeamentos e condições especiais em config/checkout.yaml.
 O lojista é casado só pelo EC (coluna "EC Orbe" da planilha ou ec_sem_codigo da config) e depois pelo CNPJ;
 o nome da Orbe nunca é usado.
 """
@@ -17,6 +17,7 @@ from typing import TYPE_CHECKING
 import pandas as pd
 import yaml
 
+from tarvo import dependencias as dep
 from tarvo.leitores.comum import dinheiro
 from tarvo.saida import COMISSOES, DIVERGENCIAS, NOTAS, PENDENCIAS, ItemSaida, texto_saida
 
@@ -43,13 +44,15 @@ MOTIVO_RETROATIVO = (
 )
 MOTIVO_DEVOLUCAO = (
     "taxa aplicada pela Orbe diferente da contratada - a nota documenta só a taxa contratada e o que a Orbe "
-    "cobrou a mais é valor a devolver ao lojista - valor = diferença pela taxa contratada - próximo passo: a Helena "
-    "devolve o valor ao lojista e contesta com a Orbe, pelo rascunho de e-mail em {rascunho} (R03, R25, R29, R32)"
+    "cobrou a mais é valor a devolver ao lojista - valor = valor_taxa descontado pela Orbe menos a comissão pela taxa "
+    "contratada, transação a transação (R45) - próximo passo: a Helena devolve o valor ao lojista e contesta com a "
+    "Orbe, pelo rascunho de e-mail em {rascunho} (R03, R25, R29, R32)"
 )
 MOTIVO_CONCESSAO = (
-    "concessão comercial; custo da Tarvo; não é divergência; não se cobra da Orbe ({regra}, R32, R38) - "
-    "valor = taxa cobrada pela Orbe nas transações da concessão - próximo passo: a Helena paga a devolução ao lojista "
-    "e decide com o Comercial se pede à Orbe parametrizar {taxa} daqui em diante (nota interna em {rascunho})"
+    "concessão comercial; custo da Tarvo; não é divergência; não se cobra da Orbe ({regra}, R32, R38, R41) - "
+    "valor = valor_taxa descontado pela Orbe menos a comissão da Tarvo nas transações da concessão, transação a "
+    "transação (R45) - próximo passo: a Helena paga a devolução ao lojista e decide com o Comercial se pede à Orbe "
+    "parametrizar {taxa} daqui em diante (nota interna em {rascunho})"
 )
 MOTIVO_REPETIDA = (
     "id_transacao {ref} veio em {mantido} (linha física {n_mantida}) e de novo, com a linha igual, em {repetido} "
@@ -63,10 +66,13 @@ MOTIVO_SEM_ORIGINAL = (
 )
 MOTIVO_IDENTIFICACAO = "EC {ec}, CNPJ {cnpj} (identificado pela aba de 2025, sem usar a taxa dela - R39) - "
 MOTIVO_ALERTA = (
-    "alerta informativo (P26, R33): lojista sem histórico ({historico}) antecipou R$ {antecipado} brutos "
-    "(R$ {liquido} líquidos das reversões) contra R$ {vendido} de vendas no mês - não muda nenhum valor - "
-    "próximo passo: a Helena e o Comercial avaliam o risco do lojista (R33)"
+    "alerta informativo (P26, R33, R43): lojista sem histórico ({historico}) - pico em {pico}: R$ {antecipado_pico} "
+    "antecipados contra R$ {vendido_pico} vendidos, acumulados desde a primeira transação - {reversoes} - fim do mês: "
+    "R$ {liquido} antecipados, líquidos das reversões, contra R$ {vendido} de vendas (R$ {antecipado} antecipados "
+    "brutos) - não muda nenhum valor - próximo passo: a Helena e o Comercial avaliam o risco do lojista (R33)"
 )
+TEXTO_ALERTA_REVERSOES = "reversões, que não apagam o alerta: {lista}"
+TEXTO_ALERTA_SEM_REVERSAO = "nenhuma reversão no mês"
 
 
 class ErroCheckout(ValueError):
@@ -291,9 +297,16 @@ def _rascunho_orbe() -> str:
     return f"{carregar_config().pasta}/{ARQUIVO_ORBE[0]}"
 
 
+def comissao_contratada(l: LinhaCheckout) -> Decimal:
+    """Comissão da linha pela taxa do contrato (a planilha), arredondada (R01, R02)."""
+    return dinheiro(l.valor_bruto * l.taxa_contratada / 100)
+
+
 def _pendencia_devolucao(cnpj: str, divergentes: list[LinhaCheckout], cfg: ConfigCheckout) -> ItemSaida:
-    """R03, R25, R32: a contraparte cobrou diferente do contrato; o lojista é ressarcido pela diferença."""
-    origens = [(l.arquivo_origem, l.ref_origem, l.diferenca) for l in divergentes]
+    """R03, R25, R32: a contraparte cobrou diferente do contrato; o lojista é ressarcido.
+    R45: o que se devolve é o que saiu do bolso do lojista, transação a transação: o valor_taxa descontado pela Orbe
+    menos a comissão pela taxa contratada. A divergência (DIV-CHK) continua pela fórmula da R03."""
+    origens = [(l.arquivo_origem, l.ref_origem, l.valor_taxa_orbe - comissao_contratada(l)) for l in divergentes]
     return ItemSaida(f"PEN-DEVOL-CHK-{cnpj}", PENDENCIAS.nome,
                      {"tipo": "DEVOLUCAO_LOJISTA", "ref_origem": [l.ref_origem for l in divergentes],
                       "motivo": texto_saida(MOTIVO_DEVOLUCAO.format(rascunho=_rascunho_orbe())),
@@ -302,11 +315,13 @@ def _pendencia_devolucao(cnpj: str, divergentes: list[LinhaCheckout], cfg: Confi
 
 
 def _pendencia_concessao(cnpj: str, linhas: list[LinhaCheckout], cfg: ConfigCheckout) -> ItemSaida:
-    """R10, R32, R38: a Tarvo devolve ao lojista o que a Orbe descontou dentro do contrato nas transações da concessão.
-    Custo da Tarvo, separado das divergências. Se a mesma linha também diverge do contrato, a parte acima do contrato
-    já está na PEN-DEVOL-CHK e sai daqui (P23)."""
+    """R10, R32, R38, R41: a Tarvo devolve ao lojista o que a Orbe descontou nas transações da concessão, menos a
+    comissão da Tarvo pela concessão (R45: o descontado de fato, transação a transação). Custo da Tarvo, separado das
+    divergências. Se a mesma linha também diverge do contrato, a parte acima do contrato (valor_taxa menos a comissão
+    contratada) já está na PEN-DEVOL-CHK e aqui fica só a comissão contratada menos a da concessão (P23)."""
     regras = sorted({l.concessao for l in linhas})
-    origens = [(l.arquivo_origem, l.ref_origem, l.valor_taxa_orbe - (l.diferenca or ZERO)) for l in linhas]
+    origens = [(l.arquivo_origem, l.ref_origem,
+                (comissao_contratada(l) if l.divergente else l.valor_taxa_orbe) - l.comissao) for l in linhas]
     return ItemSaida(f"PEN-CONCESSAO-CHK-{cnpj}", PENDENCIAS.nome,
                      {"tipo": "DEVOLUCAO_CONCESSAO", "ref_origem": [l.ref_origem for l in linhas],
                       "motivo": texto_saida(MOTIVO_CONCESSAO.format(regra=", ".join(regras), rascunho=_rascunho_orbe(),
@@ -320,10 +335,28 @@ def _primeiro_dia(competencia: str) -> date:
     return date(ano, mes, 1)
 
 
+def pico_antecipacao(doc: list[LinhaCheckout]) -> tuple[date, Decimal, Decimal] | None:
+    """P26: (data, antecipado, vendido) acumulados desde a primeira transação, na data em que o antecipado mais passa
+    as vendas; None se nunca passa. O antecipado é líquido das reversões já feitas até a data (a reversão posterior
+    não apaga o pico). Empate: a primeira data."""
+    antecipado = vendido = ZERO
+    pico = None
+    for d in sorted({l.data_movimento for l in doc}):
+        do_dia = [l for l in doc if l.data_movimento == d]
+        antecipado += _soma(l.valor_bruto for l in do_dia if l.tipo_lancamento in (ANTECIPACAO, REVERSAO))
+        vendido += _soma(l.valor_bruto for l in do_dia if l.tipo_lancamento == VENDA)
+        if antecipado > vendido and (pico is None or antecipado - vendido > pico[1] - pico[2]):
+            pico = (d, antecipado, vendido)
+    return pico
+
+
 def _alertas_antecipacao(grupos: dict[str, list[LinhaCheckout]], contratos, competencia: str, cfg: ConfigCheckout,
                          ecs_anteriores: frozenset[str] | None) -> list[ItemSaida]:
-    """P26 (R33): alerta informativo quando lojista sem histórico antecipa mais do que vendeu no mês.
+    """P26 (R33, R43): alerta informativo quando lojista sem histórico, em alguma data do mês, tem o antecipado
+    acumulado desde a primeira transação acima das vendas acumuladas até a data (o pico).
 
+    Reversões posteriores não apagam o alerta: o motivo cita cada reversão (antecipação revertida, data e id da
+    reversão) e mostra o saldo líquido do fim do mês.
     Sem histórico: com a competência anterior disponível, nenhuma transação do EC nela. Sem ela, nenhuma linha do mês
     ligada a venda anterior ao mês (estorno ou reversão de antecipação de data anterior) e primeira transação depois
     do dia 1, ou o primeiro contrato do lojista começando no mês. Pendência com valor zero: não muda nenhum valor.
@@ -335,9 +368,10 @@ def _alertas_antecipacao(grupos: dict[str, list[LinhaCheckout]], contratos, comp
         if not antecipacoes:
             continue
         antecipado = _soma(l.valor_bruto for l in antecipacoes)
-        reversoes = _soma(l.valor_bruto for l in doc if l.tipo_lancamento == REVERSAO)
+        reversoes = [l for l in doc if l.tipo_lancamento == REVERSAO]
         vendido = _soma(l.valor_bruto for l in doc if l.tipo_lancamento == VENDA)
-        if antecipado <= vendido:
+        pico = pico_antecipacao(doc)
+        if pico is None:
             continue
         ecs = {l.ec for l in doc}
         primeira = min(l.data_movimento for l in doc)
@@ -353,11 +387,17 @@ def _alertas_antecipacao(grupos: dict[str, list[LinhaCheckout]], contratos, comp
             if ligada_a_anterior or not (primeira > inicio or contrato_no_mes):
                 continue
             historico = f"primeira transação em {primeira.isoformat()}, nenhuma linha de venda anterior ao mês"
+        lista = [f"{l.id_referencia} revertida em {l.data_movimento.isoformat()} ({l.ref_origem})"
+                 for l in sorted(reversoes, key=lambda l: (l.data_movimento, l.ref_origem))]
+        texto_reversoes = (TEXTO_ALERTA_REVERSOES.format(lista=", ".join(lista)) if lista
+                           else TEXTO_ALERTA_SEM_REVERSAO)
         itens.append(ItemSaida(
             f"PEN-ALERTA-ANTEC-{chave}", PENDENCIAS.nome,
             {"tipo": "ALERTA_ANTECIPACAO", "ref_origem": [l.ref_origem for l in antecipacoes],
-             "motivo": texto_saida(MOTIVO_ALERTA.format(historico=historico, antecipado=antecipado,
-                                                        liquido=antecipado + reversoes, vendido=vendido)),
+             "motivo": texto_saida(MOTIVO_ALERTA.format(
+                 historico=historico, pico=pico[0].isoformat(), antecipado_pico=pico[1], vendido_pico=pico[2],
+                 reversoes=texto_reversoes, liquido=antecipado + _soma(l.valor_bruto for l in reversoes),
+                 vendido=vendido, antecipado=antecipado)),
              "quem_decide": cfg.quem_decide["alerta_antecipacao"]},
             ZERO, [(l.arquivo_origem, l.ref_origem, ZERO) for l in antecipacoes]))
     return itens
@@ -484,7 +524,13 @@ def pendencias_arquivos_orbe(orbe: pd.DataFrame, repetidas, competencia: str, cf
 
 
 def checkout(entradas: Entradas, config=CONFIG_CHECKOUT) -> list[ItemSaida]:
-    """Módulo do fechamento: itens da linha CHECKOUT a partir da Orbe e da planilha de taxas."""
+    """Módulo do fechamento: itens da linha CHECKOUT a partir da Orbe e da planilha de taxas.
+
+    Sem uma das duas (fonte bloqueada), não gera nada; com um arquivo de ajustes da Orbe bloqueado, os itens saem
+    marcados como provisórios (R44)."""
+    if not dep.gera("checkout", entradas):
+        return []
     cfg = carregar_config(config)
-    return (calcular_checkout(entradas.orbe, entradas.taxas, entradas.competencia, cfg, ecs_competencia_anterior(entradas))
-            + pendencias_arquivos_orbe(entradas.orbe, entradas.orbe_repetidas, entradas.competencia, cfg))
+    itens = (calcular_checkout(entradas.orbe, entradas.taxas, entradas.competencia, cfg, ecs_competencia_anterior(entradas))
+             + pendencias_arquivos_orbe(entradas.orbe, entradas.orbe_repetidas, entradas.competencia, cfg))
+    return dep.marcar_provisorio(itens) if dep.provisorio("checkout", entradas) else itens

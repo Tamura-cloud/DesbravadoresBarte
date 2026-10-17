@@ -13,7 +13,7 @@ from tarvo import cli
 from tarvo import fechamento
 from tarvo.bancos import bancos
 from tarvo.checkout import checkout
-from tarvo.cli import ErroEntrada
+from tarvo.cli import ErroEntrada, localizar_pela_config
 from tarvo.fechamento import MODULOS, PREFIXO_PREPARO, Entradas, fechar
 from tarvo.remessa import remessa
 from tarvo.saida import ARQUIVOS, PENDENCIAS, ErroSaida, ItemSaida, validar_saida
@@ -85,25 +85,44 @@ def _arquivo(pasta: Path, padrao: str) -> Path:
     return arquivo
 
 
-def test_arquivo_a_mais_no_mesmo_padrao_para_e_diz_o_que_fazer(copia, tmp_path):
+def _pendencias(pasta: Path) -> dict[str, dict]:
+    import csv
+    with open(pasta / PENDENCIAS.nome, encoding="utf-8", newline="") as f:
+        return {l["id_saida"]: l for l in csv.DictReader(f, delimiter=";")}
+
+
+def test_arquivo_a_mais_no_mesmo_padrao_bloqueia_a_fonte_e_diz_o_que_fazer(copia, tmp_path):
+    # R44: o fechamento não escolhe; a fonte fica bloqueada, sem parar o resto
+    taxas = _arquivo(copia, "*taxas*.xlsx")
+    shutil.copyfile(taxas, copia / f"{taxas.stem}_v2.xlsx")
+    resultado = fechar(copia, tmp_path / "saida", "2026-09", modulos=[], contestacoes=False)
+    assert not resultado.completo and [b.fonte for b in resultado.bloqueios] == ["taxas"]
+    motivo = _pendencias(tmp_path / "saida")["PEN-BLOQUEIO-TAXAS"]["motivo"]
+    assert f"{taxas.name}, {taxas.stem}_v2.xlsx" in motivo and "'*taxas*.xlsx'" in motivo
+    assert ("se o arquivo novo é uma CORREÇÃO, substitua o antigo - se é um COMPLEMENTO (mais linhas do mesmo mês), "
+            "avise quem mantém o fechamento para o tipo taxas aceitar vários arquivos, como a Orbe") in motivo
+    assert "substitua o antigo pela versão nova" not in motivo
+    assert validar_saida(tmp_path / "saida") == []
+
+
+def test_localizar_estrito_continua_dizendo_o_que_fazer(copia):
+    # a competência anterior (alerta e ajuste da Ponte) ainda usa a pasta inteira: a mensagem traz o mesmo texto
     taxas = _arquivo(copia, "*taxas*.xlsx")
     shutil.copyfile(taxas, copia / f"{taxas.stem}_v2.xlsx")
     with pytest.raises(ErroEntrada) as erro:
-        fechar(copia, tmp_path / "saida", "2026-09", modulos=[], contestacoes=False)
-    texto = str(erro.value)
-    assert f"{taxas.name}, {taxas.stem}_v2.xlsx" in texto and "'*taxas*.xlsx'" in texto
-    assert "deixe só um arquivo de taxas na pasta; substitua o antigo pela versão nova" in texto
-    assert not (tmp_path / "saida").exists()
+        localizar_pela_config(copia)
+    assert "se o arquivo novo é uma CORREÇÃO, substitua o antigo; se é um COMPLEMENTO" in str(erro.value)
 
 
-def test_arquivo_faltando_diz_o_padrao_e_o_que_sobrou_na_pasta(copia, tmp_path):
+def test_arquivo_faltando_bloqueia_e_diz_o_padrao_e_o_que_sobrou_na_pasta(copia, tmp_path):
     _arquivo(copia, "*.ofx").unlink()
     (copia / "extrato meridiano.txt").write_text("x", encoding="utf-8")
-    with pytest.raises(ErroEntrada) as erro:
-        fechar(copia, tmp_path / "saida", "2026-09", modulos=[], contestacoes=False)
-    texto = str(erro.value)
-    assert "meridiano (extrato do Banco Meridiano, OFX): nenhum arquivo casa com o padrão '*.ofx'" in texto
-    assert "extrato meridiano.txt" in texto and "com um nome que case com '*.ofx'" in texto
+    resultado = fechar(copia, tmp_path / "saida", "2026-09", modulos=[], contestacoes=False)
+    assert [(b.fonte, b.natureza) for b in resultado.bloqueios] == [("meridiano", "AUSENTE")]
+    motivo = _pendencias(tmp_path / "saida")["PEN-BLOQUEIO-MERIDIANO"]["motivo"]
+    assert "meridiano (extrato do Banco Meridiano, OFX) bloqueada (ausente, R44)" in motivo
+    assert "nenhum arquivo casa com o padrão '*.ofx'" in motivo and "extrato meridiano.txt" in motivo
+    assert "com um nome que case com '*.ofx'" in motivo
 
 
 def test_arquivo_estranho_e_temporario_do_office_so_avisam(copia, tmp_path):
@@ -117,14 +136,18 @@ def test_arquivo_estranho_e_temporario_do_office_so_avisam(copia, tmp_path):
     assert "temporário do Office" in ignorados[f"~${taxas.name}"]
 
 
-def test_cli_entrada_ambigua_sai_com_2_e_nao_cria_saida(copia, tmp_path, capsys):
-    shutil.copyfile(_arquivo(copia, "*.eml"), copia / "reenvio da ponte.eml")
+def test_cli_entrada_ambigua_sai_com_3_e_grava_o_resto(copia, tmp_path, capsys):
+    eml = _arquivo(copia, "*.eml")
+    shutil.copyfile(eml, copia / "reenvio da ponte.eml")
     saida = tmp_path / "saida"
     assert cli.main(["fechar", "--competencia", "2026-09", "--entrada", str(copia), "--saida", str(saida),
-                     "--sem-contestacao"]) == 2
-    erro = capsys.readouterr().err
-    assert "Nada foi gravado" in erro and "deixe só um arquivo de ponte_eml na pasta" in erro
-    assert not saida.exists()
+                     "--sem-contestacao"]) == 3
+    texto = capsys.readouterr().out
+    assert "FECHAMENTO PARCIAL — fontes bloqueadas: ponte_eml (ambígua); não gerado: remessa" in texto
+    assert texto.rstrip().endswith("ver pendências PEN-BLOQUEIO")
+    pen = _pendencias(saida)["PEN-BLOQUEIO-PONTE_EML"]
+    assert pen["ref_origem"] == f"{eml.name}|reenvio da ponte.eml" and pen["valor_brl"] == "0.00"
+    assert validar_saida(saida) == []
 
 
 # ---------------------------------------------------------------- grava só depois de validar
@@ -293,43 +316,67 @@ def test_reenvio_igual_dos_ajustes_conta_uma_vez_e_abre_pendencia(com_e_sem_o_06
     assert pendencias.count("PEN-REPET-CHK-") == 14 and pendencias.count(";TRANSACAO_REPETIDA;") == 14
 
 
-def test_reenvio_com_linha_diferente_para_e_nao_grava(copia, tmp_path, capsys):
+def _situacoes(pasta: Path, nome: str) -> set[str]:
+    import csv
+    with open(pasta / nome, encoding="utf-8", newline="") as f:
+        return {l.get("situacao") or "" for l in csv.DictReader(f, delimiter=";") if l["id_saida"].startswith(("COM-CHK", "NF-CHK"))}
+
+
+def test_reenvio_com_linha_diferente_bloqueia_so_o_arquivo_posterior(com_e_sem_o_06, copia, tmp_path, capsys):
+    # R44 (i)(2): o 07 traz o TX88446992 do 06 com a taxa diferente; só o 07 fica de fora, o 01 e o 06 entram
+    com, _ = com_e_sem_o_06["com"]
     ajustes = _orbe(copia)[-1]
     linhas = ajustes.read_text(encoding="utf-8").splitlines()
     linhas[1] = linhas[1].replace("-1147,05;2,59;-29,70;-1117,35", "-1147,05;2,69;-30,85;-1116,20")
     (copia / "07_orbe_reenvio_ajustes.csv").write_text("\r\n".join(linhas) + "\r\n", encoding="utf-8", newline="")
     saida = tmp_path / "saida"
     assert cli.main(["fechar", "--competencia", "2026-09", "--entrada", str(copia), "--saida", str(saida),
-                     "--sem-contestacao"]) == 2
-    erro = capsys.readouterr().err
-    assert "Nada foi gravado" in erro and "TX88446992" in erro
-    assert "taxa_aplicada_pct, valor_taxa, valor_liquido" in erro and "não escolhe" in erro
-    assert not saida.exists()
+                     "--sem-contestacao"]) == 3
+    assert "orbe (só o arquivo 07_orbe_reenvio_ajustes.csv); não gerado: nada" in capsys.readouterr().out
+    assert _comissao_total(saida) == _comissao_total(com / "saida")
+    pen = _pendencias(saida)["PEN-BLOQUEIO-ORBE-07_orbe_reenvio_ajustes.csv"]
+    assert pen["tipo"] == "ARQUIVO_BLOQUEADO" and pen["ref_origem"] == "TX88446992"
+    assert (f"id_transacao TX88446992 aparece em {ajustes.name} (linha física 2) e em 07_orbe_reenvio_ajustes.csv "
+            "(linha física 2) com valores diferentes em taxa_aplicada_pct, valor_taxa, valor_liquido") in pen["motivo"]
+    assert "não escolhe" in pen["motivo"] and "PROVISÓRIOS: checkout" in pen["motivo"]
+    rastro = (saida / "rastro.csv").read_text(encoding="utf-8")
+    assert (f"PEN-BLOQUEIO-ORBE-07_orbe_reenvio_ajustes.csv;{ajustes.name};TX88446992;0.00\n"
+            "PEN-BLOQUEIO-ORBE-07_orbe_reenvio_ajustes.csv;07_orbe_reenvio_ajustes.csv;TX88446992;0.00\n") in rastro
+    assert _situacoes(saida, "comissoes_por_lojista.csv") == {"PROVISORIO"}
+    assert validar_saida(saida) == []
 
 
-def test_ajustes_com_cabecalho_diferente_para_e_diz_o_arquivo_e_a_coluna(copia, tmp_path, capsys):
+def test_ajustes_com_cabecalho_diferente_bloqueia_so_o_06(com_e_sem_o_06, copia, tmp_path, capsys):
+    # R44 (e): o relatório 01 é lido; o checkout sai sem o 06 e marcado como provisório
+    sem, _ = com_e_sem_o_06["sem"]
     ajustes = _orbe(copia)[-1]
     texto = ajustes.read_text(encoding="utf-8").replace("id_transacao;", "id_trans;", 1)
     ajustes.write_text(texto, encoding="utf-8", newline="")
     assert cli.main(["fechar", "--competencia", "2026-09", "--entrada", str(copia), "--saida", str(tmp_path / "s"),
-                     "--sem-contestacao"]) == 2
-    erro = capsys.readouterr().err
-    assert f"{ajustes.name}: colunas ausentes no cabeçalho: ['id_transacao']" in erro
+                     "--sem-contestacao"]) == 3
+    assert "provisório (coluna situacao = PROVISORIO nos CSVs" in capsys.readouterr().out
+    assert _comissao_total(tmp_path / "s") == _comissao_total(sem / "saida")
+    motivo = _pendencias(tmp_path / "s")[f"PEN-BLOQUEIO-ORBE-{ajustes.name}"]["motivo"]
+    assert f"{ajustes.name}: colunas ausentes no cabeçalho: ['id_transacao']" in motivo
+    assert "nenhuma linha dele entrou no fechamento (14 linha(s) de dados)" in motivo
+    assert _situacoes(tmp_path / "s", "notas_a_emitir.csv") == {"PROVISORIO"}
 
 
-def test_ajustes_com_colunas_trocadas_para_e_diz_a_coluna(copia, tmp_path, capsys):
+def test_ajustes_com_colunas_trocadas_bloqueia_o_06_e_diz_a_coluna(copia, tmp_path):
+    # R44 (i)(1): cabeçalho diferente do do primeiro arquivo bloqueia só esse arquivo (a leitura pelo nome leria
+    # valor_liquido como valor_taxa se a troca for só no cabeçalho)
     ajustes = _orbe(copia)[-1]
     texto = ajustes.read_text(encoding="utf-8").replace("valor_taxa;valor_liquido", "valor_liquido;valor_taxa", 1)
     ajustes.write_text(texto, encoding="utf-8", newline="")
-    assert cli.main(["fechar", "--competencia", "2026-09", "--entrada", str(copia), "--saida", str(tmp_path / "s"),
-                     "--sem-contestacao"]) == 2
-    erro = capsys.readouterr().err
-    assert f"{ajustes.name}: cabeçalho diferente do de {_orbe(copia)[0].name}: a coluna 11 é 'valor_liquido'" in erro
+    fechar(copia, tmp_path / "s", "2026-09", contestacoes=False)
+    motivo = _pendencias(tmp_path / "s")[f"PEN-BLOQUEIO-ORBE-{ajustes.name}"]["motivo"]
+    assert f"{ajustes.name}: cabeçalho diferente do de {_orbe(copia)[0].name}: a coluna 11 é 'valor_liquido'" in motivo
 
 
-def test_taxas_continua_exigindo_um_arquivo_so_com_os_ajustes_da_orbe_na_pasta(copia, tmp_path):
+def test_taxas_duplicada_com_os_ajustes_da_orbe_na_pasta_bloqueia_so_as_taxas(copia, tmp_path):
     taxas = _arquivo(copia, "*taxas*.xlsx")
     shutil.copyfile(taxas, copia / f"{taxas.stem}_v2.xlsx")
     assert len(_orbe(copia)) == 2
-    with pytest.raises(ErroEntrada, match="deixe só um arquivo de taxas na pasta"):
-        fechar(copia, tmp_path / "saida", "2026-09", modulos=[], contestacoes=False)
+    resultado = fechar(copia, tmp_path / "saida", "2026-09", modulos=[], contestacoes=False)
+    assert [b.fonte for b in resultado.bloqueios] == ["taxas"]
+    assert len(resultado.arquivos_entrada["orbe"]) == 2

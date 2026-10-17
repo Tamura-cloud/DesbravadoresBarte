@@ -55,10 +55,10 @@ PREFIXOS_DE_MOTIVO = {"checkout.MOTIVO_IDENTIFICACAO"}  # vai na frente de outro
 
 
 def test_todo_modelo_de_motivo_de_pendencia_tem_proximo_passo():
-    from tarvo import bancos, checkout, remessa
+    from tarvo import bancos, checkout, dependencias, remessa
 
     vistos = set()
-    for modulo in (remessa, checkout, bancos):
+    for modulo in (remessa, checkout, bancos, dependencias):
         for nome, texto in vars(modulo).items():
             chave = f"{modulo.__name__.rsplit('.', 1)[1]}.{nome}"
             if not nome.startswith("MOTIVO_") or not isinstance(texto, str) or chave in PREFIXOS_DE_MOTIVO:
