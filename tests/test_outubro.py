@@ -334,3 +334,32 @@ def test_gerador_recusa_gravar_o_simulado_no_repositorio(pasta):
     with pytest.raises(ValueError, match="pasta temporária"):
         gerar(SETEMBRO, RAIZ / pasta / COMPETENCIA)
     assert not (RAIZ / pasta / COMPETENCIA).exists()
+
+
+# ---------------------------------------------------------------- pacote anthropic é opcional (P14)
+
+def test_sem_o_pacote_anthropic_com_chave_o_lancamento_vira_pendencia(pack, saida, tmp_path, monkeypatch, caplog):
+    """sys.modules["anthropic"] = None faz o import falhar como num ambiente sem o pacote. Com chave e sem cache, a
+    IA não pode chamar a API: o lançamento segue a P09 e a saída é igual à do --sem-ia, sem erro."""
+    monkeypatch.setitem(sys.modules, "anthropic", None)
+    monkeypatch.setenv(ia.VARIAVEL_CHAVE, "chave-de-teste")
+    assert ia._sdk() is None
+    sem_pacote = tmp_path / "saida"
+    with caplog.at_level("WARNING", logger="tarvo.ia"):
+        fechar(pack["pasta"], sem_pacote, COMPETENCIA, contestacoes=False)
+    assert "pacote anthropic não instalado" in caplog.text
+    assert _hashes(sem_pacote) == _hashes(saida)
+    assert {l["tipo"] for l in _ler(sem_pacote, "pendencias.csv")} >= {"LANCAMENTO_SEM_REGRA"}
+
+
+def test_cli_funciona_sem_o_pacote_anthropic_instalado(pack, tmp_path):
+    """Processo novo em que o import de anthropic falha desde o início: a CLI inteira roda e nada importa o pacote no topo."""
+    roteiro = ("import sys; sys.modules['anthropic'] = None; from tarvo.cli import main; "
+               "sys.exit(main(sys.argv[1:]))")
+    env = {**os.environ, "PYTHONPATH": str(RAIZ / "src"), "PYTHONIOENCODING": "utf-8", "ANTHROPIC_API_KEY": "chave-de-teste"}
+    r = subprocess.run([sys.executable, "-c", roteiro, "fechar", "--competencia", COMPETENCIA,
+                        "--entrada", str(pack["pasta"]), "--saida", str(tmp_path), "--sem-contestacao"],
+                       capture_output=True, text=True, encoding="utf-8", env=env, cwd=RAIZ)
+    assert r.returncode == 0, r.stderr
+    assert "validados sem problemas" in r.stdout
+    assert any(l["tipo"] == "LANCAMENTO_SEM_REGRA" for l in _ler(tmp_path, "pendencias.csv"))

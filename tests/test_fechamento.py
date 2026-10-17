@@ -198,3 +198,48 @@ def test_cli_roda_de_outra_pasta_com_espaco_no_caminho(tmp_path):
         assert (trabalho / "saída de teste" / e.nome).read_bytes() == (RAIZ / "saida" / e.nome).read_bytes(), e.nome
     assert sorted(p.name for p in (trabalho / "contestacoes").iterdir()) == \
         sorted(p.name for p in (RAIZ / "contestacoes").iterdir())
+
+
+# ---------------------------------------------------------------- acentos no terminal
+
+def test_main_reconfigura_stdout_e_stderr_para_utf8():
+    import io
+
+    class Fluxo(io.TextIOWrapper):
+        pass
+
+    saida = Fluxo(io.BytesIO(), encoding="cp1252")
+    erro = Fluxo(io.BytesIO(), encoding="cp1252")
+    antigos = sys.stdout, sys.stderr
+    sys.stdout, sys.stderr = saida, erro
+    try:
+        assert cli.main(["fechar", "--competencia", "2026-09", "--entrada", "pasta inexistente", "--saida", "x"]) == 2
+    finally:
+        sys.stdout, sys.stderr = antigos
+    assert saida.encoding == "utf-8" and erro.encoding == "utf-8"
+    erro.flush()
+    assert "Diretório de entrada não encontrado".encode("utf-8") in erro.buffer.getvalue()
+
+
+def test_main_aceita_fluxo_que_nao_reconfigura():
+    class SemReconfigurar:
+        def write(self, _): ...
+        def flush(self): ...
+
+    antigos = sys.stdout, sys.stderr
+    sys.stdout = sys.stderr = SemReconfigurar()
+    try:
+        assert cli.main(["fechar", "--competencia", "2026-09", "--entrada", "pasta inexistente", "--saida", "x"]) == 2
+    finally:
+        sys.stdout, sys.stderr = antigos
+
+
+def test_cli_em_subprocesso_com_saida_redirecionada_imprime_utf8(tmp_path):
+    env = {**os.environ, "PYTHONPATH": str(RAIZ / "src")}
+    env.pop("PYTHONIOENCODING", None)  # o padrão do sistema (cp1252 no Windows) é justamente o que se quer vencer
+    env["PYTHONUTF8"] = "0"
+    r = subprocess.run([sys.executable, "-m", "tarvo", "fechar", "--competencia", "2026-09", "--entrada", str(ENTRADA),
+                        "--saida", str(tmp_path / "saida"), "--sem-contestacao"],
+                       capture_output=True, env=env, cwd=RAIZ)
+    assert r.returncode == 0, r.stderr.decode("utf-8", "replace")
+    assert "Competência: 2026-09".encode("utf-8") in r.stdout

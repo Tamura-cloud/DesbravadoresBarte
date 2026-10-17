@@ -63,3 +63,20 @@ def test_todo_modelo_de_motivo_de_pendencia_tem_proximo_passo():
             vistos.add(chave)
             assert ACAO_JA_ESCRITA.get(chave, "próximo passo:") in texto, chave
     assert set(ACAO_JA_ESCRITA) <= vistos
+
+
+def test_toda_premissa_ativa_diz_o_que_muda_para_a_helena():
+    """A banca pediu premissas escritas pelo que muda para a Helena se estiverem erradas, não pela contagem."""
+    import re
+
+    texto = (RAIZ / "HIPOTESES.md").read_text(encoding="utf-8")
+    secao = texto.split("### 2.1 Premissas definidas pelo time", 1)[1].split("### 2.2", 1)[0]
+    blocos = re.split(r"\n(?=- \*\*P\d\d)", secao)[1:]
+    ativas = [b for b in blocos if not re.search(r"substitu[ií]da por", b.split("\n", 1)[0], re.IGNORECASE)]
+    assert len(ativas) >= 20  # P01 a P26, menos as substituídas (P02, P15, P21)
+    for bloco in ativas:
+        pid = re.match(r"- \*\*(P\d\d)", bloco).group(1)
+        linha = re.search(r"^ +- \*\*Se estiver errada, para a Helena:\*\* (.+)$", bloco, re.MULTILINE)
+        assert linha, f"{pid} sem a linha 'Se estiver errada, para a Helena'"
+        assert "R$" in linha.group(1), f"{pid}: a consequência não traz valor em reais"
+        assert not re.search(r"\blinhas?\b|contagem", linha.group(1), re.IGNORECASE), f"{pid}: fala em contagem de linhas"

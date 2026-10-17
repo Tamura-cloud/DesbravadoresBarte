@@ -13,7 +13,6 @@ from functools import partial
 from pathlib import Path
 from types import SimpleNamespace
 
-import anthropic
 import httpx2
 import pytest
 import yaml
@@ -182,6 +181,7 @@ def test_desabilitada_devolve_none_sem_chamar(contas, cfg_ia):
 
 
 def test_erro_da_api_devolve_none_e_nao_vai_para_o_cache(contas, cfg_ia):
+    anthropic = pytest.importorskip("anthropic")  # o pacote é opcional; só este teste usa a exceção do SDK
     erro = anthropic.APIConnectionError(request=httpx2.Request("POST", "https://api.anthropic.com/v1/messages"))
     assert ia.sugerir_conta(_lanc(), contas, [], cfg=cfg_ia, cliente=ClienteFalso(erro)) is None
     assert not cfg_ia.cache.exists()

@@ -6,14 +6,14 @@
 | Commit do código | branch `regras-helena-2`, sobre `2692243` (R31). Esta rodada aplica R32 a R40 e P26: os números de setembro mudam (ver abaixo, regra por regra) |
 | Fechamento | `python -m tarvo fechar --competencia 2026-09 --entrada dados/2026-09 --saida saida/` (IA conforme `config/ia.yaml`; em setembro todo lançamento casa uma regra, então a IA não é chamada nenhuma vez, P14) |
 | Resumo | `python -m tarvo resumo --saida saida` |
-| pytest | **387 passed** (`python -m pytest -q`, 26,1 s) |
+| pytest | **393 passed** (`python -m pytest -q`, 20,8 s) |
 | `validar_saida(saida/)` | `[]`, **sem problemas** |
 | Rastro | 371 de 371 itens com soma do rastro por id_saida = valor reportado |
 
 **O01 a O04 (Organização, 17/10, canal de Logística): nenhum número mudou.** Linhas e totais dos 6 CSVs iguais aos de antes; `rastro.csv`, os 5 outros CSVs e os 4 arquivos de `contestacoes/` idênticos byte a byte. Em `pendencias.csv` mudaram só textos:
 - **motivo (O04, toda pendência com próximo passo):** PEN-NF-CHK, PEN-CONCESSAO-CHK, as 2 PEN-DEVOL-CHK, PEN-ALERTA-ANTEC, as 4 PEN-NEG-REM e PEN-NAOID-L50 ganharam "próximo passo: <quem faz o quê>". As outras 6 já traziam a ação e não mudaram.
 - **quem_decide:** PEN-CONCESSAO-CHK-00520815000100 passou de "Financeiro (Helena)" para "Financeiro (Helena) e Comercial" (R32: a Helena paga a devolução; parametrizar a Orbe é com o Comercial, R28).
-- **Execução (O01):** o fechamento grava numa pasta temporária, valida e só então substitui `saida/` e `contestacoes/`; entrada ambígua ou faltando para com a instrução do que fazer; arquivo que não casa nenhum padrão só gera aviso. Testes: 374 → 387.
+- **Execução (O01):** o fechamento grava numa pasta temporária, valida e só então substitui `saida/` e `contestacoes/`; entrada ambígua ou faltando para com a instrução do que fazer; arquivo que não casa nenhum padrão só gera aviso. Testes: 374 → 393 (13 com a rodada O01 a O04; 6 com o pacote `anthropic` opcional, a saída em UTF-8 e a linha "Se estiver errada, para a Helena" em toda premissa ativa).
 
 **R32 a R40 e P26 (Helena, 17/10, 11h37 a 11h41): os números de setembro mudam.**
 
@@ -473,3 +473,35 @@ Os valores alternativos **não são valores de teste**. P16, P19 e P20 são cont
 | | | PEN-SEMCONTRATO-39566044000119 | 7.876,05 | | deixa de existir |
 
 A leitura alternativa da P21 contraria a R08 ("a aba de 2025 não vale"). Ela aparece aqui só para mostrar o tamanho do efeito.
+
+
+## Premissas abertas (checkpoint 2)
+
+Cada premissa abaixo é uma escolha nossa que a Helena (ou o Comercial, nas taxas e condições comerciais, R28) ainda não aprovou, ou que ela aceitou sem fechar. A coluna do meio diz o que muda para ela se estivermos errados; a última, o valor em reais que está em jogo com os dados de setembro. O texto completo de cada uma, com o motivo, está no HIPOTESES.md, seção 2.1.
+
+| id | o que assumimos | se estiver errada, para a Helena | valor em jogo |
+|---|---|---|---|
+| P01 | diferença de spread da remessa abaixo de 0,01 p.p. não é divergência | deixa de contestar com a Ponte diferenças reais de outros lojistas, ou contesta centavos de arredondamento da PTAX | R$ 24,58 de centavos no mês; a menor diferença real (Mundo Aberto) é R$ 1.418,85 |
+| P03 | a Orbe trunca o centavo; truncamento não é divergência, a divergência compara taxas | deixa de pedir à Orbe centavos de arredondamento, ou abre contestação à toa por R$ 0,01 | R$ 9,37 no mês |
+| P04 | CNPJ da Ponte fora da planilha: calcula a comissão, entra na nota e abre pendência de cadastro para o Comercial (a Helena achou razoável, 9h45) | emite nota com comissão que a Ponte não reconhece, ou atrasa o faturamento de uma comissão que a Ponte paga | R$ 0,00 (não aconteceu em setembro) |
+| P05 | spread negativo de CNPJ fora da planilha para o fechamento | fica sem a lista de contestação até o Comercial cadastrar, ou teria de decidir sozinha quanto pedir | R$ 0,00 (não aconteceu em setembro) |
+| P06 | devolução de PIX do Aurora vai para 2.1.01.001 com pendência para apurar o motivo | saldo de repasses a pagar fica errado até apurar o motivo com a Mundo Aberto; só conta do passivo, não resultado | R$ 12.400,00 |
+| P07 | só é repasse a lojista o PIX enviado a favorecido que está em `config/favorecidos.yaml`, com CNPJ da aba vigente | repasse ao lojista errado no razão, ou lançamento a classificar à mão | R$ 4.230.267,61 de repasses por PIX |
+| P08 | só é cliente da remessa o pagador de PIX que está em `config/pagadores_meridiano.yaml` | cobra de um cliente a diferença de outro, ou deixa passar um PIX a menos | R$ 5.629.687,12 de PIX de clientes |
+| P09 | lançamento sem regra fica A_CLASSIFICAR, método HUMANO, com pendência | crédito desconhecido entraria no razão sem aviso a ela, se o certo fosse uma conta transitória | R$ 0,00 (todo lançamento de setembro casou uma regra) |
+| P10 | confiança 1,00 para regra confirmada, 0,80 para regra nossa | revisa à toa a devolução de PIX, ou deixa de olhar o que merecia atenção | R$ 12.400,00 |
+| P11 | a TED de liquidação do dia fecha com as operações da Ponte contratadas no dia | investiga à toa com a Ponte, ou não vê um repasse menor ou maior que as operações | R$ 5.611.447,12 conferidos; diferença R$ 0,00 |
+| P12 | PIX do cliente no mês × operações contratadas no mês; PIX a mais é adiantamento (R22) | cobra de quem pagou adiantado, ou deixa de cobrar quem não pagou | R$ 18.240,00 (adiantamento da Ponte Aérea Estudantil) |
+| P13 | transferência entre contas casa por valor, na mesma data ou no dia útil seguinte, sem calendário de feriados | recebe como "sem par" uma transferência que só atrasou, ou dá como chegada uma que não chegou | R$ 1.450.000,00 enviados do Aurora; R$ 300.000,00 em trânsito |
+| P14 | a IA só sugere, só para lançamento sem regra, e uma pessoa revisa toda sugestão | uma conta errada entraria no razão sem ela ver, se a IA lançasse sem revisão | R$ 0,00 (nenhuma chamada em setembro) |
+| P16 | devolução de PIX em 2.1.01.001, não em 2.1.01.002 (a Helena aceitou as duas, 9h48) | só muda a conta do passivo, sem efeito no resultado nem no valor devido | R$ 12.400,00 |
+| P17 | diferença de remessa pelo Spread % do relatório | pede à Ponte R$ 0,03 a mais ou a menos na Mundo Aberto; o total dos negativos não muda | R$ 0,03 |
+| P19 | a operação repetida vale o spread inteiro da cópia descartada | pede à Ponte corrigir R$ 821,88 quando o que pesa para a Tarvo é a metade; a nota não muda | R$ 410,94 |
+| P20 | a transferência de 30/09 fica como pendência de acompanhamento até aparecer no extrato de outubro (aceita pela O04) | sem a pendência, nada avisaria se os R$ 300.000,00 não chegassem; com ela, uma conferência a mais | R$ 300.000,00 |
+| P22 | o TED da Ponte se confere contra o valor da nota de intermediação, sem supor desconto (R18) | compara o repasse com o número errado: aceita um repasse menor ou cobra um maior sem base | R$ 39.543,45 |
+| P23 | a devolução da concessão vale o que a Orbe cobrou nas transações | devolve R$ 0,65 a menos se o certo for a fórmula da R03 | R$ 15.396,77 (diferença R$ 0,65) |
+| P24 | os rascunhos mostram a parte da Tarvo como 50% (R11), só como exibição | lê nas notas internas um valor errado, sem mudar o que se pede à Ponte | R$ 709,46, R$ 410,94 e R$ 865,98 de exibição |
+| P25 | o ajuste da Ponte abate 50% do Spread R$ da linha | nota da Ponte R$ 50,00 mais alta (ou mais baixa) por R$ 100,00 de ajuste, a corrigir depois | R$ 0,00 em setembro (sem ajuste) |
+| P26 | alerta quando lojista sem histórico antecipa mais do que vendeu no mês | não vê um lojista novo antecipando alto, ou olha à toa lojistas com histórico | R$ 127.230,96 líquidos (Atlas) |
+
+**Fechada:** a P18 (contestação dos spreads negativos pela diferença até o contrato, R$ 3.565,98; o spread do relatório, R$ 1.834,05, é o que aconteceu) foi **confirmada pela R34**. **Substituídas** e fora desta lista: P02 e P15 (R23) e P21 (R36 e R39).

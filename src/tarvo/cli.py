@@ -174,7 +174,17 @@ def construir_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _saida_utf8() -> None:
+    """Acentos certos no terminal e em redirecionamento (no Windows o padrão é cp1252 ou o do console)."""
+    for fluxo in (sys.stdout, sys.stderr):
+        try:
+            fluxo.reconfigure(encoding="utf-8", errors="replace")
+        except (AttributeError, ValueError, OSError):  # fluxo trocado (pytest, IDE) que não permite reconfigurar
+            pass
+
+
 def main(argv: list[str] | None = None) -> int:
+    _saida_utf8()
     args = construir_parser().parse_args(argv)
     return args.func(args)
 
