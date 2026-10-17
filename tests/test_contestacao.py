@@ -98,7 +98,7 @@ def test_corpo_do_email_nao_fala_de_aviso_nem_cita_regra_interna(cont, arquivo):
 def test_orbe_csv_tem_as_divergencias_de_checkout_com_o_mesmo_id_e_ref(saida, cont):
     linhas = _ler(cont, "orbe_operacoes.csv")
     div = {l["id_saida"]: l for l in _ler(saida, "divergencias_taxa.csv") if l["linha_negocio"] == "CHECKOUT"}
-    assert len(linhas) == len(div) == 210
+    assert len(linhas) == len(div) == 92  # R32: as 118 da Casa eram só isenção (concessão), não divergência
     assert {l["id_saida"] for l in linhas} == set(div)
     for l in linhas:
         d = div[l["id_saida"]]
@@ -114,22 +114,28 @@ def test_orbe_totais_de_cada_secao_saem_do_csv(cont):
     for l in linhas:
         por_cnpj[l["cnpj"]][0] += 1
         por_cnpj[l["cnpj"]][1] += D(l["diferenca_brl"])
-    assert {k: (v[0], v[1]) for k, v in por_cnpj.items()} == {
-        CASA: (118, D("15397.42")), ROTA: (87, D("1546.28")), BRIDGE: (5, D("29.95"))}
-    assert "em 210 transações de 3 lojistas" in corpo
+    assert {k: (v[0], v[1]) for k, v in por_cnpj.items()} == {ROTA: (87, D("1546.28")), BRIDGE: (5, D("29.95"))}
+    assert "em 92 transações de 2 lojistas" in corpo and "duas partes" not in corpo
 
-    comunicacao = _secao(corpo, "## 1. Comunicação de condição comercial")
-    contrato = _secao(corpo, "## 2. Taxas aplicadas acima do contrato")
-    assert "Casa do Estudante" in comunicacao and "Bridge" not in comunicacao and "Rota" not in comunicacao
-    assert "Bridge" in contrato and "Rota" in contrato and "Casa do Estudante" not in contrato
-    # Casa: o pedido usa o valor efetivamente descontado (valor_taxa), a tabela usa taxa × bruto
-    assert ("todo o valor descontado pela Orbe deve ser regularizado: R$ 15.396,77 (soma do valor_taxa das 118 transações)") in comunicacao
-    assert brl(por_cnpj[CASA][1]) in comunicacao and "R$ 15.397,42" in comunicacao
-    assert "a Orbe trunca o valor_taxa no centavo, por isso o valor efetivamente descontado é R$ 0,65 menor" in comunicacao
+    contrato = _secao(corpo, "## 1. Taxas aplicadas acima do contrato")
+    assert "Comunicação de condição comercial" not in corpo
+    assert "Bridge" in contrato and "Rota" in contrato
     assert f"O total desta parte é {_rs(por_cnpj[BRIDGE][1] + por_cnpj[ROTA][1])}" in contrato
-    for cnpj, secao in ((CASA, comunicacao), (BRIDGE, contrato), (ROTA, contrato)):
-        linha = next(l for l in secao.splitlines() if l.startswith("|") and cnpj in l)
+    assert _rs(por_cnpj[BRIDGE][1] + por_cnpj[ROTA][1]) == "R$ 1.576,23"
+    for cnpj in (BRIDGE, ROTA):
+        linha = next(l for l in contrato.splitlines() if l.startswith("|") and cnpj in l)
         assert f"| {por_cnpj[cnpj][0]} |" in linha and brl(por_cnpj[cnpj][1]) in linha
+
+
+def test_orbe_casa_fora_do_email_e_nas_notas_como_concessao(saida, cont):
+    # R32: a Casa é concessão comercial fora do contrato; a devolução é custo da Tarvo e não se cobra da Orbe
+    notas, corpo = _partes(cont, "orbe.md")
+    assert "Casa do Estudante" not in corpo and CASA not in corpo
+    assert CASA not in {l["cnpj"] for l in _ler(cont, "orbe_operacoes.csv")}
+    pen = {l["id_saida"]: D(l["valor_brl"]) for l in _ler(saida, "pendencias.csv")}
+    assert pen[f"PEN-CONCESSAO-CHK-{CASA}"] == D("15396.77")
+    assert ("Casa do Estudante Viagens Ltda: devolução de R$ 15.396,77 paga pela Tarvo (concessão, Helena 11h37). "
+            "Decidir com o comercial se pede à Orbe parametrizar 0% daqui em diante.") in notas
 
 
 def test_corpo_cita_a_condicao_contratada_sem_linha_da_planilha_e_as_notas_trazem_a_referencia(cont):
@@ -145,22 +151,16 @@ def test_corpo_cita_a_condicao_contratada_sem_linha_da_planilha_e_as_notas_traze
 def test_orbe_estornos_reduzem_o_total_sem_sinal_negativo_no_texto(cont):
     estornos = [l for l in _ler(cont, "orbe_operacoes.csv") if l["tipo_lancamento"] == "ESTORNO"]
     soma = sum(D(l["diferenca_brl"]) for l in estornos)
-    assert (len(estornos), soma) == (5, D("-107.53"))
+    assert (len(estornos), soma) == (4, D("-98.44"))  # o estorno da Casa (-9,09) saiu com a R32
     corpo = _partes(cont, "orbe.md")[1]
     assert f"{len(estornos)} linhas são estornos" in corpo and f"reduzem o total em {_rs(abs(soma))}" in corpo
     assert "diferença negativa" not in corpo and "R$ -" not in corpo
 
 
-def test_orbe_casa_comunica_a_condicao_com_inicio_e_fim_e_pede_regularizacao(cont):
-    comunicacao = _secao(_partes(cont, "orbe.md")[1], "## 1. Comunicação de condição comercial")
-    assert "vigente de 2026-09-01 a 2026-12-31" in comunicacao and "0,00%" in comunicacao
-    assert "parametrização" in comunicacao and "regularização do período" in comunicacao
-
-
 def test_orbe_bridge_so_credito_a_vista_de_15_a_18(cont):
     linhas = [l for l in _ler(cont, "orbe_operacoes.csv") if l["cnpj"] == BRIDGE]
     assert len(linhas) == 5 and {l["taxa_contratada_pct"] for l in linhas} == {"2.1900"}
-    contrato = _secao(_partes(cont, "orbe.md")[1], "## 2. Taxas aplicadas acima do contrato")
+    contrato = _secao(_partes(cont, "orbe.md")[1], "## 1. Taxas aplicadas acima do contrato")
     assert "vigente desde 2026-09-15" in contrato
     # a condição de 2,19% é só do crédito à vista; as outras modalidades não mudaram
     assert ("A nova condição vale só para crédito à vista (2,19%), desde 2026-09-15; "
@@ -170,7 +170,7 @@ def test_orbe_bridge_so_credito_a_vista_de_15_a_18(cont):
 
 
 def test_orbe_rota_taxa_contratada_ate_11_09_e_mais_0_50_depois_so_no_credito(cont):
-    contrato = _secao(_partes(cont, "orbe.md")[1], "## 2. Taxas aplicadas acima do contrato")
+    contrato = _secao(_partes(cont, "orbe.md")[1], "## 1. Taxas aplicadas acima do contrato")
     assert "Até 2026-09-11 (52 transações), a taxa aplicada foi a contratada." in contrato
     assert ("A partir de 2026-09-12, todas as 83 transações de crédito à vista e crédito parcelado vieram com a taxa "
             "0,50 p.p. acima da contratada; as de antecipação, débito e PIX seguiram a taxa contratada.") in contrato
@@ -179,16 +179,11 @@ def test_orbe_rota_taxa_contratada_ate_11_09_e_mais_0_50_depois_so_no_credito(co
 
 def test_orbe_notas_avisos_e_valor_a_devolver_vindo_das_pendencias(saida, cont):
     notas = _partes(cont, "orbe.md")[0]
-    assert "Casa do Estudante Viagens Ltda: nunca foi avisada (o Comercial não comunicou a condição)." in notas
     assert "Escola Bridge de Idiomas Ltda: foi avisada só alguns dias depois do início da vigência (2026-09-15)" in notas
     pen = {l["id_saida"]: D(l["valor_brl"]) for l in _ler(saida, "pendencias.csv")}
     assert pen[f"PEN-DEVOL-CHK-{BRIDGE}"] == D("29.95") and f"Bridge de Idiomas Ltda: {_rs(D('29.95'))}." in notas
     assert pen[f"PEN-DEVOL-CHK-{ROTA}"] == D("1546.28") and f"Rota Global Intercâmbio Ltda: {_rs(D('1546.28'))}." in notas
-    # Casa: o e-mail usa taxa × bruto; a devolução é o valor_taxa que a Orbe cobrou (truncado)
-    divergencia = sum(D(l["diferenca_brl"]) for l in _ler(cont, "orbe_operacoes.csv") if l["cnpj"] == CASA)
-    assert (divergencia, pen[f"PEN-DEVOL-CHK-{CASA}"]) == (D("15397.42"), D("15396.77"))
-    assert f"**{_rs(D('15396.77'))}**. O e-mail usa {_rs(D('15397.42'))}" in notas
-    assert f"a diferença de {_rs(D('0.65'))} é o truncamento" in notas
+    assert f"PEN-DEVOL-CHK-{CASA}" not in pen  # R32: a Casa não tem divergência; a devolução dela é a PEN-CONCESSAO
 
 
 # ---------------------------------------------------------------- Ponte
@@ -236,19 +231,24 @@ def test_ponte_totais_de_cada_secao_saem_do_csv(cont):
     por = {n: [l for l in linhas if l["natureza"] == n] for n in ("SPREAD_ACIMA_CONTRATADO", "SPREAD_NEGATIVO", "OPERACAO_DUPLICADA")}
     assert "identificou 28 operações" in corpo
 
-    comunicacao = _secao(corpo, "## 1. Comunicação de condição comercial")
+    # R32: a Mundo Aberto é divergência de contrato, não comunicação de condição
+    assert "Comunicação de condição comercial" not in corpo
+    acima = _secao(corpo, "## 1. Contestação: spread acima do contratado")
     total_acima = sum(D(l["valor_brl"]) for l in por["SPREAD_ACIMA_CONTRATADO"])
-    assert "Mundo Aberto (CNPJ 17217888000111): spread contratado de 1,20%" in comunicacao
-    assert "23 operações contratadas de 2026-09-01 a 2026-09-30" in comunicacao
-    assert comunicacao.count(_rs(total_acima)) == 2 and "regularização do período" in comunicacao
+    assert "Mundo Aberto (CNPJ 17217888000111): spread contratado de 1,20%" in acima
+    assert "23 operações contratadas de 2026-09-01 a 2026-09-30" in acima
+    assert acima.count(_rs(total_acima)) == 2 and "ressarcimento ao cliente" in acima
 
+    # R34: o pedido é a diferença até o spread contratado (por operação e no total), com o spread do relatório ao lado
     negativos = _secao(corpo, "## 2. Contestação: spreads negativos")
-    perdido = sum(D(l["tarvo_deixou_de_receber_brl"]) for l in por["SPREAD_NEGATIVO"])
-    assert "4 operações saíram com spread negativo" in negativos and f"deixou de receber {_rs(perdido)}" in negativos
+    pedido = abs(sum(D(l["valor_brl"]) for l in por["SPREAD_NEGATIVO"]))
+    assert pedido == D("3565.98") and f"diferença até o spread contratado, {_rs(pedido)} no total" in negativos
     for l in por["SPREAD_NEGATIVO"]:
         linha = next(x for x in negativos.splitlines() if x.startswith("|") and l["ref_origem"] in x)
-        assert brl(D(l["tarvo_deixou_de_receber_brl"])) in linha and brl(D(l["spread_aplicado_brl"])) in linha
+        assert linha.rstrip(" |").endswith(brl(abs(D(l["valor_brl"])))) and brl(D(l["spread_aplicado_brl"])) in linha
     assert "-R$" not in negativos.split("|")[0]  # a frase de resumo não mostra o valor como negativo
+    perdido = sum(D(l["tarvo_deixou_de_receber_brl"]) for l in por["SPREAD_NEGATIVO"])
+    assert perdido == D("865.98") and _rs(perdido) not in corpo and "deixou de receber" not in corpo
 
     duplicada = _secao(corpo, "## 3. Contestação: operação repetida no relatório")
     dup = por["OPERACAO_DUPLICADA"][0]
@@ -262,12 +262,14 @@ def test_ponte_totais_de_cada_secao_saem_do_csv(cont):
     assert _rs(total_acima) in notas and _rs(perdido) in notas and _rs(D(dup["valor_brl"])) in notas
 
 
-def test_ponte_notas_aviso_e_ressalva_da_vigencia_da_mundo_aberto(cont):
+def test_ponte_notas_aviso_contrato_e_parte_da_tarvo(cont):
     notas = _partes(cont, "ponte.md")[0]
     assert "Mundo Aberto: nunca foi avisada (o Comercial não comunicou a condição)." in notas
-    assert 'a planilha registra a condição como vigente desde 2026-01-01 e a observação "spread negociado em jul/26"' in notas
-    assert "confirme a data da condição antes de enviar" in notas
-    assert "PEN-NEG" in notas and "não a parte da Tarvo" in notas
+    # R32: a ressalva de data saiu; vale o contrato registrado
+    assert ("Mundo Aberto: 1,20% contratado e registrado na planilha (spread negociado em jul/26) - o que decide é o "
+            "contrato, não o aviso (Helena, 11h37).") in notas
+    assert "confirme a data da condição" not in notas
+    assert "PEN-NEG" in notas and "R$ 865,98" in notas and "fica fora do e-mail" in notas
 
 
 def test_textos_sem_ponto_e_virgula_nos_csvs(cont):

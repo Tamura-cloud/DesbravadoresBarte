@@ -43,9 +43,10 @@ RAIZ = Path(__file__).resolve().parents[1]
 SETEMBRO = RAIZ / "dados" / "2026-09"
 MUNDO_ABERTO, CANGURU = "17217888000111", "53857560000123"
 NF_REM = "NF-REM-75374179000146"
-AJUSTE_A, AJUSTE_B = "PC-1026-9101", "PC-1026-9102"
+AJUSTE_A, AJUSTE_B, AJUSTE_C = "PC-1026-9101", "PC-1026-9102", "PC-1026-9103"
 ORIGINAL_A = "PC-0926-0434"   # uma das 23 da Mundo Aberto contestadas em setembro
 ORIGINAL_INEXISTENTE = "PC-0926-9999"
+ORIGINAL_SEM_LOJISTA = "PC-0926-9998"  # não existe e a linha de ajuste também não traz CNPJ
 
 
 def _ler(pasta: Path, nome: str) -> list[dict]:
@@ -102,6 +103,9 @@ def _montar_pack(raiz: Path, ajustes: bool) -> Path:
             # CNPJ preenchido, maiúsculas diferentes e ponto final; a original não existe em setembro
             {"Nº Operação": AJUSTE_B, "Data Contratação": data, "CNPJ Cliente": CANGURU, "Spread R$": -20.00,
              "Observação": f"ajuste ref {ORIGINAL_INEXISTENTE}."},
+            # sem CNPJ e sem original: não há lojista para abater (item 8)
+            {"Nº Operação": AJUSTE_C, "Data Contratação": data, "Spread R$": -50.00,
+             "Observação": f"AJUSTE REF {ORIGINAL_SEM_LOJISTA}"},
         ])
     return dados / "2026-10"
 
@@ -128,8 +132,12 @@ def _valor(saida: Path, arquivo: str, id_saida: str) -> Decimal:
 
 # ---------------------------------------------------------------- parte 1: pack de outubro
 
-def test_outubro_sem_ajuste_continua_com_506_itens_e_sem_pendencia_de_ajuste(base):
-    assert base["resultado"].itens == 506
+def test_outubro_sem_ajuste_tem_387_itens_e_nenhuma_pendencia_de_ajuste(base):
+    # eram 506 antes da R32: saíram as 119 divergências da Casa (só isenção). Com setembro ao lado, a Atlas tem
+    # histórico (transações em setembro) e o alerta de antecipação não acende (P26); no outubro simulado sem
+    # setembro ao lado, ele acende e o total é 388
+    assert base["resultado"].itens == 387
+    assert not [i for i in _ler(base["saida"], "pendencias.csv") if i["id_saida"].startswith("PEN-ALERTA-ANTEC-")]
     assert not [i for i in _ler(base["saida"], "pendencias.csv") if "AJUSTE" in i["id_saida"]]
     nf = _por_id(base["saida"], "notas_a_emitir.csv")[NF_REM]
     assert "ajuste" not in nf["discriminacao"]
@@ -153,7 +161,8 @@ def test_a_ajuste_nao_vira_pen_neg_divergencia_nem_operacao_nova(com):
         assert f"PEN-NEG-REM-{ref}" not in ids and f"DIV-REM-{ref}" not in ids
     rastro = _ler(com["saida"], "rastro.csv")
     assert {l["id_saida"] for l in rastro if l["ref_origem"] == AJUSTE_A} == {f"COM-REM-{MUNDO_ABERTO}", NF_REM, "PEN-TED-PONTE"}
-    assert com["resultado"].itens == 507  # os 506 de antes mais a PEN-AJUSTE-SEMORIG do ajuste B
+    # os 387 do outubro sem ajuste mais a PEN-AJUSTE-SEMORIG (B) e a PEN-AJUSTE-SEMLOJISTA (C)
+    assert com["resultado"].itens == 389
 
 
 def test_a_rastro_aponta_para_a_linha_de_ajuste_e_para_a_original_de_setembro(com):
@@ -180,6 +189,19 @@ def test_b_original_inexistente_abate_mesmo_assim_e_abre_pendencia_para_a_helena
         "AJUSTE_SEM_OPERACAO_ORIGINAL", "Financeiro (Helena)", D("-10.00"), AJUSTE_B)
     assert ORIGINAL_INEXISTENTE in p["motivo"] and "2026-09" in p["motivo"]
     assert f"PEN-AJUSTE-SEMORIG-{AJUSTE_A}" not in pen  # a A tem original em setembro
+
+
+def test_ajuste_sem_lojista_nao_abate_vira_pendencia_e_o_fechamento_termina(base, com):
+    pen = _por_id(com["saida"], "pendencias.csv")
+    p = pen[f"PEN-AJUSTE-SEMLOJISTA-{AJUSTE_C}"]
+    assert (p["tipo"], D(p["valor_brl"]), p["ref_origem"], p["quem_decide"]) == (
+        "AJUSTE_SEM_LOJISTA", D("-25.00"), AJUSTE_C, "Financeiro (Helena)")
+    assert f"AJUSTE REF {ORIGINAL_SEM_LOJISTA}" in p["motivo"] and "não abatido" in p["motivo"]
+    assert f"PEN-AJUSTE-SEMORIG-{AJUSTE_C}" not in pen
+    rastro = _ler(com["saida"], "rastro.csv")
+    assert {l["id_saida"] for l in rastro if l["ref_origem"] == AJUSTE_C} == {f"PEN-AJUSTE-SEMLOJISTA-{AJUSTE_C}"}
+    nf = _por_id(com["saida"], "notas_a_emitir.csv")[NF_REM]["discriminacao"]
+    assert ORIGINAL_SEM_LOJISTA not in nf
 
 
 def test_pack_com_ajuste_valida_e_o_rastro_fecha(com):
@@ -287,9 +309,17 @@ def test_ajuste_sem_cnpj_usa_o_da_original_do_mes(taxas, cfg):
     assert "AJUSTE REF PC-ORIG (operação de 2031-03)" in _pref(itens, "NF-")["NF-REM-75374179000146"].campos["discriminacao"]
 
 
-def test_ajuste_sem_cnpj_e_sem_original_para_o_fechamento(taxas, cfg):
-    with pytest.raises(ErroRemessa, match="ajuste sem CNPJ"):
-        _calc(taxas, cfg, _op("OP-1", CNPJ_A, "10.00"), _ajuste("AJ-1", "PC-X", "-10.00", cnpj=None))
+def test_ajuste_sem_cnpj_e_sem_original_nao_abate_e_vira_pendencia(taxas, cfg, tmp_path):
+    # antes o fechamento parava com erro; agora o ajuste fica de fora da COM-REM e da nota, para a Helena decidir
+    itens = _calc(taxas, cfg, _op("OP-1", CNPJ_A, "10.00"), _ajuste("AJ-1", "PC-X", "-10.00", cnpj=None))
+    assert _pref(itens, "COM-REM-")[f"COM-REM-{CNPJ_A}"].valor_reportado == D("5.00")
+    assert _pref(itens, "NF-")["NF-REM-75374179000146"].valor_reportado == D("5.00")
+    pen = _pref(itens, "PEN-AJUSTE-")
+    assert set(pen) == {"PEN-AJUSTE-SEMLOJISTA-AJ-1"}
+    assert pen["PEN-AJUSTE-SEMLOJISTA-AJ-1"].valor_reportado == D("-5.00")
+    assert "AJUSTE REF PC-X" in pen["PEN-AJUSTE-SEMLOJISTA-AJ-1"].campos["motivo"]
+    gravar_saida(tmp_path, itens)
+    assert validar_saida(tmp_path) == []
 
 
 def test_linha_sem_cnpj_que_nao_e_ajuste_para_o_fechamento(taxas, cfg):

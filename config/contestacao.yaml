@@ -14,14 +14,15 @@ nomes:
   orbe: "Orbe"
   ponte: "Ponte Câmbio S.A."
 
-# Por CNPJ de lojista (respostas da Helena às 9h53):
+# Por CNPJ de lojista (respostas da Helena às 9h53; R32, 11h37: o que decide é o contrato, não o aviso,
+# então Bridge e Mundo Aberto são contestação, e a Casa, concessão fora do contrato, não entra no e-mail):
 # - secao: "comunicacao" = o e-mail comunica a condição comercial e pede a regularização do período;
 #          "contrato" (padrão) = o e-mail aponta taxa aplicada acima do contrato.
 # - aviso: se a contraparte foi avisada da condição. Só vai nas notas internas, nunca no corpo do e-mail.
 lojistas:
   "22224579000109": {secao: contrato, aviso: avisada_depois}      # Bridge
-  "00520815000100": {secao: comunicacao, aviso: nao_avisada}      # Casa do Estudante
-  "17217888000111": {secao: comunicacao, aviso: nao_avisada}      # Mundo Aberto
+  "00520815000100": {secao: contrato, aviso: nao_avisada}         # Casa do Estudante
+  "17217888000111": {secao: contrato, aviso: nao_avisada}         # Mundo Aberto
 padrao_lojista: {secao: contrato, aviso: sem_registro}
 textos_aviso:
   nao_avisada: "nunca foi avisada (o Comercial não comunicou a condição)."
@@ -45,3 +46,6 @@ campos_taxa:
   taxa_parc_7_12: "crédito parcelado (7 a 12x)"
   taxa_pix: "PIX"
   taxa_antecipacao: "antecipação"
+
+# R32, R38: nota interna da concessão comercial (a devolução é custo da Tarvo e não vai no e-mail).
+nota_concessao: "{lojista}: devolução de {valor} paga pela Tarvo (concessão, Helena 11h37). Decidir com o comercial se pede à {contraparte} parametrizar {taxa} daqui em diante."

@@ -1,6 +1,6 @@
 """Linha REMESSA (Ponte Câmbio): comissão sobre o spread realizado, divergências, nota única e pendências.
 
-Regras do HIPOTESES.md, seção 1: R11 a R18, R23, R27 e R31; premissas P01, P18 e P25. Parâmetros em config/remessa.yaml.
+Regras do HIPOTESES.md, seção 1: R11 a R18, R23, R27, R31, R32 e R34; premissas P01, P18 e P25. Parâmetros em config/remessa.yaml.
 O lojista é casado só pelo CNPJ da Ponte com o CNPJ da planilha; o nome do cliente da Ponte nunca é usado
 para casar (só aparece como nome de exibição de CNPJ que não está na planilha).
 """
@@ -19,6 +19,7 @@ import pandas as pd
 import yaml
 
 from tarvo.leitores.comum import dinheiro, sem_acento
+from tarvo.resumo import brl
 from tarvo.saida import COMISSOES, DIVERGENCIAS, NOTAS, PENDENCIAS, ItemSaida, texto_saida
 
 if TYPE_CHECKING:
@@ -38,15 +39,23 @@ MOTIVO_NAO_CADASTRADO = (
     "sem spread contratado para conferir divergência - cadastrar o lojista"
 )
 MOTIVO_CONTESTACAO = (
-    "spread aplicado acima do contratado - valor cheio que o lojista pagou a mais, a devolver ao lojista (R15) - "
-    "a nota sai pelo realizado (R16) e o ajuste vem no relatório da Ponte do mês seguinte, "
-    "registrado no mês em que aparecer (R27)"
+    "spread aplicado acima do contratado - divergência de contrato: a Tarvo contesta com a Ponte e o lojista é "
+    "ressarcido do valor cheio que pagou a mais (R15, R32) - a nota sai pelo realizado (R16) e o ajuste vem no "
+    "relatório da Ponte do mês seguinte, registrado no mês em que aparecer (R27, R31)"
 )
-MOTIVO_NEGATIVO = "spread negativo com trava D-1 vencida (R12) - fora da comissão"
+MOTIVO_NEGATIVO = (
+    "spread negativo com trava D-1 vencida, fora da comissão (R12, R34) - spread do relatório: {spread} (o que "
+    "aconteceu) - diferença até o spread contratado: {diferenca} (o que se pede à Ponte; a trava D-1 deveria ter "
+    "sido honrada)"
+)
 MOTIVO_NOTA_NAO_EMITIDA = "comissão de remessa do mês zero ou negativa: não emite nota (R17)"
 MOTIVO_NOTA_NAO_EMITIDA_AJUSTE = (
     "comissão de remessa do mês zero ou negativa depois de abater ajuste(s) da Ponte (R31): não emite nota, "
     "vale a regra de nota zerada ou negativa (R06, R17) e a decisão é da Helena"
+)
+MOTIVO_AJUSTE_SEM_LOJISTA = (
+    "ajuste da Ponte (R31) sem CNPJ e sem a operação original {original} - não abatido, porque não há lojista para "
+    "a comissão - AJUSTE REF {original} - decisão da Helena"
 )
 MOTIVO_AJUSTE_SEM_ORIGINAL = (
     "ajuste da Ponte (R31) abate a participação do mês, mas a operação original {original} não está no relatório da "
@@ -272,7 +281,7 @@ class Anterior:
 class AjusteRemessa:
     arquivo_origem: str
     ref_origem: str                  # Nº Operação da própria linha de ajuste
-    cnpj: str
+    cnpj: str | None                 # None: sem CNPJ na linha e sem original; não é abatido (PEN-AJUSTE-SEMLOJISTA)
     ref_original: str
     spread_brl: Decimal
     comissao: Decimal                # abatimento (ou crédito) da participação, P25
@@ -300,8 +309,6 @@ def calcular_ajuste(op: dict, ref_original: str, operacoes_mes: dict[str, dict],
     if original is None and anterior is not None:
         original, onde = anterior.operacoes.get(ref_original), "anterior"
     cnpj = op["cnpj"] or (original["cnpj"] if original is not None else None)
-    if cnpj is None:
-        raise ErroRemessa(f"{op['ref_origem']}: ajuste sem CNPJ e a operação original {ref_original} não foi encontrada")
     return AjusteRemessa(
         arquivo_origem=op["arquivo_origem"], ref_origem=op["ref_origem"], cnpj=cnpj, ref_original=ref_original,
         spread_brl=spread, comissao=dinheiro(spread * cfg.ajuste_participacao),
@@ -362,6 +369,11 @@ def _soma(valores) -> Decimal:
     return sum(valores, ZERO)
 
 
+def _rs(v: Decimal) -> str:
+    """"R$ 1.234,50"; negativo vira "-R$ 1.234,50" (texto de motivo)."""
+    return f"{'-' if v < 0 else ''}R$ {brl(abs(v))}"
+
+
 def _pendencia(id_saida: str, tipo: str, refs, motivo: str, valor: Decimal, origens, cfg: ConfigRemessa) -> ItemSaida:
     return ItemSaida(id_saida, PENDENCIAS.nome,
                      {"tipo": tipo, "ref_origem": refs, "motivo": texto_saida(motivo), "quem_decide": cfg.quem_decide},
@@ -376,6 +388,8 @@ def gerar_itens(operacoes: list[OperacaoRemessa], descartadas: list[dict], fora:
     por_cnpj: dict[str, list[OperacaoRemessa]] = defaultdict(list)
     for op in operacoes:
         por_cnpj[op.cnpj].append(op)
+    sem_lojista = [a for a in ajustes if a.cnpj is None]
+    ajustes = [a for a in ajustes if a.cnpj is not None]
     ajuste_por_cnpj: dict[str, list[AjusteRemessa]] = defaultdict(list)
     for a in sorted(ajustes, key=lambda a: a.ref_origem):
         ajuste_por_cnpj[a.cnpj].append(a)
@@ -415,9 +429,10 @@ def gerar_itens(operacoes: list[OperacaoRemessa], descartadas: list[dict], fora:
                                     _soma(o.diferenca for o in acima),
                                     [(o.arquivo_origem, o.ref_origem, o.diferenca) for o in acima], cfg))
 
-        for o in (o for o in doc if o.negativa):  # R12, R18, R23, P18
+        for o in (o for o in doc if o.negativa):  # R12, R18, R23, R34, P18: o valor é a diferença até o contrato
+            motivo = MOTIVO_NEGATIVO.format(spread=_rs(o.spread_brl), diferenca=_rs(o.diferenca))
             itens.append(_pendencia(f"PEN-NEG-REM-{o.ref_origem}", "CONTESTACAO_PONTE", o.ref_origem,
-                                    MOTIVO_NEGATIVO, o.diferenca, [(o.arquivo_origem, o.ref_origem, o.diferenca)], cfg))
+                                    motivo, o.diferenca, [(o.arquivo_origem, o.ref_origem, o.diferenca)], cfg))
 
     copias: dict[str, list[dict]] = defaultdict(list)
     for d in descartadas:
@@ -432,6 +447,10 @@ def gerar_itens(operacoes: list[OperacaoRemessa], descartadas: list[dict], fora:
                                 MOTIVO_FORA_COMPETENCIA.format(competencia=competencia), op["spread_brl"],
                                 [(op["arquivo_origem"], op["ref_origem"], op["spread_brl"])], cfg))
 
+    for a in sorted(sem_lojista, key=lambda a: a.ref_origem):  # R31: sem lojista não há COM-REM; não abate
+        itens.append(_pendencia(f"PEN-AJUSTE-SEMLOJISTA-{a.ref_origem}", "AJUSTE_SEM_LOJISTA", a.ref_origem,
+                                MOTIVO_AJUSTE_SEM_LOJISTA.format(original=a.ref_original),
+                                a.comissao, [(a.arquivo_origem, a.ref_origem, a.comissao)], cfg))
     for a in sorted(ajustes, key=lambda a: a.ref_origem):  # R31: sem a original, abate mesmo assim e avisa a Helena
         if a.sem_original:
             itens.append(_pendencia(f"PEN-AJUSTE-SEMORIG-{a.ref_origem}", "AJUSTE_SEM_OPERACAO_ORIGINAL", a.ref_origem,
@@ -478,7 +497,7 @@ def calcular_remessa(ponte: pd.DataFrame, taxas: pd.DataFrame, competencia: str,
         else:  # só exibição: o casamento foi pelo CNPJ
             nomes.setdefault(op["cnpj"], _obrigatorio(op, "cliente"))
     for a, op in zip(ajustes, ajustes_mes):
-        if a.cnpj not in nomes:
+        if a.cnpj is not None and a.cnpj not in nomes:
             nomes[a.cnpj] = contratos.nome(a.cnpj) if contratos.cadastrado(a.cnpj) else (op["cliente"] or a.cnpj)
     return gerar_itens(operacoes, descartadas, fora, nomes, competencia, arquivo_ponte, cfg, ajustes)
 

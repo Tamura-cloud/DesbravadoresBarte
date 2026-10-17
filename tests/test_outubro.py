@@ -274,14 +274,18 @@ def test_casa_do_estudante_tarifa_zerada_em_outubro(saida, entradas):
     linhas = [l for l in calcular_linhas(entradas.orbe, entradas.taxas, carregar_config_checkout())
               if l.cnpj == CNPJ_CASA]
     assert linhas
-    assert all(l.taxa_contratada == 0 and l.origem_taxa == "R10" for l in linhas)
+    # R32: a concessão zera só a comissão; a divergência continua medida contra a planilha (o contrato)
+    assert all(l.taxa_comissao == 0 and l.concessao == "R10" for l in linhas)
+    assert all(l.taxa_contratada == l.taxa_aplicada for l in linhas)
 
     com = _por_id(saida, "comissoes_por_lojista.csv")[f"COM-CHK-{CNPJ_CASA}"]
     assert Decimal(com["comissao_brl"]) == 0
     assert f"NF-CHK-{CNPJ_CASA}" not in _por_id(saida, "notas_a_emitir.csv")
     assert _por_id(saida, "pendencias.csv")[f"PEN-NF-CHK-{CNPJ_CASA}"]["tipo"] == "NOTA_NAO_EMITIDA"
-    div = [d for d in _ler(saida, "divergencias_taxa.csv") if d["cnpj"] == CNPJ_CASA]
-    assert div and all(d["taxa_contratada_pct"] == "0.0000" for d in div)
+    # antes da R32 as 119 linhas eram divergência contra 0%; agora nenhuma, e a devolução é a concessão (R38)
+    assert not [d for d in _ler(saida, "divergencias_taxa.csv") if d["cnpj"] == CNPJ_CASA]
+    conc = _por_id(saida, "pendencias.csv")[f"PEN-CONCESSAO-CHK-{CNPJ_CASA}"]
+    assert conc["tipo"] == "DEVOLUCAO_CONCESSAO" and len(conc["ref_origem"].split("|")) == len(linhas)
     # R10 vale só no checkout: a remessa da Casa segue com comissão
     assert Decimal(_por_id(saida, "comissoes_por_lojista.csv")[f"COM-REM-{CNPJ_CASA}"]["comissao_brl"]) > 0
 

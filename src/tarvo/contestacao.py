@@ -66,6 +66,7 @@ class ConfigContestacao:
     textos_aviso: dict[str, str]
     modalidades: dict[str, str]
     campos_taxa: dict[str, str]
+    nota_concessao: str
 
     def secao(self, cnpj: str) -> str:
         return self.lojistas.get(cnpj, self.padrao_lojista)["secao"]
@@ -86,6 +87,7 @@ def carregar_config(caminho=CONFIG_CONTESTACAO) -> ConfigContestacao:
         lojistas={str(k): dict(v) for k, v in (bruto.get("lojistas") or {}).items()},
         padrao_lojista=dict(bruto["padrao_lojista"]), textos_aviso=dict(bruto["textos_aviso"]),
         modalidades=dict(bruto["modalidades"]), campos_taxa=dict(bruto["campos_taxa"]),
+        nota_concessao=bruto["nota_concessao"],
     )
     for cnpj, l in [("padrao_lojista", cfg.padrao_lojista), *cfg.lojistas.items()]:
         if l.get("aviso") not in cfg.textos_aviso:
@@ -282,12 +284,29 @@ def _perfil_orbe(ls: list[dict], todas_do_lojista: list[dict], condicoes: list[C
     return frases + [frase + "."]
 
 
-def _md_orbe(linhas, todas_orbe, entradas, contratos, cfg, cfg_ck, devolucoes) -> list[str]:
+def _taxa_concessao(cnpj: str, cfg_ck) -> str:
+    valores = sorted({v for c in cfg_ck.condicoes if c.cnpj == cnpj for v in c.taxas.values()})
+    return " ou ".join(f"{v.normalize():f}".replace(".", ",") + "%" for v in valores) or "a taxa da concessão"
+
+
+def _notas_concessao(concessoes, contratos, cfg, cfg_ck) -> list[str]:
+    """R32, R38: a devolução da concessão é custo da Tarvo e não vai no e-mail; só nas notas."""
+    if not concessoes:
+        return []
+    linhas = ["", "Concessões comerciais (fora do e-mail, R32):"]
+    for cnpj, valor in sorted(concessoes.items()):
+        linhas.append("- " + cfg.nota_concessao.format(lojista=texto_saida(contratos.nome(cnpj)), valor=_rs(valor),
+                                                          contraparte=cfg.nomes["orbe"], taxa=_taxa_concessao(cnpj, cfg_ck)))
+    return linhas
+
+
+def _md_orbe(linhas, todas_orbe, entradas, contratos, cfg, cfg_ck, devolucoes, concessoes) -> list[str]:
     nome, comp = cfg.nomes["orbe"], entradas.competencia
     cabeca = [cfg.cabecalho, ""]
     topo = [f"Para: {cfg.destinatarios['orbe']}", f"Assunto: Taxas de checkout - competência {comp}", ""]
     if not linhas:
-        return cabeca + _bloco_notas(cfg, ["- Nenhuma divergência de checkout na competência."]) + topo + [
+        notas = ["- Nenhuma divergência de checkout na competência."] + _notas_concessao(concessoes, contratos, cfg, cfg_ck)
+        return cabeca + _bloco_notas(cfg, notas) + topo + [
             f"Nenhuma transação da competência {comp} com taxa aplicada diferente da contratada. Não há o que enviar à {nome}."]
     grupos = _por_cnpj(linhas)
     condicoes = {c: _condicoes_checkout(c, (l["_data_ref"] for l in ls), contratos, cfg_ck) for c, ls in grupos.items()}
@@ -317,12 +336,16 @@ def _md_orbe(linhas, todas_orbe, entradas, contratos, cfg, cfg_ck, devolucoes) -
                          f"Pela R10, o lojista recebe de volta o que foi cobrado.")
     if estornos:
         notas += ["", f"Os {len(estornos)} estornos entram no total do e-mail e o reduzem."]
+    notas += _notas_concessao(concessoes, contratos, cfg, cfg_ck)
 
+    comunicacao = [c for c in grupos if cfg.secao(c) == COMUNICACAO]
+    contrato = [c for c in grupos if cfg.secao(c) != COMUNICACAO]
+    partes = " Dividimos o assunto em duas partes." if comunicacao and contrato else ""
     texto = cabeca + _bloco_notas(cfg, notas) + topo + [
         "Prezados,", "",
         f"Na conferência da competência {comp}, comparamos as taxas contratadas dos lojistas com as aplicadas pela {nome} "
         f"em {len(linhas)} transações de {len(grupos)} lojistas. As transações estão no anexo orbe_operacoes.csv "
-        f"(coluna diferenca_brl = valor bruto × diferença entre a taxa aplicada e a contratada). Dividimos o assunto em duas partes.", ""]
+        f"(coluna diferenca_brl = valor bruto × diferença entre a taxa aplicada e a contratada).{partes}", ""]
 
     def tabela(cnpjs):
         return _tabela(["lojista", "CNPJ", "transações", "taxa contratada", "taxa aplicada", "diferença (R$)"],
@@ -332,8 +355,6 @@ def _md_orbe(linhas, todas_orbe, entradas, contratos, cfg, cfg_ck, devolucoes) -
                          brl(sum((Decimal(l["diferenca_brl"]) for l in grupos[c]), ZERO))] for c in cnpjs],
                        numericas={2, 5})
 
-    comunicacao = [c for c in grupos if cfg.secao(c) == COMUNICACAO]
-    contrato = [c for c in grupos if cfg.secao(c) != COMUNICACAO]
     n = 1
     if comunicacao:
         texto += [f"## {n}. Comunicação de condição comercial", ""]
@@ -466,20 +487,25 @@ def _md_ponte(linhas, entradas, contratos, cfg, participacao) -> list[str]:
         conds = [Condicao("", r["vigencia_inicio"], r["vigencia_fim"]) for r in rows]
         notas.append(f"- {ls[0]['lojista']}: {_aviso(cnpj, conds, nome, cfg)} (planilha de taxas, {', '.join(r['ref_origem'] for r in rows)})")
     for cnpj, ls in grupos.items():
-        if cfg.secao(cnpj) == COMUNICACAO:
+        if cfg.secao(cnpj) != COMUNICACAO:  # R32: o que decide é o contrato, não o aviso
+            obs = "; ".join(r["obs"] for r in condicoes_remessa(cnpj, ls) if r["obs"])
+            notas.append(f"- {ls[0]['lojista']}: {_faixa_pct(Decimal(l['taxa_contratada_pct']) for l in ls)} contratado e "
+                         f"registrado na planilha" + (f" ({obs})" if obs else "") +
+                         " - o que decide é o contrato, não o aviso (Helena, 11h37).")
+        else:
             for r in condicoes_remessa(cnpj, ls):
                 notas.append(f"- Ressalva ({ls[0]['lojista']}): a planilha registra a condição como {Condicao('', r['vigencia_inicio'], r['vigencia_fim']).vigencia()}"
                              + (f" e a observação \"{r['obs']}\"" if r["obs"] else "")
                              + ". O e-mail não cita data de início; confirme a data da condição antes de enviar.")
     if acima:
-        notas += ["", f"Valor a devolver ao lojista (R15, PEN-CONTEST-REM): {_rs(_soma(acima))}, o spread inteiro pago a mais pelo cliente. "
+        notas += ["", f"Valor a ressarcir ao lojista (R15, R32, PEN-CONTEST-REM): {_rs(_soma(acima))}, o spread inteiro pago a mais pelo cliente. "
                       f"A Tarvo já recebeu {pct} do spread realizado dessas operações na comissão e na nota (R16), ou seja, "
                       f"{_rs(_soma(acima, 'parte_tarvo_brl'))} do excesso, a ajustar quando a Ponte devolver (R27)."]
     if neg:
-        notas += ["", f"Spreads negativos: o valor da PEN-NEG ({_rs(_soma(neg))}) é a diferença do spread inteiro (aplicado menos contratado, P18), "
-                      f"não a parte da Tarvo. Nenhuma dessas operações entrou em COM-REM nem em NF-REM (R12). O e-mail mostra o que a Tarvo "
-                      f"deixou de receber pelo contrato: {pct} do spread contratado, {_rs(_soma(neg, 'tarvo_deixou_de_receber_brl'))} (P24, "
-                      f"ainda sem aprovação)."]
+        notas += ["", f"Spreads negativos (R34): o e-mail pede à Ponte a diferença até o spread contratado, "
+                      f"{_rs(abs(_soma(neg)))} no total (o valor da PEN-NEG, P18), e mostra o spread do relatório. Nenhuma dessas "
+                      f"operações entrou em COM-REM nem em NF-REM (R12). A parte da Tarvo, {pct} do spread contratado, é o que a Tarvo "
+                      f"deixou de receber: {_rs(_soma(neg, 'tarvo_deixou_de_receber_brl'))} (P24, ainda sem aprovação); fica fora do e-mail."]
     if dup:
         notas += ["", f"Duplicada: o valor da PEN-DUP ({_rs(_soma(dup))}) é o spread da cópia (P19); a parte da Tarvo ({_rs(_soma(dup, 'parte_tarvo_brl'))}, "
                       f"{pct}) entrou uma vez só na comissão e na nota (R13)."]
@@ -488,34 +514,47 @@ def _md_ponte(linhas, entradas, contratos, cfg, participacao) -> list[str]:
         "Prezados,", "",
         f"Na conferência do relatório de operações da competência {comp}, a Tarvo identificou {len(linhas)} operações para "
         f"tratar, descritas no anexo ponte_operacoes.csv (coluna natureza).", ""]
+    def bullets(cnpjs):
+        linhas_md = []
+        for cnpj in cnpjs:
+            ls = grupos[cnpj]
+            obs = "; ".join(r["obs"] for r in condicoes_remessa(cnpj, ls) if r["obs"])
+            linhas_md.append(f"- {ls[0]['lojista']} (CNPJ {cnpj}): spread contratado de "
+                             f"{_faixa_pct(Decimal(l['taxa_contratada_pct']) for l in ls)}" + (f" ({obs})" if obs else "") +
+                             f". {len(ls)} operações contratadas {_periodo(l['_op']['data_contratacao'] for l in ls)} saíram com "
+                             f"spread de {_faixa_pct(Decimal(l['taxa_aplicada_pct']) for l in ls)}, e o cliente pagou "
+                             f"{_rs(_soma(ls))} a maior (spread inteiro, sobre a PTAX de referência).")
+        return linhas_md
+
     n = 1
-    if acima:
-        texto += [f"## {n}. Comunicação de condição comercial", ""]
+    comunicacao = [c for c in grupos if cfg.secao(c) == COMUNICACAO]
+    contrato = [c for c in grupos if cfg.secao(c) != COMUNICACAO]
+    if comunicacao:
+        soma = sum((_soma(grupos[c]) for c in comunicacao), ZERO)
+        texto += [f"## {n}. Comunicação de condição comercial", "", *bullets(comunicacao), "",
+                  f"Comunicamos a condição acima e pedimos a regularização do período: o ajuste das operações do anexo, com a "
+                  f"diferença de {_rs(soma)} devolvida ao cliente, no relatório do mês seguinte, como crédito ou débito.", ""]
         n += 1
-        for cnpj, ls in grupos.items():
-            rows = condicoes_remessa(cnpj, ls)
-            obs = "; ".join(r["obs"] for r in rows if r["obs"])
-            texto.append(f"- {ls[0]['lojista']} (CNPJ {cnpj}): spread contratado de "
-                         f"{_faixa_pct(Decimal(l['taxa_contratada_pct']) for l in ls)}" + (f" ({obs})" if obs else "") +
-                         f". {len(ls)} operações contratadas {_periodo(l['_op']['data_contratacao'] for l in ls)} saíram com "
-                         f"spread de {_faixa_pct(Decimal(l['taxa_aplicada_pct']) for l in ls)}, o que representa "
-                         f"{_rs(_soma(ls))} pagos a maior pelo cliente (spread inteiro, sobre a PTAX de referência).")
-        texto += ["", f"Comunicamos a condição acima e pedimos a regularização do período: o ajuste das operações do anexo, com a "
-                      f"diferença de {_rs(_soma(acima))} devolvida ao cliente, no relatório do mês seguinte, como crédito ou débito.", ""]
-    if neg:
+    if contrato:  # R32: divergência de contrato, a Tarvo contesta e o lojista é ressarcido
+        soma = sum((_soma(grupos[c]) for c in contrato), ZERO)
+        texto += [f"## {n}. Contestação: spread acima do contratado", "", *bullets(contrato), "",
+                  f"Pedimos a correção das operações do anexo e o ressarcimento ao cliente da diferença de {_rs(soma)}, no "
+                  f"relatório do mês seguinte, como crédito ou débito.", ""]
+        n += 1
+    if neg:  # R34: o pedido é a diferença até o spread contratado; o spread do relatório aparece ao lado
         obs = sorted({l["_op"]["observacao"] for l in neg if l["_op"]["observacao"]})
         motivo = f" Observação do relatório: {'; '.join(obs)}." if obs else ""
-        total = _soma(neg, "tarvo_deixou_de_receber_brl")
+        total = abs(_soma(neg))
         texto += [f"## {n}. Contestação: spreads negativos", "",
-                  f"{len(neg)} operações saíram com spread negativo.{motivo} Pelo contrato, a Tarvo recebe {pct} do spread; "
-                  f"como o spread realizado ficou negativo, as operações ficaram fora da participação, e a Tarvo deixou de "
-                  f"receber {_rs(total)} em relação ao contratado.", ""]
+                  f"{len(neg)} operações saíram com spread negativo.{motivo} A trava D-1 deveria ter sido honrada: pedimos à "
+                  f"Ponte a diferença até o spread contratado, {_rs(total)} no total.", ""]
         n += 1
-        texto += [_tabela(["operação", "lojista", "contratação", "spread contratado (R$)", "spread aplicado (R$)", "Tarvo deixou de receber (R$)"],
+        texto += [_tabela(["operação", "lojista", "contratação", "spread contratado (R$)", "spread do relatório (R$)",
+                           "diferença pedida (R$)"],
                           [[l["ref_origem"], l["lojista"], l["data_contratacao"], brl(Decimal(l["spread_contratado_brl"])),
-                            brl(Decimal(l["spread_aplicado_brl"])), brl(Decimal(l["tarvo_deixou_de_receber_brl"]))] for l in neg],
+                            brl(Decimal(l["spread_aplicado_brl"])), brl(abs(Decimal(l["valor_brl"])))] for l in neg],
                           numericas={3, 4, 5}), "",
-                  "Pedimos a revisão das operações e a regularização do valor.", ""]
+                  "Pedimos a revisão das operações e o pagamento da diferença até o spread contratado.", ""]
     if dup:
         texto += [f"## {n}. Contestação: operação repetida no relatório", ""]
         n += 1
@@ -549,7 +588,9 @@ def gerar_contestacoes(itens: Iterable[ItemSaida], entradas: Entradas, pasta, cf
     devolucoes = {i.id_saida.removeprefix("PEN-DEVOL-CHK-"): i.valor_reportado for i in _por_prefixo(itens, "PEN-DEVOL-CHK-")}
     orbe = _linhas_orbe(itens, entradas, ck, cfg)
     ponte = _linhas_ponte(itens, entradas, rm, cfg_remessa.participacao)
-    md_orbe = _md_orbe(orbe, _todas_orbe_por_cnpj(entradas, ck), entradas, ck, cfg, cfg_checkout, devolucoes)
+    concessoes = {i.id_saida.removeprefix("PEN-CONCESSAO-CHK-"): i.valor_reportado
+                  for i in _por_prefixo(itens, "PEN-CONCESSAO-CHK-")}
+    md_orbe = _md_orbe(orbe, _todas_orbe_por_cnpj(entradas, ck), entradas, ck, cfg, cfg_checkout, devolucoes, concessoes)
     md_ponte = _md_ponte(ponte, entradas, rm, cfg, cfg_remessa.participacao)
 
     gravados = {}
