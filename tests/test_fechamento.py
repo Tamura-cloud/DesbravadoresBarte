@@ -191,6 +191,80 @@ def test_erro_num_modulo_nao_toca_saida(tmp_path):
     assert _sem_preparo(tmp_path)
 
 
+def test_yaml_invalido_diz_o_arquivo_e_a_linha_com_codigo_2_sem_traceback(tmp_path, capsys):
+    config = tmp_path / "entradas.yaml"
+    config.write_text("padroes:\n  orbe: ['*orbe*.csv'\n  taxas: x\n", encoding="utf-8")
+    saida = tmp_path / "saida"
+    assert cli.main(["fechar", "--competencia", "2026-09", "--entrada", str(ENTRADA), "--saida", str(saida),
+                     "--config", str(config)]) == 2
+    erro = capsys.readouterr().err
+    assert f"Erro de configuração em {config}, linha " in erro and "Corrija o arquivo e rode de novo" in erro
+    assert "Traceback" not in erro and not saida.exists()
+
+
+def _tudo_do_destino(tmp_path):
+    return {p: p.read_bytes() for p in tmp_path.rglob("*") if p.is_file()}
+
+
+def test_arquivo_travado_nao_substitui_nenhum_e_pede_para_fechar_o_arquivo(tmp_path, monkeypatch, capsys):
+    saida, _, _ = _pastas_com_versao_antiga(tmp_path)
+    fechar(ENTRADA, saida, "2026-09", modulos=[])  # versão anterior completa: saida/, contestacoes/ e auditoria/
+    antes = _tudo_do_destino(tmp_path)
+    travado = saida / "pendencias.csv"
+    monkeypatch.setattr(fechamento, "_travado", lambda alvo: alvo == travado)
+    assert cli.main(["fechar", "--competencia", "2026-09", "--entrada", str(ENTRADA), "--saida", str(saida)]) == 1
+    erro = capsys.readouterr().err
+    assert erro.strip() == f"Feche {travado} (provavelmente aberto no Excel) e rode de novo. Nada foi alterado."
+    assert "Traceback" not in erro
+    assert _tudo_do_destino(tmp_path) == antes
+    assert _sem_preparo(tmp_path)
+
+
+@pytest.mark.skipif(os.name != "nt", reason="travar arquivo aberto é do Windows")
+def test_arquivo_realmente_aberto_por_outro_programa_nao_substitui_nada(tmp_path, capsys):
+    import ctypes
+    from ctypes import wintypes
+
+    saida, _, _ = _pastas_com_versao_antiga(tmp_path)
+    fechar(ENTRADA, saida, "2026-09", modulos=[])
+    antes = _tudo_do_destino(tmp_path)
+    k32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    k32.CreateFileW.restype = wintypes.HANDLE
+    k32.CreateFileW.argtypes = [wintypes.LPCWSTR, wintypes.DWORD, wintypes.DWORD, wintypes.LPVOID, wintypes.DWORD,
+                                wintypes.DWORD, wintypes.HANDLE]
+    handle = k32.CreateFileW(str(saida / "rastro.csv"), 0x80000000, 0, None, 3, 0x80, None)  # leitura, sem compartilhar
+    assert handle not in (None, wintypes.HANDLE(-1).value)
+    try:
+        assert cli.main(["fechar", "--competencia", "2026-09", "--entrada", str(ENTRADA), "--saida", str(saida)]) == 1
+        erro = capsys.readouterr().err
+        assert "rastro.csv (provavelmente aberto no Excel) e rode de novo. Nada foi alterado." in erro
+        assert "Traceback" not in erro
+    finally:
+        k32.CloseHandle(handle)
+    assert _tudo_do_destino(tmp_path) == antes
+
+
+def test_troca_que_falha_no_meio_restaura_os_arquivos_antigos(tmp_path, monkeypatch, capsys):
+    saida, _, _ = _pastas_com_versao_antiga(tmp_path)
+    fechar(ENTRADA, saida, "2026-09", modulos=[])
+    antes = _tudo_do_destino(tmp_path)
+    original = os.replace
+    chamadas = []
+
+    def falha_na_terceira(origem, destino):
+        chamadas.append(destino)
+        if len(chamadas) == 3:
+            raise PermissionError(13, "Permission denied", str(destino))
+        return original(origem, destino)
+
+    monkeypatch.setattr(fechamento.os, "replace", falha_na_terceira)
+    assert cli.main(["fechar", "--competencia", "2026-09", "--entrada", str(ENTRADA), "--saida", str(saida)]) == 1
+    erro = capsys.readouterr().err
+    assert "provavelmente aberto no Excel" in erro and "Nada foi alterado." in erro and "Traceback" not in erro
+    assert len(chamadas) == 3
+    assert _tudo_do_destino(tmp_path) == antes
+
+
 def test_sucesso_substitui_saida_e_contestacoes_e_apaga_o_preparo(tmp_path, monkeypatch):
     saida, contestacoes, antigos = _pastas_com_versao_antiga(tmp_path)
     monkeypatch.setattr(fechamento, "MODULOS", [])

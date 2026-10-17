@@ -196,6 +196,63 @@ def ler_entradas(entrada, competencia: str, config=CONFIG_PADRAO, usar_ia: bool 
     )
 
 
+class ErroArquivoTravado(Exception):
+    """Um arquivo de destino não pode ser substituído (no Windows, CSV aberto no Excel). Nada foi alterado."""
+
+    def __init__(self, arquivo: Path):
+        self.arquivo = arquivo
+        super().__init__(f"Feche {arquivo} (provavelmente aberto no Excel) e rode de novo. Nada foi alterado.")
+
+
+def _travado(alvo: Path) -> bool:
+    """O arquivo existe e não abre para escrita (travado por outro programa). Abre sem alterar o conteúdo."""
+    if not alvo.exists():
+        return False
+    try:
+        with open(alvo, "ab"):
+            return False
+    except OSError:
+        return True
+
+
+def _publicar_tudo(grupos: list[tuple[dict[str, Path], Path | None]], reserva: Path) -> list[dict[str, Path]]:
+    """Publica saida, contestações e registro de execução como um conjunto. Antes de trocar qualquer arquivo,
+    confere que todos os destinos podem ser substituídos; se algum estiver travado, nada é trocado. Se a troca
+    falhar no meio, os arquivos antigos são restaurados (os novos que não existiam antes são removidos)."""
+    alvos = [(destino / nome, origem) for preparados, destino in grupos if destino for nome, origem in preparados.items()]
+    for alvo, _ in alvos:
+        if _travado(alvo):
+            raise ErroArquivoTravado(alvo)
+    antigos: dict[Path, Path | None] = {}
+    for i, (alvo, _) in enumerate(alvos):
+        if alvo.exists():
+            copia = reserva / f"{i}_{alvo.name}"
+            shutil.copyfile(alvo, copia)
+            antigos[alvo] = copia
+        else:
+            antigos[alvo] = None
+    resultado = []
+    try:
+        for preparados, destino in grupos:
+            resultado.append(_publicar(preparados, destino) if destino else {})
+    except OSError as e:
+        falhas = []
+        for alvo, copia in antigos.items():
+            try:
+                if copia is not None:
+                    shutil.copyfile(copia, alvo)
+                elif alvo.exists():
+                    alvo.unlink()
+            except OSError:
+                falhas.append(alvo)
+        if falhas:
+            raise OSError(f"A gravação falhou no meio ({e}) e não foi possível restaurar: "
+                          f"{', '.join(str(f) for f in falhas)}. Restaure esses arquivos com 'git checkout -- <arquivo>'.") from e
+        travado = next((a for a, _ in alvos if _travado(a)), None)
+        raise ErroArquivoTravado(Path(getattr(e, "filename", None) or travado or alvos[0][0])) from e
+    return resultado
+
+
 def _publicar(preparados: dict[str, Path], destino: Path) -> dict[str, Path]:
     """Põe cada arquivo preparado no destino, por cima do anterior (os.replace: troca atômica por arquivo)."""
     destino.mkdir(parents=True, exist_ok=True)
@@ -204,6 +261,8 @@ def _publicar(preparados: dict[str, Path], destino: Path) -> dict[str, Path]:
         alvo = destino / nome
         try:
             os.replace(origem, alvo)
+        except PermissionError:
+            raise
         except OSError:  # outra unidade de disco: os.replace não atravessa volumes
             shutil.copyfile(origem, alvo)
         publicados[nome] = alvo
@@ -274,8 +333,10 @@ def fechar(entrada, saida, competencia: str, *, config=CONFIG_PADRAO,
                 entradas, Path(entrada).resolve(), saida, comando, preparo / "saida", rascunhos_preparados,
                 destino_contestacoes, ignorados, not entradas.bloqueios and not regras, regras)
             registro_preparado = registro_execucao.gravar(registro, preparo / "auditoria")
-        gravados = _publicar(preparados, saida)
-        rascunhos = _publicar(rascunhos_preparados, destino_contestacoes) if destino_contestacoes else {}
-        registros = _publicar(registro_preparado, destino_auditoria) if destino_auditoria else {}
+        reserva = preparo / "reserva"
+        reserva.mkdir()
+        gravados, rascunhos, registros = _publicar_tudo(
+            [(preparados, saida), (rascunhos_preparados, destino_contestacoes), (registro_preparado, destino_auditoria)],
+            reserva)
     return ResultadoFechamento(entradas.arquivos, gravados, len(itens), rascunhos, ignorados, entradas.bloqueios,
                                tuple(a.texto for a in entradas.avisos), regras, registros)

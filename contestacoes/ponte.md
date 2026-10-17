@@ -25,7 +25,7 @@ Na conferência do relatório de operações da competência 2026-09, a Tarvo id
 
 ## 1. Contestação: spread acima do contratado
 
-- Mundo Aberto (CNPJ 17217888000111): spread contratado de 1,20% (spread negociado em jul/26). 23 operações contratadas de 2026-09-01 a 2026-09-30 saíram com spread de 1,4991% a 1,5009%, e o cliente pagou R$ 1.418,85 a maior (spread inteiro, sobre a PTAX de referência).
+- Mundo Aberto (CNPJ 17217888000111): condição contratada de 1,20%. 23 operações contratadas de 2026-09-01 a 2026-09-30 saíram com spread de 1,4991% a 1,5009%, e o cliente pagou R$ 1.418,85 a maior (spread inteiro, sobre a PTAX de referência).
 
 Pedimos a correção das operações do anexo e o ressarcimento ao cliente da diferença de R$ 1.418,85, no relatório do mês seguinte, como crédito ou débito.
 

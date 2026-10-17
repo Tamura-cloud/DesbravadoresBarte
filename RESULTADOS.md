@@ -9,7 +9,7 @@
 | Fechamento | `python -m tarvo fechar --competencia 2026-09 --entrada dados/2026-09 --saida saida/` (IA conforme `config/ia.yaml`; em setembro todo lançamento casa uma regra, então a IA não é chamada nenhuma vez, P14) |
 | Resumo | `python -m tarvo resumo --saida saida` |
 | Registro da execução (O06) | `auditoria/execucao.md` e `auditoria/execucao.json`: a última execução do `fechar`, com data e hora, commit, comando, cada arquivo de entrada (tipo, tamanho, SHA-256, linhas lidas), arquivos ignorados, fontes bloqueadas, status e código de saída, e linhas e total de cada CSV de `saida/` |
-| pytest | **484 passed** (`python -m pytest -q`) |
+| pytest | **489 passed** (`python -m pytest -q`) |
 | `validar_saida(saida/)` | `[]`, **sem problemas** |
 | Rastro | 371 de 371 itens com soma do rastro por id_saida = valor reportado |
 
@@ -286,7 +286,7 @@ Colunas novas no ponte_operacoes.csv (P24, exibição, aguardando aprovação):
 | natureza | coluna | total | Esperado | teste de origem | |
 |---|---|---:|---|---|:-:|
 | SPREAD_ACIMA_CONTRATADO | parte_tarvo_brl (50% da diferença, por operação) | 709,46 | 709,46 | `test_contestacao.py::test_ponte_partes_da_tarvo_no_csv` | ✓ |
-| SPREAD_NEGATIVO | tarvo_deixou_de_receber_brl (50% do spread contratado) | 865,98 | 865,98 | idem | ✓ |
+| SPREAD_NEGATIVO | (sem coluna no anexo) 50% do spread contratado por operação, só nas notas internas do ponte.md | 865,98 | 865,98 | idem | ✓ |
 | OPERACAO_DUPLICADA | parte_tarvo_brl · valor_operacao_brl | 410,94 · 55.811,47 | 410,94 · 55.811,47 | idem | ✓ |
 
 O `fechar` pelo CLI lista os 4 arquivos gravados e aceita `--sem-contestacao` (`test_contestacao.py::test_cli_lista_os_rascunhos_e_grava_na_pasta_irma`, `::test_cli_sem_contestacao_nao_grava_a_pasta`).
