@@ -7,7 +7,7 @@ from pathlib import Path
 import openpyxl
 import pytest
 
-from tarvo.cli import CONFIG_PADRAO, carregar_padroes, localizar_arquivos
+from tarvo.cli import localizar_pela_config
 from tarvo.leitores.comum import dinheiro
 from tarvo.leitores.ponte import ler_ponte
 
@@ -23,7 +23,7 @@ CABECALHO = [
 
 @pytest.fixture(scope="module")
 def setembro():
-    eml = localizar_arquivos(ENTRADA, carregar_padroes(CONFIG_PADRAO))["ponte_eml"]
+    eml = localizar_pela_config(ENTRADA)["ponte_eml"]
     return eml, *ler_ponte(eml)
 
 

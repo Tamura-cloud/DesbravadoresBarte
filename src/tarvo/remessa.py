@@ -349,7 +349,7 @@ def pasta_anterior(pasta: Path, competencia: str) -> Path | None:
 
 def carregar_anterior(entradas: Entradas, cfg: ConfigRemessa) -> Anterior | None:
     """Lê o relatório da Ponte e a planilha da competência anterior, se a pasta dela existir ao lado desta."""
-    from tarvo.cli import CONFIG_PADRAO, ErroEntrada, carregar_padroes, localizar_arquivos
+    from tarvo.cli import ErroEntrada, localizar_pela_config
     from tarvo.leitores.ponte import ler_ponte
     from tarvo.leitores.taxas import ler_taxas
 
@@ -357,7 +357,7 @@ def carregar_anterior(entradas: Entradas, cfg: ConfigRemessa) -> Anterior | None
     if pasta is None:
         return None
     try:
-        arquivos = localizar_arquivos(pasta, carregar_padroes(CONFIG_PADRAO))
+        arquivos = localizar_pela_config(pasta)  # com os tipos múltiplos (a Orbe pode ter relatório e ajustes, O05)
     except ErroEntrada:
         return None  # pasta sem os arquivos esperados: não há com que conferir
     competencia = competencia_anterior(entradas.competencia)

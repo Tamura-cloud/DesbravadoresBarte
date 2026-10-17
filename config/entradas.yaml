@@ -1,7 +1,9 @@
 # Padrões de nome (glob, sem diferenciar maiúsculas) para localizar cada arquivo de entrada.
 # Nunca use o nome exato: os nomes mudam a cada competência.
+# Cada tipo exige exatamente 1 arquivo, salvo multiplos: true. Aí todos os arquivos que casam são lidos, em ordem
+# de nome, no mesmo formato (O05: a Orbe manda o relatório e, depois, os ajustes que ficaram fora dele).
 arquivos:
-  orbe: "*orbe*.csv"
+  orbe: {padrao: "*orbe*.csv", multiplos: true}
   taxas: "*taxas*.xlsx"
   ponte_eml: "*.eml"
   plano_de_contas: "*plano_de_contas*.csv"

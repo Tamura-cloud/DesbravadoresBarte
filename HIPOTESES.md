@@ -4,8 +4,8 @@ Fontes deste arquivo:
 - **Fonte 1:** HIPOTESES.md do colega em `origin/main` (commit `d425cd4`). Todo o conteúdo dela está aqui, nas seções 2, 4 e 5, identificado como `F1-H01` a `F1-H10`.
 - **Fonte 2:** respostas públicas da Helena (financeiro da Tarvo) no canal #tarvo-financeiro em 16/10/2026. As perguntas foram feitas por outros times; as respostas valem para todos. Exceção: as perguntas do nosso time (Desbravadores Barte), respondidas em 17/10/2026: duas às 9h45 (viraram R22 e a validação de P04) e três às 9h48 (viraram R23, R24 e a validação de P16; na R23 a Helena remeteu à resposta pública dada à MN AI às 9h44). Ver seção 3.
 - **Fonte 2, 17/10/2026:** respostas públicas da Helena a outros times às 9h47 (R30), 9h49 (R28), 9h53 (R29), 10h44 (itens 4 a 6: R25, R26 e R27), 11h33 (R31), 11h37 (R32 a R34, ao Theo Garcia), 11h38 (R35 a R38, à Southlands) e 11h41 (R39 e R40, à Prime). Os itens 1 a 3 das 10h44 descrevem o processo e não viraram regra. As citações literais estão em cada regra.
-- **Aprovado por:** cada regra diz quem aprovou e quando, pelo critério da R28. Toda premissa (P01 a P26) diz o status.
-- **Fonte 3:** respostas da Organização do hackathon no canal de Logística, 17/10/2026 (O01 a O04, seção 7). São decisões de formato, escopo e avaliação, não regra de negócio: não usam R nem P e não mudam nenhum cálculo.
+- **Aprovado por:** cada regra diz quem aprovou e quando, pelo critério da R28. Toda premissa (P01 a P28) diz o status.
+- **Fonte 3:** respostas da Organização do hackathon no canal de Logística, 17/10/2026 (O01 a O05, seção 7). São decisões de formato, escopo e avaliação, não regra de negócio: não usam R nem P e não mudam nenhum cálculo.
 
 Pela regra do CLAUDE.md, só entra no código regra de negócio que esteja aqui. Os valores de setembro citados neste arquivo são referência para os testes, nunca para `src/` ou `config/`.
 
@@ -223,6 +223,17 @@ Uma revisão independente questionou as escolhas abaixo. Todas foram mantidas, m
   - **Motivo:** a Helena disse que o ajuste "abate a nossa participação", mas não disse se o Spread R$ da linha já vem como parte da Tarvo ou como o spread inteiro da operação. Adotamos o spread inteiro, como no resto do relatório da Ponte, e aplicamos os 50% da R11.
   - **Status:** aguardando aprovação. Se o valor já vier como parte da Tarvo, basta pôr "1" na configuração.
   - **Se estiver errada, para a Helena:** o ajuste da Ponte abate 50% do Spread R$ do ajuste. Se o valor do ajuste já vier como parte da Tarvo, a nota única da Ponte sairia mais alta que o devido: para cada R$ 100,00 de Spread R$ de ajuste, R$ 50,00 a mais, e ela teria de corrigir depois; no caso inverso, mais baixa. Setembro não teve ajuste: R$ 0,00 em jogo. Ela confirma no primeiro ajuste real; corrigir é pôr "1" na configuração.
+
+**Vários arquivos da Orbe no mês (O05: P27, P28)**
+
+- **P27 — id_transacao repetido entre arquivos da Orbe:** com a linha igual em todos os campos, a transação conta uma vez e abre PEN-REPET-CHK-<id_transacao>, tipo TRANSACAO_REPETIDA, valor 0,00, com o rastro nas duas cópias (arquivo e id_transacao de cada uma). Com qualquer campo diferente, o fechamento para e diz o id, os dois arquivos, a linha física de cada um e os campos que diferem: o código não escolhe qual vale. **Status:** aguardando aprovação.
+  - **Motivo:** para a Ponte, a R13 manda contar a operação repetida uma vez; para a Orbe não há regra. Contar duas vezes faturaria a comissão em dobro, e escolher entre duas versões diferentes seria inventar o dado. A pendência informativa deixa a Helena confirmar com a Orbe. Pedido do time ao receber o 06 (17/10/2026).
+  - **Setembro:** nenhum id_transacao do 06 aparece no 01.
+  - **Se estiver errada, para a Helena:** se a Orbe puder mandar uma transação legítima nova com o mesmo id, ela deixaria de faturar a comissão dessa transação; sem a checagem, faturaria em dobro a de um reenvio. Em setembro nenhum id se repete: R$ 0,00 em jogo.
+- **P28 — Estorno ou reversão de transação do mesmo mês sem a original em nenhum arquivo da Orbe:** o lançamento é calculado normalmente (R35: taxa da data da original e faixa da própria linha) e abre PEN-SEMORIG-CHK-<id_transacao>, tipo REFERENCIA_NAO_ENCONTRADA, valor 0,00. A original de mês anterior é o caso normal da R04 e não abre pendência. **Status:** aguardando aprovação.
+  - **Motivo:** com os ajustes chegando em arquivo separado (O05), um estorno do mês pode chegar antes da venda que ele estorna, ou referir uma venda que a Orbe não mandou. O cálculo não depende da original (a data dela vem na própria linha), mas a Helena precisa saber que a original não foi vista. Pedido do time ao receber o 06 (17/10/2026).
+  - **Setembro:** as 13 originais referidas no 06 estão no 01; no 01, as originais que faltam são todas de agosto (R04).
+  - **Se estiver errada, para a Helena:** com a pendência a mais, ela olharia à toa um estorno cuja venda a Orbe ainda vai mandar; sem ela, abateria da comissão o estorno de uma venda que nunca foi faturada, sem aviso. Em setembro nenhum caso: R$ 0,00 em jogo.
 
 ### 2.2 Premissas e achados do HIPOTESES.md do colega (Fonte 1)
 
@@ -460,3 +471,9 @@ Fonte: Organização, canal de Logística, 17/10/2026. Não vêm da Helena e nã
     - Os outros ganharam "próximo passo: ...".
     - tests/test_estrutura.py confere todo modelo de motivo do código.
     - Respalda a R23 (spread negativo fora das divergências) e a R32 (a Casa fora das divergências).
+- **O05 — Arquivo de ajustes da Orbe no meio do dia.** *"A Orbe mandou os ajustes de setembro que ficaram fora do relatório: 06_orbe_ajustes_tardios_set2026.csv. [...] São só 14 linhas, no mesmo formato do arquivo 01. Se a solução de vocês já recebe os arquivos do mês, deve bastar rodar de novo. O fechamento entregue às 18h30 precisa considerar esse arquivo."* Fonte: Organização, canal de Logística, 17/10/2026, ~13h10.
+  - **Como o código atende:**
+    - O tipo orbe aceita vários arquivos no mesmo formato (config/entradas.yaml, `multiplos: true`). Todos os que casam com `*orbe*.csv` são lidos, em ordem de nome (src/tarvo/leitores/orbe.py, `ler_orbe_arquivos`), e cada linha guarda o próprio arquivo: o rastro aponta para o arquivo e o id_transacao de cada origem.
+    - O cabeçalho de cada arquivo tem de ser idêntico ao do primeiro; se não for, o fechamento para e diz o arquivo e a coluna. id_transacao repetido: P27. Estorno ou reversão sem a original do mesmo mês: P28.
+    - Os outros tipos continuam exigindo exatamente um arquivo (uma segunda planilha de taxas ainda para, com a instrução do que fazer).
+  - **As 14 linhas de setembro, pelas regras que já existiam:** 10 estornos pela taxa da data da venda original e pela faixa da própria linha (R04, R35); 3 reversões de antecipação pela taxa de antecipação da original (R05); 1 venda do Kiwi Experience, EC 1038867654, que está na planilha vigente pela R07 (faturada normalmente). Em todas a taxa aplicada é a contratada: nenhuma divergência (R03, R37). Toda original está no 01. O EC 1037647039 (Mundo Aberto) leva ao CNPJ 17217888000111, o mesmo da remessa. Efeito: comissões e notas de checkout -3.304,39; nenhuma pendência, divergência ou alerta muda (ver RESULTADOS.md, "Arquivo recebido às 13h10").

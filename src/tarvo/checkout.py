@@ -51,6 +51,16 @@ MOTIVO_CONCESSAO = (
     "valor = taxa cobrada pela Orbe nas transações da concessão - próximo passo: a Helena paga a devolução ao lojista "
     "e decide com o Comercial se pede à Orbe parametrizar {taxa} daqui em diante (nota interna em {rascunho})"
 )
+MOTIVO_REPETIDA = (
+    "id_transacao {ref} veio em {mantido} (linha física {n_mantida}) e de novo, com a linha igual, em {repetido} "
+    "(linha física {n_repetida}): contado uma vez no fechamento (P27) - próximo passo: a Helena confirma com a Orbe que "
+    "é a mesma transação enviada duas vezes"
+)
+MOTIVO_SEM_ORIGINAL = (
+    "{tipo} de {data} referente a {original}, transação do mesmo mês que não está em nenhum arquivo da Orbe: entra "
+    "pela taxa da data da original e pela faixa da própria linha (R35), sem conferir com a original (P28) - próximo "
+    "passo: a Helena pede à Orbe a transação original {original}"
+)
 MOTIVO_IDENTIFICACAO = "EC {ec}, CNPJ {cnpj} (identificado pela aba de 2025, sem usar a taxa dela - R39) - "
 MOTIVO_ALERTA = (
     "alerta informativo (P26, R33): lojista sem histórico ({historico}) antecipou R$ {antecipado} brutos "
@@ -427,22 +437,54 @@ def calcular_checkout(orbe: pd.DataFrame, taxas: pd.DataFrame, competencia: str,
 
 
 def ecs_competencia_anterior(entradas: Entradas) -> frozenset[str] | None:
-    """ECs com transação no relatório da Orbe da competência anterior, se a pasta dela existir ao lado desta (P26)."""
-    from tarvo.cli import CONFIG_PADRAO, ErroEntrada, carregar_padroes, localizar_arquivos
-    from tarvo.leitores.orbe import ler_orbe
+    """ECs com transação nos arquivos da Orbe da competência anterior, se a pasta dela existir ao lado desta (P26)."""
+    from tarvo.cli import ErroEntrada, localizar_pela_config
+    from tarvo.leitores.orbe import ler_orbe_arquivos
     from tarvo.remessa import pasta_anterior
 
-    pasta = pasta_anterior(entradas.arquivos["orbe"].parent, entradas.competencia)
+    orbe = entradas.arquivos["orbe"]
+    pasta = pasta_anterior((orbe[0] if isinstance(orbe, tuple) else orbe).parent, entradas.competencia)
     if pasta is None:
         return None
     try:
-        arquivos = localizar_arquivos(pasta, carregar_padroes(CONFIG_PADRAO))
+        arquivos = localizar_pela_config(pasta)
     except ErroEntrada:
         return None
-    return frozenset(ler_orbe(arquivos["orbe"])["cod_estabelecimento"])
+    return frozenset(ler_orbe_arquivos(arquivos["orbe"])[0]["cod_estabelecimento"])
+
+
+def pendencias_arquivos_orbe(orbe: pd.DataFrame, repetidas, competencia: str, cfg: ConfigCheckout) -> list[ItemSaida]:
+    """Pendências informativas (valor 0,00) da leitura de vários arquivos da Orbe (O05); não mudam nenhum valor.
+
+    P27: id_transacao igual em dois arquivos, contado uma vez. P28: estorno ou reversão de transação do mesmo mês
+    que não está em nenhum arquivo da Orbe (a de mês anterior é o caso normal da R04 e não abre pendência).
+    """
+    itens = []
+    for r in repetidas:
+        itens.append(ItemSaida(
+            f"PEN-REPET-CHK-{r.ref_origem}", PENDENCIAS.nome,
+            {"tipo": "TRANSACAO_REPETIDA", "ref_origem": [r.ref_origem],
+             "motivo": texto_saida(MOTIVO_REPETIDA.format(ref=r.ref_origem, mantido=r.arquivo_mantido,
+                                                          n_mantida=r.linha_mantida, repetido=r.arquivo_repetido,
+                                                          n_repetida=r.linha_repetida)),
+             "quem_decide": cfg.quem_decide["transacao_repetida"]},
+            ZERO, [(r.arquivo_mantido, r.ref_origem, ZERO), (r.arquivo_repetido, r.ref_origem, ZERO)]))
+    ids = set(orbe["ref_origem"])
+    for l in orbe.to_dict("records"):
+        original, data = l["id_referencia"], l["data_venda_original"]
+        if original and data and data.strftime("%Y-%m") == competencia and original not in ids:
+            itens.append(ItemSaida(
+                f"PEN-SEMORIG-CHK-{l['ref_origem']}", PENDENCIAS.nome,
+                {"tipo": "REFERENCIA_NAO_ENCONTRADA", "ref_origem": [l["ref_origem"]],
+                 "motivo": texto_saida(MOTIVO_SEM_ORIGINAL.format(tipo=l["tipo_lancamento"], data=l["data_movimento"],
+                                                                  original=original)),
+                 "quem_decide": cfg.quem_decide["referencia_nao_encontrada"]},
+                ZERO, [(l["arquivo_origem"], l["ref_origem"], ZERO)]))
+    return itens
 
 
 def checkout(entradas: Entradas, config=CONFIG_CHECKOUT) -> list[ItemSaida]:
     """Módulo do fechamento: itens da linha CHECKOUT a partir da Orbe e da planilha de taxas."""
-    return calcular_checkout(entradas.orbe, entradas.taxas, entradas.competencia, carregar_config(config),
-                             ecs_competencia_anterior(entradas))
+    cfg = carregar_config(config)
+    return (calcular_checkout(entradas.orbe, entradas.taxas, entradas.competencia, cfg, ecs_competencia_anterior(entradas))
+            + pendencias_arquivos_orbe(entradas.orbe, entradas.orbe_repetidas, entradas.competencia, cfg))

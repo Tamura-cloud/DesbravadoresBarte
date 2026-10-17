@@ -59,3 +59,5 @@ quem_decide:
   alerta_antecipacao: "Financeiro (Helena) e Comercial"  # P26, R33
   devolucao_lojista: "Financeiro (Helena)"  # R03, R25, R32: a Helena devolve e contesta com a Orbe
   devolucao_concessao: "Financeiro (Helena) e Comercial"  # R32, R38: a Helena paga; parametrizar a Orbe é com o Comercial
+  transacao_repetida: "Financeiro (Helena)"  # P27: id_transacao igual em dois arquivos da Orbe (O05)
+  referencia_nao_encontrada: "Financeiro (Helena)"  # P28: estorno ou reversão sem a original do mesmo mês

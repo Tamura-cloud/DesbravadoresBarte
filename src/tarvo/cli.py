@@ -22,15 +22,25 @@ class ErroEntrada(Exception):
 PREFIXO_TEMPORARIO_OFFICE = "~$"  # arquivo de trava que o Excel/Word cria enquanto o documento está aberto
 
 
-def carregar_padroes(caminho_config: Path) -> dict[str, str]:
+def _ler_config(caminho_config: Path) -> dict:
     with open(caminho_config, encoding="utf-8") as f:
-        return yaml.safe_load(f)["arquivos"]
+        return yaml.safe_load(f)
+
+
+def carregar_padroes(caminho_config: Path) -> dict[str, str]:
+    """Padrão de nome de cada tipo. O tipo vem como texto ("*.ofx") ou como {padrao: ..., multiplos: true}."""
+    return {tipo: (v["padrao"] if isinstance(v, dict) else v) for tipo, v in _ler_config(caminho_config)["arquivos"].items()}
+
+
+def carregar_multiplos(caminho_config: Path) -> frozenset[str]:
+    """Tipos que aceitam vários arquivos no mesmo formato (multiplos: true): todos são lidos, em ordem de nome."""
+    return frozenset(tipo for tipo, v in _ler_config(caminho_config)["arquivos"].items()
+                     if isinstance(v, dict) and v.get("multiplos") is True)
 
 
 def carregar_descricoes(caminho_config: Path) -> dict[str, str]:
     """Nome de cada tipo de arquivo nas mensagens (chave descricoes de config/entradas.yaml; opcional)."""
-    with open(caminho_config, encoding="utf-8") as f:
-        return yaml.safe_load(f).get("descricoes") or {}
+    return _ler_config(caminho_config).get("descricoes") or {}
 
 
 def _casa(arquivo: Path, padrao: str) -> bool:
@@ -45,12 +55,13 @@ def _arquivos(entrada: Path) -> list[Path]:
     return sorted(p for p in Path(entrada).iterdir() if p.is_file())
 
 
-def localizar_arquivos(entrada: Path, padroes: dict[str, str],
-                       descricoes: dict[str, str] | None = None) -> dict[str, Path]:
+def localizar_arquivos(entrada: Path, padroes: dict[str, str], descricoes: dict[str, str] | None = None,
+                       multiplos: frozenset[str] = frozenset()) -> dict[str, Path | tuple[Path, ...]]:
     """Acha um arquivo por tipo usando o padrão de nome. Falha se faltar ou houver mais de um, dizendo o que fazer.
 
-    Nunca escolhe um arquivo sozinho. O arquivo temporário do Office (~$...) não é candidato: aparece em
-    arquivos_ignorados, com aviso.
+    Tipo em multiplos (por exemplo, relatório e ajustes da Orbe) devolve todos os arquivos que casam, em ordem de
+    nome, numa tupla; precisa de pelo menos um. Nos outros tipos o fechamento nunca escolhe um arquivo sozinho.
+    O arquivo temporário do Office (~$...) não é candidato: aparece em arquivos_ignorados, com aviso.
     """
     descricoes = descricoes or {}
     arquivos = [p for p in _arquivos(entrada) if not _temporario_office(p)]
@@ -60,7 +71,9 @@ def localizar_arquivos(entrada: Path, padroes: dict[str, str],
     for tipo, padrao in padroes.items():
         casados = [p for p in arquivos if _casa(p, padrao)]
         nome = f"{tipo} ({descricoes[tipo]})" if tipo in descricoes else tipo
-        if len(casados) == 1:
+        if tipo in multiplos and casados:
+            encontrados[tipo] = tuple(casados)
+        elif len(casados) == 1:
             encontrados[tipo] = casados[0]
         elif not casados:
             problemas.append(
@@ -79,6 +92,18 @@ def localizar_arquivos(entrada: Path, padroes: dict[str, str],
         raise ErroEntrada(f"Pasta de entrada: {entrada}\n" + "\n".join(problemas)
                           + "\nOs padrões de nome estão em config/entradas.yaml.")
     return encontrados
+
+
+def localizar_pela_config(entrada, config: Path = CONFIG_PADRAO) -> dict[str, Path | tuple[Path, ...]]:
+    """localizar_arquivos com padrões, descrições e tipos múltiplos de config/entradas.yaml."""
+    config = Path(config)
+    return localizar_arquivos(Path(entrada), carregar_padroes(config), carregar_descricoes(config),
+                              carregar_multiplos(config))
+
+
+def nomes(arquivo: Path | tuple[Path, ...]) -> str:
+    """Nome do arquivo de um tipo, ou os nomes separados por vírgula num tipo com vários arquivos."""
+    return ", ".join(p.name for p in arquivo) if isinstance(arquivo, tuple) else arquivo.name
 
 
 def arquivos_ignorados(entrada: Path, padroes: dict[str, str]) -> list[tuple[Path, str]]:
@@ -113,7 +138,7 @@ def cmd_fechar(args: argparse.Namespace) -> int:
               f"contestação ficaram como estavam.\nProblemas:\n{e}", file=sys.stderr)
         return 1
     except ValueError as e:
-        print(f"Erro: {e}", file=sys.stderr)
+        print(f"Erro ao ler as entradas. Nada foi gravado: {args.saida} ficou como estava.\n{e}", file=sys.stderr)
         return 2
 
     print(f"Competência: {args.competencia}")
@@ -122,7 +147,7 @@ def cmd_fechar(args: argparse.Namespace) -> int:
     print(f"IA nos extratos: {'desligada (--sem-ia)' if args.sem_ia else 'conforme config/ia.yaml'}")
     print(f"Arquivos encontrados ({len(resultado.arquivos_entrada)}):")
     for tipo, caminho in resultado.arquivos_entrada.items():
-        print(f"  {tipo}: {caminho.name}")
+        print(f"  {tipo}: {nomes(caminho)}")
     if resultado.arquivos_ignorados:
         print(f"Aviso: {len(resultado.arquivos_ignorados)} arquivo(s) da pasta de entrada não foram lidos "
               "(não afetam o fechamento; se algum deles é um arquivo do mês, renomeie para casar com o padrão):")

@@ -6,9 +6,70 @@
 | Commit do código | branch `regras-helena-2`, sobre `2692243` (R31). Esta rodada aplica R32 a R40 e P26: os números de setembro mudam (ver abaixo, regra por regra) |
 | Fechamento | `python -m tarvo fechar --competencia 2026-09 --entrada dados/2026-09 --saida saida/` (IA conforme `config/ia.yaml`; em setembro todo lançamento casa uma regra, então a IA não é chamada nenhuma vez, P14) |
 | Resumo | `python -m tarvo resumo --saida saida` |
-| pytest | **393 passed** (`python -m pytest -q`, 20,8 s) |
+| pytest | **408 passed** (`python -m pytest -q`, 22,7 s) |
 | `validar_saida(saida/)` | `[]`, **sem problemas** |
 | Rastro | 371 de 371 itens com soma do rastro por id_saida = valor reportado |
+
+**Arquivo recebido às 13h10 (06_orbe_ajustes_tardios)** (O05, Organização, canal de Logística, 17/10/2026). A Orbe mandou 14 linhas de setembro que ficaram fora do relatório, no mesmo formato do arquivo 01.
+
+*Antes da mudança*, o fechamento com o 06 na pasta parava (código 2, nada gravado):
+
+```
+- orbe (relatório de transações da Orbe, CSV): 2 arquivos casam com o padrão '*orbe*.csv': 01_orbe_relatorio_comissoes_set2026.csv, 06_orbe_ajustes_tardios_set2026.csv.
+  O que fazer: deixe só um arquivo de orbe na pasta; substitua o antigo pela versão nova. O fechamento não escolhe um deles sozinho.
+```
+
+*Agora* a Orbe aceita vários arquivos no mesmo formato (`config/entradas.yaml`, `multiplos: true`), lidos todos em ordem de nome. As condições:
+- o cabeçalho de cada arquivo tem de ser idêntico ao do primeiro; se não for, o fechamento para e diz o arquivo e a coluna;
+- id_transacao repetido em outro arquivo: com a linha igual conta uma vez e abre pendência informativa (P27); com qualquer campo diferente, para sem escolher;
+- estorno ou reversão de transação do mesmo mês sem a original em nenhum arquivo abre pendência informativa (P28).
+
+Os outros tipos continuam exigindo exatamente um arquivo: uma `02_tabela_taxas_contratadas_v2.xlsx` na pasta ainda para.
+
+| arquivo | linhas antes → depois | total antes → depois | o que mudou |
+|---|---:|---:|---|
+| comissoes_por_lojista.csv | 35 → 35 | 246.583,18 → **243.278,79** | -3.304,39 em 7 lojistas de checkout (tabela abaixo) |
+| divergencias_taxa.csv | 115 → 115 | 2.995,08 → 2.995,08 | nenhuma: nas 14 linhas a taxa aplicada é a contratada (R03, R37) |
+| notas_a_emitir.csv | 21 → 21 | 246.588,68 → **243.284,29** | as mesmas 7 notas de checkout, -3.304,39 |
+| lancamentos_classificados.csv | 184 → 184 | -1.416.088,18 → -1.416.088,18 | nenhuma (o 06 é da Orbe; os extratos não mudam) |
+| pendencias.csv | 16 → 16 | 382.811,75 → 382.811,75 | nenhuma: nenhum id repete o 01 (P27), toda original está no 01 (P28), o alerta de antecipação não muda (P26) |
+| rastro.csv | 5.058 → **5.086** | -537.109,49 → **-543.718,27** | +28: cada linha do 06 entra no rastro da comissão e da nota, com `arquivo_origem` = 06 e `ref_origem` = id_transacao |
+| contestacoes/ (4 arquivos) | idênticos byte a byte | | nenhuma linha do 06 diverge do contrato, então nada entra na contestação com a Orbe |
+
+As 14 linhas, uma a uma (todas com a taxa aplicada igual à contratada; a original de cada estorno e reversão está no 01, com o mesmo EC, modalidade, parcelas e valor):
+
+| linha do 06 | lojista (CNPJ) | lançamento | bruto | taxa | comissão | regra |
+|---|---|---|---:|---:|---:|---|
+| TX88446992 | Dublin Hub (68567965000102) | estorno de TX88431689, crédito à vista, 18/09 | -1.147,05 | 2,59% | -29,71 | R04, R35 |
+| TX88447011 | Maple Study (34671260000100) | estorno de TX88413573, débito, 03/09 | -420,77 | 1,49% | -6,27 | R04, R35 |
+| TX88447030 | Mundo Aberto (17217888000111) | estorno de TX88438558, crédito à vista, 25/09 | -562,44 | 2,49% | -14,00 | R04, R35 |
+| TX88447044 | Bridge (22224579000109) | estorno de TX88425142, parcelado 2x, 13/09 | -1.982,10 | 3,19% | -63,23 | R04, R35 |
+| TX88447057 | EduAbroad (16181276000153) | estorno de TX88430977, parcelado 2x, 18/09 | -3.898,29 | 3,19% | -124,36 | R04, R35 |
+| TX88447070 | Bridge (22224579000109) | estorno de TX88424537, parcelado 6x, 12/09 | -2.603,31 | 3,19% | -83,05 | R04, R35 |
+| TX88447087 | Oxford (23109187000161) | estorno de TX88422829, parcelado 9x, 11/09 | -8.647,36 | 3,79% | -327,73 | R04, R35 |
+| TX88447093 | Maple Study (34671260000100) | estorno de TX88416714, crédito à vista, 06/09 | -2.620,34 | 2,69% | -70,49 | R04, R35 |
+| TX88447109 | EduAbroad (16181276000153) | estorno de TX88428997, parcelado 3x, 16/09 | -2.747,67 | 3,19% | -87,65 | R04, R35 |
+| TX88447140 | Oxford (23109187000161) | estorno de TX88432148, crédito à vista, 19/09 | -2.366,18 | 2,59% | -61,28 | R04, R35 |
+| AN88447152 | Oxford (23109187000161) | reversão de AN88446397, 22/09 (reverte a antecipação inteira) | -46.080,41 | 2,10% | -967,69 | R05 |
+| AN88447178 | Oxford (23109187000161) | reversão de AN88446748, 29/09 (inteira) | -41.690,09 | 2,10% | -875,49 | R05 |
+| AN88447194 | Maple Study (34671260000100) | reversão de AN88446551, 24/09 (inteira) | -36.583,37 | 2,10% | -768,25 | R05 |
+| TX88447225 | Kiwi Experience (07752116000126) | venda, parcelado 3x, 30/09 | 5.480,00 | 3,19% | 174,81 | R01, R07 |
+
+Por lojista (comissão e nota de checkout): Oxford -2.232,19 (16.077,90 → 13.845,71); Maple -845,01 (15.010,78 → 14.165,77); EduAbroad -212,01 (12.070,17 → 11.858,16); Bridge -146,28 (11.916,02 → 11.769,74); Dublin Hub -29,71 (11.906,08 → 11.876,37); Mundo Aberto -14,00 (18.522,09 → 18.508,09); Kiwi +174,81 (10.711,41 → 10.886,22).
+
+- **Kiwi (EC 1038867654):** está na planilha vigente, na linha Kiwi Experience sem o código do EC ("EC pendente"); a R07 liga o EC ao CNPJ 07752116000126 (`config/checkout.yaml`, ec_sem_codigo). A venda é faturada normalmente, a 3,19% (parcelado 2 a 6x). A R08/R36 não se aplica.
+- **Mundo Aberto no checkout (EC 1037647039):** a planilha liga o EC ao CNPJ 17217888000111, o mesmo da remessa (COM-REM, DIV-REM e PEN-CONTEST-REM).
+- **Reversões e o alerta de antecipação (R33, P26):** a reversão entra na comissão pela taxa de antecipação da data da original (R05) e baixa só o líquido antecipado. O alerta compara o bruto antecipado com as vendas e só acende para lojista sem histórico. A Oxford tem histórico (estorno de venda de agosto) e antecipou 112,5% das vendas antes e depois; o líquido cai de R$ 311.805,27 para R$ 224.034,77. A Maple antecipou 31,7% das vendas. Nenhum alerta muda.
+- **Cobertura:** as 1.943 + 14 = 1.957 linhas da Orbe aparecem no rastro.csv, cada uma com o seu arquivo; `validar_saida(saida/)` devolve `[]`.
+
+Testes que fixavam números ou um arquivo só, e mudaram:
+- `test_checkout.py::test_set_comissao_total_e_lojistas`: CHECKOUT 207.039,73 → 203.735,34 (as 14 linhas do 06).
+- `test_checkout.py::test_set_comissao_por_lojista`: Oxford 16.077,90 → 13.845,71 e Bridge 11.916,02 → 11.769,74 (as linhas deles no 06).
+- `test_outubro.py::test_nomes_assunto_e_anexo_de_outubro`: o pack simulado tem 7 arquivos (a Orbe em dois). O gerador desloca as datas do 06 sem inserir caso novo nele.
+- `test_outubro.py::test_orbe_datas_deslocadas_e_uma_venda_nova` compara com o relatório (o primeiro em ordem de nome), e não com um `*orbe*.csv` qualquer.
+- `test_estrutura.py::test_localiza_os_6_tipos_por_padrao`: a Orbe vem como tupla de arquivos.
+- Os testes dos leitores passam a localizar pela config (`localizar_pela_config`); os de `test_orbe.py` continuam conferindo o relatório 01 (1.943 linhas).
+- Novos (15): 6 em `test_orbe.py` (o 01 + o 06 lidos juntos, ordem de nome, id repetido igual, id repetido diferente, cabeçalho com colunas trocadas, cabeçalho com coluna a mais); 3 em `test_checkout.py` (P27, P28, nenhum dos dois em setembro); 6 em `test_fechamento.py` (o 06 numa cópia temporária de dados/ muda a comissão em -3.304,39; reenvio igual vira 14 PEN-REPET-CHK; reenvio diferente para com código 2; cabeçalho sem id_transacao; colunas trocadas; taxas `_v2` ainda para).
 
 **O01 a O04 (Organização, 17/10, canal de Logística): nenhum número mudou.** Linhas e totais dos 6 CSVs iguais aos de antes; `rastro.csv`, os 5 outros CSVs e os 4 arquivos de `contestacoes/` idênticos byte a byte. Em `pendencias.csv` mudaram só textos:
 - **motivo (O04, toda pendência com próximo passo):** PEN-NF-CHK, PEN-CONCESSAO-CHK, as 2 PEN-DEVOL-CHK, PEN-ALERTA-ANTEC, as 4 PEN-NEG-REM e PEN-NAOID-L50 ganharam "próximo passo: <quem faz o quê>". As outras 6 já traziam a ação e não mudaram.
@@ -123,7 +184,7 @@ Valores em R$, no formato brasileiro.
 | notas_a_emitir.csv | 21 | 20 + 1 | `test_checkout.py::test_set_notas` (20) + `test_remessa.py::test_set_nota_unica` (1) | ✓ |
 | lancamentos_classificados.csv | 184 | 184 | `test_bancos.py::test_setembro_184_lancamentos_todos_por_regra` | ✓ |
 | pendencias.csv | 16 | — | nenhum teste fixa o total; as 16 aparecem uma a uma na seção 6 | |
-| rastro.csv | 5.058 | — | | |
+| rastro.csv | 5.086 | — | | |
 
 | checagem | resultado | Esperado | teste de origem | |
 |---|---|---|---|:-:|
@@ -139,23 +200,23 @@ Valores em R$, no formato brasileiro.
 
 | linha_negocio | lojistas | comissão | Esperado | teste de origem | |
 |---|---:|---:|---|---|:-:|
-| CHECKOUT | 21 | 207.039,73 | 21 · 207.039,73 | `test_checkout.py::test_set_comissao_total_e_lojistas` | ✓ |
+| CHECKOUT | 21 | 203.735,34 | 21 · 203.735,34 | `test_checkout.py::test_set_comissao_total_e_lojistas` | ✓ |
 | REMESSA | 14 | 39.543,45 | 14 · 39.543,45 | `test_remessa.py::test_set_comissao_total_e_lojistas` | ✓ |
-| **total** | 35 | 246.583,18 | — | | |
+| **total** | 35 | 243.278,79 | — | | |
 
 ### CHECKOUT por lojista
 
 | CNPJ | lojista | comissão | Esperado | teste de origem | |
 |---|---|---:|---:|---|:-:|
-| 17217888000111 | Mundo Aberto | 18.522,09 | — | | |
-| 23109187000161 | Oxford Prep Cursos Ltda | 16.077,90 | 16.077,90 | `test_checkout.py::test_set_comissao_por_lojista` | ✓ |
+| 17217888000111 | Mundo Aberto | 18.508,09 | — | | |
 | 95927868000148 | Rota Global Intercâmbio Ltda | 15.621,27 | 15.621,27 | `test_checkout.py::test_set_comissao_por_lojista` | ✓ |
-| 34671260000100 | Maple Study Assessoria Educacional Ltda | 15.010,78 | — | | |
-| 16181276000153 | EduAbroad | 12.070,17 | — | | |
-| 22224579000109 | Escola Bridge de Idiomas Ltda | 11.916,02 | 11.916,02 | `test_checkout.py::test_set_comissao_por_lojista` | ✓ |
-| 68567965000102 | Dublin Hub Intercâmbio Ltda | 11.906,08 | — | | |
+| 34671260000100 | Maple Study Assessoria Educacional Ltda | 14.165,77 | — | | |
+| 23109187000161 | Oxford Prep Cursos Ltda | 13.845,71 | 13.845,71 | `test_checkout.py::test_set_comissao_por_lojista` | ✓ |
+| 68567965000102 | Dublin Hub Intercâmbio Ltda | 11.876,37 | — | | |
+| 16181276000153 | EduAbroad | 11.858,16 | — | | |
+| 22224579000109 | Escola Bridge de Idiomas Ltda | 11.769,74 | 11.769,74 | `test_checkout.py::test_set_comissao_por_lojista` | ✓ |
 | 53857560000123 | Canguru | 11.679,43 | — | | |
-| 07752116000126 | Kiwi Experience | 10.711,41 | — | | |
+| 07752116000126 | Kiwi Experience | 10.886,22 | — | | |
 | 08780784000120 | Campus Global Ltda | 9.336,06 | — | | |
 | 20987545000140 | Vela | 9.315,31 | — | | |
 | 67869675000142 | Bem-Vindo Exchange Ltda | 9.259,74 | — | | |
@@ -198,15 +259,15 @@ A Atlas Idiomas (EC 1076801732) não tem linha de comissão (P21; ver seção 6 
 |---|---|---|---:|---:|---|:-:|
 | 75374179000146 | Ponte Câmbio S.A. | REMESSA | 39.543,45 | 39.543,45, única nota de remessa, tomadora 75374179000146 | `test_remessa.py::test_set_nota_unica` | ✓ |
 | | | | | 228 operações no rastro da nota | `test_remessa.py::test_set_operacoes_unicas_e_na_comissao` | ✓ |
-| 17217888000111 | Mundo Aberto | CHECKOUT | 18.522,09 | — | | |
-| 23109187000161 | Oxford Prep Cursos Ltda | CHECKOUT | 16.077,90 | — | | |
+| 17217888000111 | Mundo Aberto | CHECKOUT | 18.508,09 | — | | |
 | 95927868000148 | Rota Global Intercâmbio Ltda | CHECKOUT | 15.621,27 | — | | |
-| 34671260000100 | Maple Study Assessoria Educacional Ltda | CHECKOUT | 15.010,78 | — | | |
-| 16181276000153 | EduAbroad | CHECKOUT | 12.070,17 | — | | |
-| 22224579000109 | Escola Bridge de Idiomas Ltda | CHECKOUT | 11.916,02 | — | | |
-| 68567965000102 | Dublin Hub Intercâmbio Ltda | CHECKOUT | 11.906,08 | — | | |
+| 34671260000100 | Maple Study Assessoria Educacional Ltda | CHECKOUT | 14.165,77 | — | | |
+| 23109187000161 | Oxford Prep Cursos Ltda | CHECKOUT | 13.845,71 | — | | |
+| 68567965000102 | Dublin Hub Intercâmbio Ltda | CHECKOUT | 11.876,37 | — | | |
+| 16181276000153 | EduAbroad | CHECKOUT | 11.858,16 | — | | |
+| 22224579000109 | Escola Bridge de Idiomas Ltda | CHECKOUT | 11.769,74 | — | | |
 | 53857560000123 | Canguru | CHECKOUT | 11.679,43 | — | | |
-| 07752116000126 | Kiwi Experience | CHECKOUT | 10.711,41 | — | | |
+| 07752116000126 | Kiwi Experience | CHECKOUT | 10.886,22 | — | | |
 | 08780784000120 | Campus Global Ltda | CHECKOUT | 9.336,06 | — | | |
 | 20987545000140 | Vela | CHECKOUT | 9.315,31 | — | | |
 | 67869675000142 | Bem-Vindo Exchange Ltda | CHECKOUT | 9.259,74 | — | | |
@@ -221,11 +282,11 @@ A Atlas Idiomas (EC 1076801732) não tem linha de comissão (P21; ver seção 6 
 
 | linha | notas | valor | Esperado | teste de origem | |
 |---|---:|---:|---|---|:-:|
-| CHECKOUT | 20 | 207.045,23 | 20 notas, nenhuma da Casa do Estudante (00520815000100) | `test_checkout.py::test_set_notas` | ✓ |
+| CHECKOUT | 20 | 203.740,84 | 20 notas, nenhuma da Casa do Estudante (00520815000100) | `test_checkout.py::test_set_notas` | ✓ |
 | REMESSA | 1 | 39.543,45 | 39.543,45 | `test_remessa.py::test_set_nota_unica` | ✓ |
-| **total** | 21 | **246.588,68** | — | | |
+| **total** | 21 | **243.284,29** | — | | |
 
-As notas somam R$ 5,50 a mais que as comissões (246.583,18): é a comissão negativa da Casa do Estudante, que não emite nota (R06) e vira PEN-NF-CHK.
+As notas somam R$ 5,50 a mais que as comissões (243.278,79): é a comissão negativa da Casa do Estudante, que não emite nota (R06) e vira PEN-NF-CHK.
 
 ---
 
@@ -409,7 +470,7 @@ python -m tarvo fechar --competencia 2026-10 --entrada <tmp>/dados/2026-10 --sai
 python -m tarvo resumo --saida <tmp>/saida
 ```
 
-Resultado: 388 itens (eram 506), `validar_saida` sem problemas, rastro fechando em 388 de 388. Linhas: comissões 36, divergências 123 (eram 242; soma 18.465,89 → 3.073,97), notas 21, lançamentos 186, pendências 22 (eram 21), rastro 5.095 (eram 5.209). As diferenças vêm da R32 (saem as 119 divergências da Casa, que em outubro estão todas na concessão) e da P26 (entra o alerta da Atlas: o pack simulado não tem setembro ao lado, e a Atlas começa em 10/10). Comissões, notas e lançamentos não mudam.
+Resultado: 388 itens (eram 506), `validar_saida` sem problemas, rastro fechando em 388 de 388. Linhas: comissões 36, divergências 123 (eram 242; soma 18.465,89 → 3.073,97), notas 21, lançamentos 186, pendências 22 (eram 21), rastro 5.123 (eram 5.209; o pack leva também os ajustes tardios da Orbe deslocados, O05, e as 14 linhas entram em comissão e nota). As diferenças vêm da R32 (saem as 119 divergências da Casa, que em outubro estão todas na concessão) e da P26 (entra o alerta da Atlas: o pack simulado não tem setembro ao lado, e a Atlas começa em 10/10). Comissões, notas e lançamentos não mudam.
 
 ### O que cada caso novo gerou
 
@@ -467,7 +528,7 @@ Os valores alternativos **não são valores de teste**. P16, P19 e P20 são cont
 | **P19** | PEN-DUP pelo Spread R$ da cópia descartada | PEN-DUP-REM-PC-0926-0162 | 821,88 (o quanto o rodapé de 78.073,59 está inflado) | pela parte da Tarvo na cópia (50%, R11) | **410,94** |
 | **P20** | transferência de 30/09 mantida como pendência até a conciliação de outubro | pendencias.csv: quantidade · soma | 16 · 382.811,75 | sem a PEN-TRANSF-L92, já que a R20 explica a transferência | **15 · 82.811,75** |
 | | | "Financeiro (Helena)" | 13 · 359.538,93 | | 12 · 59.538,93 |
-| **P21** | Atlas (EC 1076801732) fora de comissoes_por_lojista; o que a Orbe cobrou fica em PEN-SEMCONTRATO | comissões CHECKOUT: lojistas · soma | 21 · 207.039,73 | faturar a Atlas pela aba "ANTIGO 2025 - nao usar" (CNPJ 39566044000119; débito 1,69%, crédito à vista 2,99%, parcelado 3,49%, Pix 0,99%) | **22 · 211.417,02** (+4.377,29 em 50 linhas; as 7 de antecipação e reversão ficam sem taxa, porque a aba de 2025 não tem antecipação) |
+| **P21** | Atlas (EC 1076801732) fora de comissoes_por_lojista; o que a Orbe cobrou fica em PEN-SEMCONTRATO | comissões CHECKOUT: lojistas · soma | 21 · 203.735,34 | faturar a Atlas pela aba "ANTIGO 2025 - nao usar" (CNPJ 39566044000119; débito 1,69%, crédito à vista 2,99%, parcelado 3,49%, Pix 0,99%) | **22 · 208.112,63** (+4.377,29 em 50 linhas; as 7 de antecipação e reversão ficam sem taxa, porque a aba de 2025 não tem antecipação) |
 | | | notas CHECKOUT | 20 | | 21 |
 | | | divergências da Atlas | 0 | | 41 linhas · 827,22 (a Orbe aplicou taxas diferentes das de 2025) |
 | | | PEN-SEMCONTRATO-39566044000119 | 7.876,05 | | deixa de existir |
@@ -503,5 +564,7 @@ Cada premissa abaixo é uma escolha nossa que a Helena (ou o Comercial, nas taxa
 | P24 | os rascunhos mostram a parte da Tarvo como 50% (R11), só como exibição | lê nas notas internas um valor errado, sem mudar o que se pede à Ponte | R$ 709,46, R$ 410,94 e R$ 865,98 de exibição |
 | P25 | o ajuste da Ponte abate 50% do Spread R$ da linha | nota da Ponte R$ 50,00 mais alta (ou mais baixa) por R$ 100,00 de ajuste, a corrigir depois | R$ 0,00 em setembro (sem ajuste) |
 | P26 | alerta quando lojista sem histórico antecipa mais do que vendeu no mês | não vê um lojista novo antecipando alto, ou olha à toa lojistas com histórico | R$ 127.230,96 líquidos (Atlas) |
+| P27 | id_transacao repetido em dois arquivos da Orbe com a linha igual conta uma vez, com pendência informativa; com campo diferente, o fechamento para | deixaria de faturar uma transação legítima reenviada com o mesmo id, ou faturaria em dobro sem a checagem | R$ 0,00 (nenhum id repetido em setembro) |
+| P28 | estorno ou reversão de transação do mesmo mês sem a original em nenhum arquivo da Orbe abre pendência informativa | olha à toa um estorno cuja venda a Orbe ainda vai mandar, ou, sem a pendência, abate um estorno de venda que nunca foi faturada | R$ 0,00 (todas as originais estão no 01) |
 
 **Fechada:** a P18 (contestação dos spreads negativos pela diferença até o contrato, R$ 3.565,98; o spread do relatório, R$ 1.834,05, é o que aconteceu) foi **confirmada pela R34**. **Substituídas** e fora desta lista: P02 e P15 (R23) e P21 (R36 e R39).

@@ -5,8 +5,8 @@ from pathlib import Path
 
 import pytest
 
-from tarvo.cli import CONFIG_PADRAO, carregar_padroes, localizar_arquivos
-from tarvo.leitores.orbe import COLUNAS_SAIDA, ler_orbe
+from tarvo.cli import localizar_pela_config
+from tarvo.leitores.orbe import COLUNAS_SAIDA, Repetida, ler_orbe, ler_orbe_arquivos
 
 ENTRADA = Path(__file__).resolve().parents[1] / "dados" / "2026-09"
 
@@ -18,7 +18,7 @@ CABECALHO = (
 
 @pytest.fixture(scope="module")
 def orbe():
-    caminho = localizar_arquivos(ENTRADA, carregar_padroes(CONFIG_PADRAO))["orbe"]
+    caminho = localizar_pela_config(ENTRADA)["orbe"][0]  # o relatório: o primeiro em ordem de nome (O05)
     return ler_orbe(caminho)
 
 
@@ -64,7 +64,7 @@ def test_tipos(orbe):
     assert all(isinstance(v, str) for v in orbe["cod_estabelecimento"])
     assert all(v is None or isinstance(v, int) for v in orbe["qtd_parcelas"])
     assert all(v is None or isinstance(v, date) for v in orbe["data_venda_original"])
-    assert set(orbe["arquivo_origem"]) == {localizar_arquivos(ENTRADA, carregar_padroes(CONFIG_PADRAO))["orbe"].name}
+    assert set(orbe["arquivo_origem"]) == {localizar_pela_config(ENTRADA)["orbe"][0].name}
 
 
 def test_antecipacao_sem_modalidade(orbe):
@@ -114,3 +114,73 @@ def test_falha_com_valor_de_3_casas(tmp_path):
     caminho = _escrever(tmp_path, "TX1;01/09/2026;1;LOJA;VENDA;DEBITO;1;VISA;10,005;1,49;0,14;9,86;;")
     with pytest.raises(ValueError, match="mais de 2 casas"):
         ler_orbe(caminho)
+
+
+
+# ---------------------------------------------------------------- vários arquivos da Orbe (O05)
+
+def test_le_relatorio_e_ajustes_tardios_do_mes():
+    """O05: o relatório (01) e os ajustes tardios (06) do mesmo mês, lidos juntos, cada linha com o seu arquivo."""
+    arquivos = localizar_pela_config(ENTRADA)["orbe"]
+    df, repetidas = ler_orbe_arquivos(arquivos)
+    assert repetidas == []
+    assert len(df) == 1943 + 14
+    por_arquivo = Counter(df["arquivo_origem"])
+    assert por_arquivo == {arquivos[0].name: 1943, arquivos[1].name: 14}
+    ajustes = df[df["arquivo_origem"] == arquivos[1].name]
+    assert Counter(ajustes["tipo_lancamento"]) == {"ESTORNO": 10, "REVERSAO ANTECIPACAO": 3, "VENDA": 1}
+    assert df["ref_origem"].is_unique
+    # todo estorno e reversão dos ajustes aponta para uma transação do relatório
+    assert set(ajustes["id_referencia"].dropna()) <= set(df["ref_origem"])
+
+
+def _arquivo(pasta, nome, *linhas, cabecalho=CABECALHO):
+    caminho = pasta / nome
+    caminho.write_text("\r\n".join([cabecalho, *linhas]) + "\r\n", encoding="utf-8", newline="")
+    return caminho
+
+
+VENDA_1 = "TX1;01/09/2026;0012345678;LOJA;VENDA;DEBITO;1;VISA;1.000,00;1,49;14,90;985,10;;"
+VENDA_2 = "TX2;02/09/2026;0012345678;LOJA;VENDA;DEBITO;1;VISA;200,00;1,49;2,98;197,02;;"
+
+
+def test_varios_arquivos_em_ordem_de_nome(tmp_path):
+    b = _arquivo(tmp_path, "06_orbe_b.csv", VENDA_2)
+    a = _arquivo(tmp_path, "01_orbe_a.csv", VENDA_1)
+    df, repetidas = ler_orbe_arquivos([b, a])
+    assert list(df["ref_origem"]) == ["TX1", "TX2"] and list(df["arquivo_origem"]) == ["01_orbe_a.csv", "06_orbe_b.csv"]
+    assert repetidas == []
+
+
+def test_id_repetido_com_a_linha_igual_conta_uma_vez(tmp_path):
+    a = _arquivo(tmp_path, "01_orbe_a.csv", VENDA_1, VENDA_2)
+    b = _arquivo(tmp_path, "06_orbe_b.csv", VENDA_2)
+    df, repetidas = ler_orbe_arquivos([a, b])
+    assert list(df["ref_origem"]) == ["TX1", "TX2"] and set(df["arquivo_origem"]) == {"01_orbe_a.csv"}
+    assert repetidas == [Repetida("TX2", "01_orbe_a.csv", 3, "06_orbe_b.csv", 2)]
+
+
+def test_id_repetido_com_a_linha_diferente_para_sem_escolher(tmp_path):
+    a = _arquivo(tmp_path, "01_orbe_a.csv", VENDA_1)
+    b = _arquivo(tmp_path, "06_orbe_b.csv", VENDA_1.replace("1.000,00;1,49;14,90;985,10", "1.100,00;1,49;16,39;1.083,61"))
+    with pytest.raises(ValueError) as erro:
+        ler_orbe_arquivos([a, b])
+    texto = str(erro.value)
+    assert "TX1" in texto and "01_orbe_a.csv (linha física 2)" in texto and "06_orbe_b.csv (linha física 2)" in texto
+    assert "valor_bruto, valor_taxa, valor_liquido" in texto and "não escolhe" in texto
+
+
+def test_cabecalho_diferente_do_relatorio_para_com_o_arquivo_e_a_coluna(tmp_path):
+    a = _arquivo(tmp_path, "01_orbe_a.csv", VENDA_1)
+    b = _arquivo(tmp_path, "06_orbe_b.csv", VENDA_2,
+                 cabecalho=CABECALHO.replace("valor_taxa;valor_liquido", "valor_liquido;valor_taxa"))
+    with pytest.raises(ValueError, match=r"06_orbe_b\.csv: cabeçalho diferente do de 01_orbe_a\.csv: a coluna 11 é "
+                                         r"'valor_liquido', no 01_orbe_a\.csv é 'valor_taxa'"):
+        ler_orbe_arquivos([a, b])
+
+
+def test_cabecalho_com_coluna_a_mais_tambem_para(tmp_path):
+    a = _arquivo(tmp_path, "01_orbe_a.csv", VENDA_1)
+    b = _arquivo(tmp_path, "06_orbe_b.csv", VENDA_2 + ";x", cabecalho=CABECALHO + ";observacao")
+    with pytest.raises(ValueError, match=r"06_orbe_b\.csv: cabeçalho diferente.*15 colunas, o 01_orbe_a\.csv tem 14"):
+        ler_orbe_arquivos([a, b])

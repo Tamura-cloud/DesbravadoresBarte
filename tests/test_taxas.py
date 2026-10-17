@@ -5,7 +5,7 @@ from pathlib import Path
 import openpyxl
 import pytest
 
-from tarvo.cli import CONFIG_PADRAO, carregar_padroes, localizar_arquivos
+from tarvo.cli import localizar_pela_config
 from tarvo.leitores.taxas import COLUNAS_SAIDA, ler_taxas
 
 ENTRADA = Path(__file__).resolve().parents[1] / "dados" / "2026-09"
@@ -16,7 +16,7 @@ CABECALHO = ["Lojista", "CNPJ", "EC Orbe", "Débito", "Crédito à vista", "Cré
 
 @pytest.fixture(scope="module")
 def taxas():
-    caminho = localizar_arquivos(ENTRADA, carregar_padroes(CONFIG_PADRAO))["taxas"]
+    caminho = localizar_pela_config(ENTRADA)["taxas"]
     return ler_taxas(caminho)
 
 

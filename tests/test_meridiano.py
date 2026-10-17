@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from tarvo.cli import CONFIG_PADRAO, carregar_padroes, localizar_arquivos
+from tarvo.cli import localizar_pela_config
 from tarvo.leitores.meridiano import COLUNAS, ler_meridiano
 
 ENTRADA = Path(__file__).resolve().parents[1] / "dados" / "2026-09"
@@ -12,7 +12,7 @@ ENTRADA = Path(__file__).resolve().parents[1] / "dados" / "2026-09"
 
 @pytest.fixture(scope="module")
 def meridiano():
-    caminho = localizar_arquivos(ENTRADA, carregar_padroes(CONFIG_PADRAO))["meridiano"]
+    caminho = localizar_pela_config(ENTRADA)["meridiano"]
     return ler_meridiano(caminho)
 
 

@@ -14,12 +14,12 @@ import pandas as pd
 
 from tarvo.bancos import bancos
 from tarvo.checkout import checkout
-from tarvo.cli import CONFIG_PADRAO, arquivos_ignorados, carregar_descricoes, carregar_padroes, localizar_arquivos
+from tarvo.cli import CONFIG_PADRAO, arquivos_ignorados, carregar_padroes, localizar_pela_config
 from tarvo.contestacao import carregar_config as carregar_config_contestacao
 from tarvo.contestacao import gerar_contestacoes, pasta_padrao
 from tarvo.leitores.aurora import ler_aurora
 from tarvo.leitores.meridiano import ler_meridiano
-from tarvo.leitores.orbe import ler_orbe
+from tarvo.leitores.orbe import Repetida, ler_orbe_arquivos
 from tarvo.leitores.plano_contas import ler_plano
 from tarvo.leitores.ponte import ler_ponte
 from tarvo.leitores.taxas import ler_taxas
@@ -46,6 +46,7 @@ class Entradas:
     meridiano: pd.DataFrame
     meridiano_meta: dict
     usar_ia: bool = True  # opção da execução: False com --sem-ia (fallback de IA dos extratos, P14)
+    orbe_repetidas: tuple[Repetida, ...] = ()  # id_transacao igual em dois arquivos da Orbe, contado uma vez (P27)
 
 
 Modulo = Callable[[Entradas], Iterable[ItemSaida]]
@@ -72,14 +73,15 @@ class ResultadoFechamento:
 
 
 def ler_entradas(entrada, competencia: str, config=CONFIG_PADRAO, usar_ia: bool = True) -> Entradas:
-    arquivos = localizar_arquivos(Path(entrada), carregar_padroes(Path(config)), carregar_descricoes(Path(config)))
+    arquivos = localizar_pela_config(entrada, config)
+    orbe, orbe_repetidas = ler_orbe_arquivos(arquivos["orbe"])  # relatório e ajustes da Orbe (O05)
     ponte, ponte_rodape = ler_ponte(arquivos["ponte_eml"])
     aurora, aurora_meta = ler_aurora(arquivos["aurora"])
     meridiano, meridiano_meta = ler_meridiano(arquivos["meridiano"])
     return Entradas(
         competencia=competencia,
         arquivos=arquivos,
-        orbe=ler_orbe(arquivos["orbe"]),
+        orbe=orbe,
         taxas=ler_taxas(arquivos["taxas"]),
         ponte=ponte,
         ponte_rodape=ponte_rodape,
@@ -89,6 +91,7 @@ def ler_entradas(entrada, competencia: str, config=CONFIG_PADRAO, usar_ia: bool 
         meridiano=meridiano,
         meridiano_meta=meridiano_meta,
         usar_ia=usar_ia,
+        orbe_repetidas=tuple(orbe_repetidas),
     )
 
 

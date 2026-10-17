@@ -355,14 +355,15 @@ def itens(entradas):
 def test_set_comissao_total_e_lojistas(itens):
     com = _por_prefixo(itens, "COM-")
     assert len(com) == 21
-    assert sum(i.valor_reportado for i in com.values()) == D("207039.73")
+    # O05: 207.039,73 só com o relatório; o 06 (ajustes tardios) tira 3.304,39 (10 estornos, 3 reversões, 1 venda Kiwi)
+    assert sum(i.valor_reportado for i in com.values()) == D("203735.34")
     assert all(i.campos["linha_negocio"] == "CHECKOUT" for i in com.values())
 
 
 @pytest.mark.parametrize("cnpj, valor", [
-    (OXFORD, D("16077.90")),
+    (OXFORD, D("13845.71")),       # O05: 16.077,90 - 2.232,19 (2 estornos e 2 reversões do 06, R35, R05)
     (ROTA_GLOBAL, D("15621.27")),
-    (BRIDGE, D("11916.02")),
+    (BRIDGE, D("11769.74")),       # O05: 11.916,02 - 146,28 (2 estornos de parcelado do 06, R35)
     (CASA_ESTUDANTE, D("-5.50")),
 ])
 def test_set_comissao_por_lojista(itens, cnpj, valor):
@@ -468,3 +469,39 @@ def test_set_reversao_anula_exatamente_a_antecipacao(entradas):
 def test_set_rastro_e_validar_saida(itens, tmp_path):
     gravar_saida(tmp_path, itens)
     assert validar_saida(tmp_path) == []
+
+
+
+# ---------------------------------------------------------------- vários arquivos da Orbe (O05, P27, P28)
+
+def test_repetida_entre_arquivos_vira_pendencia_informativa(cfg):
+    from tarvo.checkout import pendencias_arquivos_orbe
+    from tarvo.leitores.orbe import Repetida
+
+    orbe = _df([_orbe("T1", EC_A, "100.00", "1.49")], leitor_orbe.COLUNAS_SAIDA)
+    (pen,) = pendencias_arquivos_orbe(orbe, [Repetida("T1", "01_orbe.csv", 7, "06_orbe.csv", 2)], "2031-03", cfg)
+    assert pen.id_saida == "PEN-REPET-CHK-T1" and pen.valor_reportado == D("0.00")
+    assert pen.campos["tipo"] == "TRANSACAO_REPETIDA"
+    assert [(o.arquivo_origem, o.ref_origem, o.valor) for o in pen.origens] == \
+        [("01_orbe.csv", "T1", D("0.00")), ("06_orbe.csv", "T1", D("0.00"))]
+    assert "contado uma vez" in pen.campos["motivo"] and "próximo passo: a Helena confirma com a Orbe" in pen.campos["motivo"]
+
+
+def test_estorno_sem_a_original_do_mesmo_mes_vira_pendencia_e_de_mes_anterior_nao(cfg):
+    from tarvo.checkout import pendencias_arquivos_orbe
+
+    orbe = _df([
+        _orbe("V1", EC_A, "100.00", "1.49"),
+        _orbe("E1", EC_A, "-100.00", "1.49", tipo="ESTORNO", id_referencia="V1", data_venda_original=date(2031, 3, 2)),
+        _orbe("E2", EC_A, "-50.00", "1.49", tipo="ESTORNO", id_referencia="V9", data_venda_original=date(2031, 3, 5)),
+        _orbe("E3", EC_A, "-70.00", "1.49", tipo="ESTORNO", id_referencia="V8", data_venda_original=date(2031, 2, 20)),
+    ], leitor_orbe.COLUNAS_SAIDA)
+    itens = pendencias_arquivos_orbe(orbe, [], "2031-03", cfg)
+    assert [i.id_saida for i in itens] == ["PEN-SEMORIG-CHK-E2"]  # E1 tem a original; E3 é de venda do mês anterior (R04)
+    assert itens[0].valor_reportado == D("0.00") and itens[0].campos["tipo"] == "REFERENCIA_NAO_ENCONTRADA"
+    assert "próximo passo: a Helena pede à Orbe a transação original V9" in itens[0].campos["motivo"]
+
+
+def test_set_os_ajustes_tardios_nao_abrem_pendencia_de_arquivo(itens):
+    """O05: no 06 nenhum id repete o 01 e toda original está no 01: nenhuma PEN-REPET nem PEN-SEMORIG."""
+    assert not [i for i in itens if i.id_saida.startswith(("PEN-REPET-CHK-", "PEN-SEMORIG-CHK-"))]

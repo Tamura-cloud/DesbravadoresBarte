@@ -3,19 +3,22 @@ import subprocess
 import sys
 from pathlib import Path
 
-from tarvo.cli import CONFIG_PADRAO, carregar_padroes, localizar_arquivos
+from tarvo.cli import CONFIG_PADRAO, carregar_multiplos, localizar_pela_config
 
 RAIZ = Path(__file__).resolve().parents[1]
 ENTRADA = RAIZ / "dados" / "2026-09"
 
 
-def test_localiza_os_6_arquivos_por_padrao():
-    padroes = carregar_padroes(CONFIG_PADRAO)
-    encontrados = localizar_arquivos(ENTRADA, padroes)
+def test_localiza_os_6_tipos_por_padrao():
+    encontrados = localizar_pela_config(ENTRADA)
 
     assert set(encontrados) == {"orbe", "taxas", "ponte_eml", "plano_de_contas", "aurora", "meridiano"}
-    assert len(set(encontrados.values())) == 6
-    assert all(p.is_file() for p in encontrados.values())
+    # O05: a Orbe aceita vários arquivos (relatório e ajustes tardios), em ordem de nome; os outros tipos, um só
+    assert carregar_multiplos(CONFIG_PADRAO) == {"orbe"}
+    orbe = encontrados.pop("orbe")
+    assert isinstance(orbe, tuple) and len(orbe) >= 1 and list(orbe) == sorted(orbe, key=lambda p: p.name)
+    assert all(isinstance(p, Path) and p.is_file() for p in [*orbe, *encontrados.values()])
+    assert len({*orbe, *encontrados.values()}) == len(orbe) + 5
 
 
 def test_cli_fechar_lista_os_6_arquivos(tmp_path):

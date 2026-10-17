@@ -87,7 +87,7 @@ def test_gerador_nao_toca_nos_originais(pack):
 
 def test_nomes_assunto_e_anexo_de_outubro(pack):
     nomes = sorted(p.name for p in pack["pasta"].iterdir())
-    assert len(nomes) == 6
+    assert len(nomes) == 7  # os 6 tipos, com a Orbe em 2 arquivos: relatório e ajustes tardios (O05)
     assert not any("set2026" in n for n in nomes)
     originais = [n for n in pack["antes"] if "set2026" in n]
     assert originais and all(n.replace("set2026", "out2026") in nomes for n in originais)
@@ -100,7 +100,7 @@ def test_nomes_assunto_e_anexo_de_outubro(pack):
 
 
 def test_orbe_datas_deslocadas_e_uma_venda_nova(pack):
-    original = {r["ref_origem"]: r for r in ler_orbe(next(SETEMBRO.glob("*orbe*.csv"))).to_dict("records")}
+    original = {r["ref_origem"]: r for r in ler_orbe(sorted(SETEMBRO.glob("*orbe*.csv"))[0]).to_dict("records")}
     novo = {r["ref_origem"]: r for r in ler_orbe(pack["casos"]["orbe"]["arquivo"]).to_dict("records")}
     assert set(novo) - set(original) == {pack["casos"]["orbe"]["ref_origem"]}
     for ref, o in original.items():

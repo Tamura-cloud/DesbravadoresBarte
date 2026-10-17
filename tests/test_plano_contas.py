@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from tarvo.cli import CONFIG_PADRAO, carregar_padroes, localizar_arquivos
+from tarvo.cli import localizar_pela_config
 from tarvo.leitores.plano_contas import COLUNAS, ler_plano
 
 ENTRADA = Path(__file__).resolve().parents[1] / "dados" / "2026-09"
@@ -10,7 +10,7 @@ ENTRADA = Path(__file__).resolve().parents[1] / "dados" / "2026-09"
 
 @pytest.fixture(scope="module")
 def plano():
-    caminho = localizar_arquivos(ENTRADA, carregar_padroes(CONFIG_PADRAO))["plano_de_contas"]
+    caminho = localizar_pela_config(ENTRADA)["plano_de_contas"]
     return ler_plano(caminho)
 
 

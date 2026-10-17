@@ -243,3 +243,93 @@ def test_cli_em_subprocesso_com_saida_redirecionada_imprime_utf8(tmp_path):
                        capture_output=True, env=env, cwd=RAIZ)
     assert r.returncode == 0, r.stderr.decode("utf-8", "replace")
     assert "Competência: 2026-09".encode("utf-8") in r.stdout
+
+
+
+# ---------------------------------------------------------------- vários arquivos da Orbe (O05)
+
+def _comissao_total(pasta: Path) -> Decimal:
+    import csv
+    with open(pasta / "comissoes_por_lojista.csv", encoding="utf-8", newline="") as f:
+        return sum((Decimal(l["comissao_brl"]) for l in csv.DictReader(f, delimiter=";")), Decimal("0.00"))
+
+
+def _orbe(pasta: Path) -> list[Path]:
+    return sorted(pasta.glob("*orbe*.csv"))
+
+
+@pytest.fixture(scope="module")
+def com_e_sem_o_06(tmp_path_factory):
+    """O mesmo setembro fechado com o relatório e os ajustes tardios (06) e só com o relatório."""
+    resultado = {}
+    for caso in ("com", "sem"):
+        raiz = tmp_path_factory.mktemp(caso)
+        shutil.copytree(ENTRADA, raiz / "entrada")
+        if caso == "sem":
+            _orbe(raiz / "entrada")[-1].unlink()
+        resultado[caso] = (raiz, fechar(raiz / "entrada", raiz / "saida", "2026-09", contestacoes=False))
+    return resultado
+
+
+def test_fechar_le_os_arquivos_da_orbe_e_o_06_entra_na_comissao(com_e_sem_o_06):
+    (com, r_com), (sem, r_sem) = com_e_sem_o_06["com"], com_e_sem_o_06["sem"]
+    assert [p.name for p in r_com.arquivos_entrada["orbe"]] == [p.name for p in _orbe(com / "entrada")]
+    assert len(r_sem.arquivos_entrada["orbe"]) == 1
+    assert validar_saida(com / "saida") == []
+    # as 14 linhas do 06: 10 estornos e 3 reversões tiram, 1 venda do Kiwi soma (R35, R05, R07)
+    assert _comissao_total(com / "saida") - _comissao_total(sem / "saida") == Decimal("-3304.39")
+    rastro = (com / "saida" / "rastro.csv").read_text(encoding="utf-8")
+    assert f"COM-CHK-07752116000126;{_orbe(com / 'entrada')[-1].name};TX88447225;174.81" in rastro
+
+
+def test_reenvio_igual_dos_ajustes_conta_uma_vez_e_abre_pendencia(com_e_sem_o_06, tmp_path):
+    com, _ = com_e_sem_o_06["com"]
+    shutil.copytree(com / "entrada", tmp_path / "entrada")
+    ajustes = _orbe(tmp_path / "entrada")[-1]
+    shutil.copyfile(ajustes, tmp_path / "entrada" / "07_orbe_reenvio_ajustes.csv")
+    fechar(tmp_path / "entrada", tmp_path / "saida", "2026-09", contestacoes=False)
+    assert _comissao_total(tmp_path / "saida") == _comissao_total(com / "saida")
+    pendencias = (tmp_path / "saida" / "pendencias.csv").read_text(encoding="utf-8")
+    assert pendencias.count("PEN-REPET-CHK-") == 14 and pendencias.count(";TRANSACAO_REPETIDA;") == 14
+
+
+def test_reenvio_com_linha_diferente_para_e_nao_grava(copia, tmp_path, capsys):
+    ajustes = _orbe(copia)[-1]
+    linhas = ajustes.read_text(encoding="utf-8").splitlines()
+    linhas[1] = linhas[1].replace("-1147,05;2,59;-29,70;-1117,35", "-1147,05;2,69;-30,85;-1116,20")
+    (copia / "07_orbe_reenvio_ajustes.csv").write_text("\r\n".join(linhas) + "\r\n", encoding="utf-8", newline="")
+    saida = tmp_path / "saida"
+    assert cli.main(["fechar", "--competencia", "2026-09", "--entrada", str(copia), "--saida", str(saida),
+                     "--sem-contestacao"]) == 2
+    erro = capsys.readouterr().err
+    assert "Nada foi gravado" in erro and "TX88446992" in erro
+    assert "taxa_aplicada_pct, valor_taxa, valor_liquido" in erro and "não escolhe" in erro
+    assert not saida.exists()
+
+
+def test_ajustes_com_cabecalho_diferente_para_e_diz_o_arquivo_e_a_coluna(copia, tmp_path, capsys):
+    ajustes = _orbe(copia)[-1]
+    texto = ajustes.read_text(encoding="utf-8").replace("id_transacao;", "id_trans;", 1)
+    ajustes.write_text(texto, encoding="utf-8", newline="")
+    assert cli.main(["fechar", "--competencia", "2026-09", "--entrada", str(copia), "--saida", str(tmp_path / "s"),
+                     "--sem-contestacao"]) == 2
+    erro = capsys.readouterr().err
+    assert f"{ajustes.name}: colunas ausentes no cabeçalho: ['id_transacao']" in erro
+
+
+def test_ajustes_com_colunas_trocadas_para_e_diz_a_coluna(copia, tmp_path, capsys):
+    ajustes = _orbe(copia)[-1]
+    texto = ajustes.read_text(encoding="utf-8").replace("valor_taxa;valor_liquido", "valor_liquido;valor_taxa", 1)
+    ajustes.write_text(texto, encoding="utf-8", newline="")
+    assert cli.main(["fechar", "--competencia", "2026-09", "--entrada", str(copia), "--saida", str(tmp_path / "s"),
+                     "--sem-contestacao"]) == 2
+    erro = capsys.readouterr().err
+    assert f"{ajustes.name}: cabeçalho diferente do de {_orbe(copia)[0].name}: a coluna 11 é 'valor_liquido'" in erro
+
+
+def test_taxas_continua_exigindo_um_arquivo_so_com_os_ajustes_da_orbe_na_pasta(copia, tmp_path):
+    taxas = _arquivo(copia, "*taxas*.xlsx")
+    shutil.copyfile(taxas, copia / f"{taxas.stem}_v2.xlsx")
+    assert len(_orbe(copia)) == 2
+    with pytest.raises(ErroEntrada, match="deixe só um arquivo de taxas na pasta"):
+        fechar(copia, tmp_path / "saida", "2026-09", modulos=[], contestacoes=False)
