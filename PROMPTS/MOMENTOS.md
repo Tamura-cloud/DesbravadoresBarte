@@ -30,3 +30,5 @@ Pedimos ao Claude Code que analisasse a branch `pix` sem fazer merge, e ele rodo
 - Varredura de 100% das linhas antes de aceitar qualquer regra (encodings, CNPJs de 13 dígitos, Bridge, estorno de agosto), em `sessoes/2026-10-16_pessoa-3_antigravity_40ab3010`, 16/10 22:26, commit `d425cd4`.
 - Revisão independente das saídas, que questionou 7 premissas (P15–P21) e manteve cada uma com o número alternativo, em `sessoes/*_pessoa-2_claude_e749f188` e `656c59d7`, commit `329831b`.
 - A regra da Casa do Estudante que mudou no meio do dia ("o que decide é o contrato, não o aviso"), em `sessoes/*_pessoa-2_claude_56449fe8`, commit `2b679b3`.
+- O arquivo novo da Orbe (13h10) testado numa cópia isolada antes de entrar no `main`: o fechamento parava e as notas corretas foram simuladas antes da correção, em `sessoes/*_pessoa-1_claude_6a4fd205`, 17/10 13h22–13h30.
+- A cronologia em UTC que sugeria código descartado, corrigida conferindo a autoria no horário de Brasília, em `sessoes/*_pessoa-1_claude_6a4fd205`, 17/10 00h45 e 08h10.
