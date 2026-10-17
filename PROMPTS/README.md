@@ -92,6 +92,6 @@ Regra: entra aqui todo prompt que mudou uma regra de negócio, um número, a arq
 ## Sessões que ainda faltam juntar
 
 - ~~Preparação no Antigravity (16/10, 16h54–23h)~~: exportada.
-- Sessões que geraram a branch `pix` e o relatório técnico (máquina do autor da pix): exportar com o script ou colar link/print em `sessoes/links.md`.
-- Sessões da terceira pessoa, se houver.
+- ~~Sessões do Claude Code que geraram a branch `pix` (Pessoa 2, 16/10 19h59 a 17/10 01h30)~~: exportadas, 15 sessões (`sessoes/*_pessoa-2_*`). Conversa no claude.ai: link em `sessoes/links.md`.
+- Sessões da Pessoa 1 (integração, merge e PR #1): exportar às 17h30.
 - Sessões de construção de 17/10 das três pessoas (exportar de novo às 17h30).
