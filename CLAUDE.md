@@ -183,3 +183,4 @@ As colunas abaixo, nesta ordem, são **obrigatórias** (correção automática).
 4. **Todo número leva `rastro`** (`ItemRastro` por linha de origem) e a soma do rastro tem que ser o número reportado; `core/saida.py` quebra se não for.
 5. **Nenhum valor de setembro fixo no código:** regras e exceções vão em `config/*.toml`, com a fonte (Slack) citada.
 6. **Pronto = teste do módulo verde** com os valores de aceite (seção 3).
+7. **Registrar prompts que mudam o projeto:** quando um pedido mudar regra de negócio, número ou arquitetura, ou corrigir um erro da IA, acrescente uma linha na tabela "Prompts-chave" de `PROMPTS/README.md` (quando, quem, prompt, o que a IA fez, o que mudou, commit). O transcript completo é exportado com `python scripts/exportar_transcript.py --autor "<pessoa>"`.

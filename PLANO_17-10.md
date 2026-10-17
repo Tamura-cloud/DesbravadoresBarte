@@ -51,6 +51,14 @@ A ideia da figura de referência que vale para nós é separar **um orquestrador
 - Precisa mudar `src/core` ou `src/leitores`? Avise no grupo, faça um commit só com isso e mande para `main` primeiro.
 - Cada sessão do Claude Code começa com: *"Sou a Pessoa X, só edite os arquivos do meu módulo (ver PLANO_17-10.md)."*
 
+## 2.1 Histórico de IA (20% da nota)
+
+O case pede **o histórico completo** de todas as sessões, sem edição (só sem chaves e dados pessoais), mais o `MOMENTOS.md`.
+- **Prompt que mudou regra, número ou arquitetura, ou que corrigiu a IA:** uma linha na tabela "Prompts-chave" de `PROMPTS/README.md`, junto com o commit que ele gerou.
+- **A cada checkpoint (11h, 15h30) e antes das 18h15:** cada pessoa roda `python scripts/exportar_transcript.py --autor "pessoa-x"` na própria máquina e faz commit de `PROMPTS/sessoes/`.
+- **Conversa fora do Claude Code** (claude.ai, ChatGPT): link ou print em `PROMPTS/sessoes/links.md`.
+- **Quando a IA errar e vocês corrigirem**, anotem na hora: é o melhor candidato a `MOMENTOS.md` (o Momento 4 está reservado para a implementação).
+
 ---
 
 ## 3. Contrato em 30 segundos
@@ -136,5 +144,5 @@ Os valores de aceite já estão nos testes. **Pronto = o teste do módulo passa.
 - [ ] `python -m src.main` gera os 6 CSVs em `saida/` e eles estão commitados
 - [ ] README roda do zero num clone limpo (`pip install -r requirements.txt` + `python -m src.main`)
 - [ ] `HIPOTESES.md` com perguntas, respostas e premissas
-- [ ] `PROMPTS/` com os transcripts e `MOMENTOS.md` com 2 a 4 momentos (um em que a IA errou)
+- [ ] `PROMPTS/sessoes/` com os transcripts das 3 pessoas (preparação e construção), tabela de prompts-chave preenchida e `MOMENTOS.md` com 2 a 4 momentos (um em que a IA errou)
 - [ ] Repositório público; link no thread `#hackathon-entregas`

@@ -20,7 +20,15 @@
 
 ---
 
-## Momento 3 — `[Reservado para registrar durante a implementação do código / classificação bancária]`
+## Momento 3 — Recalcular em vez de confiar: o CLAUDE.md gerado com IA tinha 8 erros (Erro da IA Corrigido pelo Time)
+
+* **O que pedimos:** Na noite de 16/10, pedimos que a IA lesse um por um os documentos que ela mesma tinha ajudado a escrever (`CLAUDE.md`, `HIPOTESES.md`), o Slack com as respostas da Helena e as instruções oficiais, e dissesse se havia erro de relação com os dados.
+* **O que a IA devolveu:** Além de reler os textos, recalculou tudo em Python sobre `dados/` e achou 8 erros que vinham de números copiados sem recálculo: um aumento de taxa da Rota Global no débito que não existe (herdado de uma pergunta mal rotulada no Slack), a duplicata `PC-0926-0162` atribuída à EduAbroad (é da Bagagem Livre), 3 em vez de 6 operações de 30/09, 85 em vez de 84 lançamentos no Aurora, R$ 0,10 a menos na Casa do Estudante. Mostrou também que os schemas de saída não seguiam a instrução oficial (faltavam `id_saida`, `ref_origem` e o `rastro.csv`).
+* **O que nós fizemos com isso:** Corrigimos os documentos (commit `0beccf8`) e mudamos o método: o número passa a nascer do pipeline, e os valores conferidos viraram testes de aceite em `tests/`, para que nenhum documento volte a ser a fonte da verdade.
+
+---
+
+## Momento 4 — `[Reservado para registrar durante a implementação do código / classificação bancária]`
 
 * **O que pedimos:** `[Preencher durante o desenvolvimento]`
 * **O que a IA devolveu:** `[Preencher durante o desenvolvimento]`
