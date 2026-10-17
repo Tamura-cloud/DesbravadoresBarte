@@ -121,7 +121,7 @@ regras:
       confianca: "1.00"
       fonte: R20
       papel: transferencia_recebida
-    - padrao: '^TED RECEB PONTE .*REPASSE COMISSAO'
+    - padrao: '^TED RECEB PONTE CAMBIO .*REPASSE COMISSAO'   # só a Ponte Câmbio; a Ponte Aérea é lojista (R22)
       sentido: C
       conta_codigo: "1.1.03.002"   # comissão do mês anterior já registrada como recebível
       confianca: "1.00"
@@ -156,9 +156,6 @@ regras:
       conta_codigo: "4.2.01"       # Tarifas bancárias (não provisionado)
       confianca: "1.00"
       fonte: R19
-
-# P10: PIX de cliente identificado como recurso sem remessa: mesma conta, confiança de premissa.
-confianca_pix_sem_remessa: "0.80"
 
 # P09: lançamento que nenhuma regra cobre fica sem classificação definitiva (metodo HUMANO) + pendência.
 sem_regra:

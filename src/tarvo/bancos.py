@@ -1,6 +1,6 @@
 """Extratos bancários (Aurora e Meridiano): classificação contábil, conferências cruzadas e pendências.
 
-Regras do HIPOTESES.md: R19 a R21; premissas P06 a P13. Regras em config/bancos.yaml; lojistas dos PIX em
+Regras do HIPOTESES.md: R19 a R22; premissas P06 a P13. Regras em config/bancos.yaml; lojistas dos PIX em
 config/favorecidos.yaml (Aurora) e config/pagadores_meridiano.yaml (Meridiano).
 O lojista de um PIX é identificado só pela lista explícita (texto exato do extrato -> CNPJ); a Ponte é casada
 com os PIX pelo CNPJ. O que nenhuma regra cobre fica com metodo HUMANO e vira pendência (P09); com o
@@ -60,13 +60,9 @@ MOTIVO_TED_LIQ = (
     "TEDs LIQ OPERACOES do dia diferentes de valor_brl + iof_brl das operações únicas da Ponte contratadas "
     "no dia (P11) - valor = operações - TEDs pagas"
 )
-MOTIVO_PIX_SEM_REMESSA = (
-    "PIX do cliente sem operação correspondente da Ponte no mês: a soma dos PIX excede a das operações "
-    "exatamente neste valor (P12)"
-)
 MOTIVO_PIX_DIFERENCA = (
-    "soma dos PIX do cliente no mês diferente de valor_brl + iof_brl das operações únicas da Ponte no mês, "
-    "sem um PIX único que explique a diferença (P12) - valor = PIX - operações"
+    "soma dos PIX do cliente no mês menor que valor_brl + iof_brl das operações únicas da Ponte no mês: "
+    "remessa sem o dinheiro do cliente (P12) - valor = PIX - operações"
 )
 MOTIVO_TRANSITO = (
     "transferência entre contas sem TED de mesma titularidade no Meridiano até {fim}: pela R20 cai no "
@@ -108,7 +104,6 @@ class Regra:
 class ConfigBancos:
     regras: dict[str, tuple[Regra, ...]]
     listas: dict[str, dict[str, Contraparte]]
-    confianca_pix_sem_remessa: Decimal
     conta_sem_regra: str
     confianca_sem_regra: Decimal
     quem_decide: str
@@ -209,7 +204,6 @@ def carregar_config(plano: pd.DataFrame, taxas: pd.DataFrame, caminho=CONFIG_BAN
     return ConfigBancos(
         regras=regras,
         listas=listas,
-        confianca_pix_sem_remessa=_confianca_cfg(bruto.get("confianca_pix_sem_remessa"), "confianca_pix_sem_remessa"),
         conta_sem_regra=_str_cfg(sem_regra.get("conta_codigo"), "sem_regra.conta_codigo"),
         confianca_sem_regra=_confianca_cfg(sem_regra.get("confianca"), "sem_regra.confianca"),
         quem_decide=_str_cfg(bruto.get("quem_decide"), "quem_decide"),
@@ -318,16 +312,13 @@ def sugestoes_ia(por_banco: list[list[Lancamento]], fallback: FallbackIA) -> dic
     return sugestoes
 
 
-def item_lancamento(l: Lancamento, cfg: ConfigBancos, sem_remessa: set[str],
-                    sugestao: ia.Sugestao | None = None) -> ItemSaida:
+def item_lancamento(l: Lancamento, cfg: ConfigBancos, sugestao: ia.Sugestao | None = None) -> ItemSaida:
     if l.regra is None and sugestao is not None:  # P14: só sugestão, revisada pela pendência PEN-IA
         conta, metodo, confianca = sugestao.conta_codigo, "IA", sugestao.confianca
     elif l.regra is None:  # P09
         conta, metodo, confianca = cfg.conta_sem_regra, "HUMANO", cfg.confianca_sem_regra
     else:
         conta, metodo, confianca = l.regra.conta_codigo, "REGRA", l.regra.confianca
-        if l.ref_origem in sem_remessa:  # P10
-            confianca = min(confianca, cfg.confianca_pix_sem_remessa)
     return ItemSaida(l.id_saida, LANCAMENTOS.nome,
                      {"banco": l.banco, "ref_origem": l.ref_origem, "data": l.data,
                       "descricao": texto_saida(l.descricao),
@@ -417,9 +408,8 @@ def conferir_ted_liquidacao(meridiano: list[Lancamento], unicas: list[dict], ini
     return itens
 
 
-def conferir_pix_remessas(meridiano: list[Lancamento], unicas_mes: list[dict],
-                          cfg: ConfigBancos) -> tuple[list[ItemSaida], set[str]]:
-    """P12: por CNPJ, PIX do mês = operações únicas do mês. Devolve (pendências, FITIDs de PIX sem remessa)."""
+def conferir_pix_remessas(meridiano: list[Lancamento], unicas_mes: list[dict], cfg: ConfigBancos) -> list[ItemSaida]:
+    """P12: por CNPJ, PIX do mês = operações únicas do mês. PIX a mais é adiantamento (R22); PIX a menos é pendência."""
     pix: dict[str, list[Lancamento]] = defaultdict(list)
     for l in meridiano:
         if l.papel == "pix_cliente":
@@ -428,23 +418,18 @@ def conferir_pix_remessas(meridiano: list[Lancamento], unicas_mes: list[dict],
     for op in unicas_mes:
         ops[op["cnpj"]].append(op)
 
-    itens, sem_remessa = [], set()
+    itens = []
     for cnpj in sorted(set(pix) | set(ops)):
         diferenca = _soma(l.valor for l in pix[cnpj]) - _soma(_valor_operacao(op) for op in ops[cnpj])
-        if diferenca == 0:
+        # R22: PIX de lojista acima das remessas do mês é adiantamento de remessa futura, fica em 2.1.02.001
+        # pela regra do PIX e não é pendência. Todo pagador de pix_cliente é lojista com CNPJ da planilha (P08).
+        if diferenca >= 0:
             continue
-        iguais = [l for l in pix[cnpj] if l.valor == diferenca]
-        if len(iguais) == 1:
-            l = iguais[0]
-            sem_remessa.add(l.ref_origem)
-            itens.append(_pendencia(f"PEN-PIX-SEMREM-{l.ref_origem}", "RECURSO_SEM_REMESSA", l.ref_origem,
-                                    MOTIVO_PIX_SEM_REMESSA, l.valor, [l.origem()], cfg))
-        else:
-            origens = ([l.origem() for l in sorted(pix[cnpj], key=lambda l: l.ref_origem)]
-                       + [_origem_op(op, -1) for op in sorted(ops[cnpj], key=lambda o: o["ref_origem"])])
-            itens.append(_pendencia(f"PEN-PIX-REM-{cnpj}", "DIFERENCA_PIX_REMESSA", [o[1] for o in origens],
-                                    MOTIVO_PIX_DIFERENCA, diferenca, origens, cfg))
-    return itens, sem_remessa
+        origens = ([l.origem() for l in sorted(pix[cnpj], key=lambda l: l.ref_origem)]
+                   + [_origem_op(op, -1) for op in sorted(ops[cnpj], key=lambda o: o["ref_origem"])])
+        itens.append(_pendencia(f"PEN-PIX-REM-{cnpj}", "DIFERENCA_PIX_REMESSA", [o[1] for o in origens],
+                                MOTIVO_PIX_DIFERENCA, diferenca, origens, cfg))
+    return itens
 
 
 def proximo_dia_util(d: date) -> date:
@@ -496,10 +481,10 @@ def calcular_bancos(aurora: pd.DataFrame, meridiano: pd.DataFrame, meridiano_met
         raise ErroBancos("extrato do Meridiano sem DTSTART/DTEND: não há período para as conferências")
 
     unicas, _ = deduplicar(ponte, cfg_remessa)  # R13: a duplicata conta uma vez
-    pend_pix, sem_remessa = conferir_pix_remessas(mer, [op for op in unicas if na_competencia(op, competencia)], cfg)
+    pend_pix = conferir_pix_remessas(mer, [op for op in unicas if na_competencia(op, competencia)], cfg)
 
     sugestoes = sugestoes_ia([aur, mer], fallback) if fallback is not None else {}
-    itens = [item_lancamento(l, cfg, sem_remessa, sugestoes.get(l.id_saida)) for l in aur + mer]
+    itens = [item_lancamento(l, cfg, sugestoes.get(l.id_saida)) for l in aur + mer]
     itens += pendencias_lancamentos(aur + mer, cfg, sugestoes, fallback.cfg if fallback else None)
     itens += conferir_ted_liquidacao(mer, unicas, inicio, fim, cfg)
     itens += pend_pix

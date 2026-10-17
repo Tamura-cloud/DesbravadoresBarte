@@ -1,6 +1,6 @@
 """Linha REMESSA (Ponte Câmbio): comissão sobre o spread realizado, divergências, nota única e pendências.
 
-Regras do HIPOTESES.md, seção 1: R11 a R18; premissas P01 e P02. Parâmetros em config/remessa.yaml.
+Regras do HIPOTESES.md, seção 1: R11 a R18 e R23; premissas P01 e P18. Parâmetros em config/remessa.yaml.
 O lojista é casado só pelo CNPJ da Ponte com o CNPJ da planilha; o nome do cliente da Ponte nunca é usado
 para casar (só aparece como nome de exibição de CNPJ que não está na planilha).
 """
@@ -163,7 +163,7 @@ class OperacaoRemessa:
     spread_pct: Decimal
     spread_contratado: Decimal | None   # None: CNPJ fora da planilha
     comissao: Decimal | None            # None: spread negativo (R12)
-    diferenca: Decimal | None           # None: dentro da tolerância ou sem contrato
+    diferenca: Decimal | None           # None: dentro da tolerância ou sem contrato; negativa: valor da PEN-NEG
 
     @property
     def negativa(self) -> bool:
@@ -193,7 +193,7 @@ def calcular_operacao(op: dict, contratos: Contratos, cfg: ConfigRemessa) -> Ope
     if cadastrado:
         contratado, _ = contratos.spread_contratado(cnpj, data)
         diff_pp = spread_pct - contratado
-        if negativa or abs(diff_pp) >= cfg.tolerancia_pp:  # P01, P02
+        if negativa or abs(diff_pp) >= cfg.tolerancia_pp:  # P01, P18
             # R15: valor cheio, sobre PTAX de referência × valor em moeda estrangeira
             base = _obrigatorio(op, "ptax_ref") * _obrigatorio(op, "valor_me")
             diferenca = dinheiro(diff_pp / 100 * base)
@@ -247,7 +247,8 @@ def gerar_itens(operacoes: list[OperacaoRemessa], descartadas: list[dict], fora:
                                     [o.ref_origem for o in com_comissao], MOTIVO_NAO_CADASTRADO,
                                     _soma(o.comissao for o in com_comissao), rastro, cfg))
 
-        for o in (o for o in doc if o.divergente):  # R15, P01, P02
+        # R23: spread negativo não é divergência (o lojista não pagou a mais); fica só na PEN-NEG abaixo
+        for o in (o for o in doc if o.divergente and not o.negativa):  # R15, P01
             itens.append(ItemSaida(f"DIV-REM-{o.ref_origem}", DIVERGENCIAS.nome,
                                    {"cnpj": cnpj, "linha_negocio": LINHA_NEGOCIO, "ref_origem": o.ref_origem,
                                     "taxa_contratada_pct": o.spread_contratado, "taxa_aplicada_pct": o.spread_pct},
@@ -260,7 +261,7 @@ def gerar_itens(operacoes: list[OperacaoRemessa], descartadas: list[dict], fora:
                                     _soma(o.diferenca for o in acima),
                                     [(o.arquivo_origem, o.ref_origem, o.diferenca) for o in acima], cfg))
 
-        for o in (o for o in doc if o.negativa):  # R12, R18, P02
+        for o in (o for o in doc if o.negativa):  # R12, R18, R23, P18
             itens.append(_pendencia(f"PEN-NEG-REM-{o.ref_origem}", "CONTESTACAO_PONTE", o.ref_origem,
                                     MOTIVO_NEGATIVO, o.diferenca, [(o.arquivo_origem, o.ref_origem, o.diferenca)], cfg))
 
