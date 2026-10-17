@@ -10,6 +10,7 @@ from tarvo.saida import (
     ARQUIVOS,
     COMISSOES,
     DIVERGENCIAS,
+    EXTRAS_RASTRO,
     LANCAMENTOS,
     NOTAS,
     PENDENCIAS,
@@ -190,8 +191,8 @@ def test_formato_de_numero_data_e_cnpj(tmp_path):
     assert lan[1] == ["LAN-1", "AURORA", "L12", "2031-03-15", "TARIFA DE TESTE", "-0.99", "9.9.99", "REGRA", "1.00"]
 
     rastro = ler(tmp_path / RASTRO.nome)
-    assert ["COM-1", "entrada_a.csv", "T2", "1230.25"] in rastro
-    assert ["COM-0", "a.csv", "T9", "0.00"] in rastro
+    assert ["COM-1", "entrada_a.csv", "T2", "1230.25", "", ""] in rastro
+    assert ["COM-0", "a.csv", "T9", "0.00", "", ""] in rastro
 
 
 def test_bytes_utf8_sem_bom_com_fim_de_linha_lf(tmp_path):
@@ -212,7 +213,7 @@ def test_cabecalhos_obrigatorios_mesmo_sem_itens(tmp_path):
         "notas_a_emitir.csv": "id_saida;tomador_cnpj;tomador;linha_negocio;valor_brl;discriminacao",
         "lancamentos_classificados.csv": "id_saida;banco;ref_origem;data;descricao;valor;conta_codigo;metodo;confianca",
         "pendencias.csv": "id_saida;tipo;ref_origem;valor_brl;motivo;quem_decide",
-        "rastro.csv": "id_saida;arquivo_origem;ref_origem;valor",
+        "rastro.csv": "id_saida;arquivo_origem;ref_origem;valor;regra;detalhe",  # O06: regra e detalhe no fim
     }
     for nome, cabecalho in esperados.items():
         assert (tmp_path / nome).read_text(encoding="utf-8") == cabecalho + "\n"
@@ -253,14 +254,14 @@ def test_validar_acha_rastro_adulterado(saida_valida):
 
 
 def test_validar_acha_linha_de_rastro_removida(saida_valida):
-    _reescrever(saida_valida / RASTRO.nome, "DIV-1;entrada_b.eml;OP-7;-3.10\n", "")
+    _reescrever(saida_valida / RASTRO.nome, "DIV-1;entrada_b.eml;OP-7;-3.10;;\n", "")
     problemas = validar_saida(saida_valida)
     assert any("DIV-1" in p and "soma do rastro (0.00)" in p for p in problemas)
 
 
 def test_validar_acha_id_do_rastro_inexistente(saida_valida):
     with open(saida_valida / RASTRO.nome, "a", encoding="utf-8", newline="") as f:
-        f.write("COM-404;x.csv;T1;0.00\n")
+        f.write("COM-404;x.csv;T1;0.00;;\n")
     problemas = validar_saida(saida_valida)
     assert any("COM-404" in p and "não existe" in p for p in problemas)
 
@@ -336,9 +337,9 @@ def test_ponta_a_ponta_grava_e_rele(tmp_path):
     assert lan[2][1] == "MERIDIANO" and lan[2][-2:] == ["IA", "0.73"]
 
     rastro = ler(pasta / RASTRO.nome)
-    assert rastro[0] == list(RASTRO.nomes)
+    assert rastro[0] == list(RASTRO.nomes) + list(EXTRAS_RASTRO)
     assert len(rastro) - 1 == sum(len(i.origens) for i in itens)
     somas = {}
-    for id_saida, _, _, valor in rastro[1:]:
+    for id_saida, _, _, valor, _, _ in rastro[1:]:
         somas[id_saida] = somas.get(id_saida, D("0")) + D(valor)
     assert somas == {i.id_saida: i.valor_reportado for i in itens}

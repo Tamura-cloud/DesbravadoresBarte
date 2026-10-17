@@ -544,7 +544,7 @@ def test_set_rastro_e_validar_saida(itens, tmp_path):
 
 
 
-# ---------------------------------------------------------------- vários arquivos da Orbe (O05, P27, P28)
+# ---------------------------------------------------------------- vários arquivos da Orbe (O05, P27, R48)
 
 def test_repetida_entre_arquivos_vira_pendencia_informativa(cfg):
     from tarvo.checkout import pendencias_arquivos_orbe
@@ -559,21 +559,159 @@ def test_repetida_entre_arquivos_vira_pendencia_informativa(cfg):
     assert "contado uma vez" in pen.campos["motivo"] and "próximo passo: a Helena confirma com a Orbe" in pen.campos["motivo"]
 
 
-def test_estorno_sem_a_original_do_mesmo_mes_vira_pendencia_e_de_mes_anterior_nao(cfg):
+def _checkout_com_arquivos(linhas, taxas, cfg, correcoes=(), competencia="2031-03"):
+    """calcular_checkout e as pendências da leitura dos arquivos da Orbe, como o módulo checkout faz."""
     from tarvo.checkout import pendencias_arquivos_orbe
 
-    orbe = _df([
-        _orbe("V1", EC_A, "100.00", "1.49"),
-        _orbe("E1", EC_A, "-100.00", "1.49", tipo="ESTORNO", id_referencia="V1", data_venda_original=date(2031, 3, 2)),
-        _orbe("E2", EC_A, "-50.00", "1.49", tipo="ESTORNO", id_referencia="V9", data_venda_original=date(2031, 3, 5)),
-        _orbe("E3", EC_A, "-70.00", "1.49", tipo="ESTORNO", id_referencia="V8", data_venda_original=date(2031, 2, 20)),
-    ], leitor_orbe.COLUNAS_SAIDA)
-    itens = pendencias_arquivos_orbe(orbe, [], "2031-03", cfg)
-    assert [i.id_saida for i in itens] == ["PEN-SEMORIG-CHK-E2"]  # E1 tem a original; E3 é de venda do mês anterior (R04)
-    assert itens[0].valor_reportado == D("0.00") and itens[0].campos["tipo"] == "REFERENCIA_NAO_ENCONTRADA"
-    assert "próximo passo: a Helena pede à Orbe a transação original V9" in itens[0].campos["motivo"]
+    orbe = _df(linhas, leitor_orbe.COLUNAS_SAIDA)
+    itens = calcular_checkout(orbe, taxas, competencia, cfg)
+    return itens, pendencias_arquivos_orbe(orbe, [], competencia, cfg, itens, taxas, correcoes)
+
+
+def test_estorno_sem_a_original_entra_pelo_valor_que_veio_e_a_pendencia_vale_o_efeito(taxas, cfg):
+    # R48 (Helena 14h10): o ajuste entra na comissão e na nota pelo valor que veio, com a taxa contratada da data da
+    # venda original e a faixa da própria linha (R35); a pendência vale o efeito na comissão
+    itens, pend = _checkout_com_arquivos([
+        _orbe("V1", EC_A, "1000.00", "1.00"),
+        _orbe("E1", EC_A, "-100.00", "1.00", tipo="ESTORNO", id_referencia="V1", data_venda_original=date(2031, 3, 2)),
+        _orbe("E2", EC_A, "-50.00", "1.00", tipo="ESTORNO", id_referencia="V9", data_venda_original=date(2031, 3, 5)),
+        _orbe("E3", EC_A, "-70.00", "1.00", tipo="ESTORNO", id_referencia="V8", data_venda_original=date(2031, 2, 20)),
+        _orbe("E4", EC_DESCONHECIDO, "-20.00", "1.00", tipo="ESTORNO", id_referencia="V7",
+              data_venda_original=date(2031, 3, 6)),
+    ], taxas, cfg)
+    # E1 tem a original; E3 é de venda do mês anterior (R04, caso normal)
+    assert [i.id_saida for i in pend] == ["PEN-SEMORIG-CHK-E2", "PEN-SEMORIG-CHK-E4"]
+    e2, e4 = pend
+    com = _por_prefixo(itens, "COM-")[f"COM-CHK-{CNPJ_A}"]
+    assert ("E2", D("-0.50")) in [(o.ref_origem, o.valor) for o in com.origens]  # entrou na comissão (e na nota)
+    assert com.valor_reportado == D("7.80")  # 10,00 - 1,00 - 0,50 - 0,70
+    assert e2.valor_reportado == D("-0.50") and e2.campos["tipo"] == "REFERENCIA_NAO_ENCONTRADA"
+    assert e2.campos["quem_decide"] == "Financeiro (Helena)"
+    assert "próximo passo: a Helena pede a venda original V9 à Orbe" in e2.campos["motivo"]
+    assert "pelo valor que veio" in e2.campos["motivo"] and "R$ -0,50" in e2.campos["motivo"]
+    (o,) = e2.origens
+    assert (o.arquivo_origem, o.ref_origem, o.valor, o.regra) == (ARQ, "E2", D("-0.50"), "R48")
+    assert "estorno pela venda V9 de 2031-03-05" in o.detalhe and "não encontrada" in o.detalhe
+    # lojista sem contrato: a linha não entra na comissão, e a pendência fica com 0,00
+    assert e4.valor_reportado == D("0.00") and "não entrou na comissão" in e4.campos["motivo"]
 
 
 def test_set_os_ajustes_tardios_nao_abrem_pendencia_de_arquivo(itens):
-    """O05: no 06 nenhum id repete o 01 e toda original está no 01: nenhuma PEN-REPET nem PEN-SEMORIG."""
-    assert not [i for i in itens if i.id_saida.startswith(("PEN-REPET-CHK-", "PEN-SEMORIG-CHK-"))]
+    """O05: no 06 nenhum id repete o 01 e toda original está no 01 (Helena 14h10): nenhuma PEN-REPET, PEN-CORRECAO,
+    PEN-SEMORIG nem PEN-TARDIO (nenhuma linha de agosto)."""
+    assert not [i for i in itens if i.id_saida.startswith(("PEN-REPET-CHK-", "PEN-SEMORIG-CHK-", "PEN-CORRECAO-ORBE-",
+                                                           "PEN-TARDIO-CHK-"))]
+
+
+# ---------------------------------------------------------------- correção da Orbe com o mesmo id (P27)
+
+def _correcao(antes: dict, depois: dict, arquivo_depois="07_orbe.csv"):
+    from tarvo.leitores.orbe import COLUNAS_SAIDA, Correcao
+
+    depois = {**depois, "arquivo_origem": arquivo_depois}
+    campos = tuple(c for c in COLUNAS_SAIDA if c != "arquivo_origem" and antes[c] != depois[c])
+    return depois, Correcao(antes["ref_origem"], antes["arquivo_origem"], 5, antes, arquivo_depois, 2, depois, campos)
+
+
+def test_correcao_vale_a_linha_nova_e_a_pendencia_mostra_antes_depois_e_o_efeito(taxas, cfg):
+    antes = _orbe("T1", EC_B, "1000.00", "1.00")
+    depois, c = _correcao(antes, _orbe("T1", EC_B, "800.00", "1.00"))
+    itens, pend = _checkout_com_arquivos([depois, _orbe("T2", EC_B, "500.00", "1.00")], taxas, cfg, [c])
+    (p,) = pend
+    assert p.id_saida == "PEN-CORRECAO-ORBE-T1" and p.campos["tipo"] == "CORRECAO_ORBE"
+    assert p.campos["quem_decide"] == "Financeiro (Helena)" and p.campos["ref_origem"] == ["T1"]
+    assert p.valor_reportado == D("-2.00")  # comissão 10,00 → 8,00
+    assert [(o.arquivo_origem, o.ref_origem, o.valor, o.regra) for o in p.origens] == [
+        ("07_orbe.csv", "T1", D("8.00"), "P27"), (ARQ, "T1", D("-10.00"), "P27")]
+    m = p.campos["motivo"]
+    assert "valor_bruto 1000.00 → 800.00" in m and "valor_taxa 10.00 → 8.00" in m
+    assert "efeito na comissão: R$ 10,00 → R$ 8,00 (R$ -2,00)" in m
+    assert f"NF-CHK-{CNPJ_B}: R$ 15,00 → R$ 13,00" in m
+    assert "próximo passo: a Helena confirma a correção com a Orbe" in m
+    # o checkout não fica provisório por isso: nenhuma coluna situacao
+    assert not [i for i in itens + pend if "situacao" in i.campos]
+    assert _por_prefixo(itens, "COM-")[f"COM-CHK-{CNPJ_B}"].valor_reportado == D("13.00")
+
+
+def test_correcao_que_zera_a_nota_diz_que_ela_nao_sai(taxas, cfg):
+    antes = _orbe("T1", EC_B, "300.00", "1.00")
+    depois, c = _correcao(antes, _orbe("T1", EC_B, "-300.00", "1.00", tipo="ESTORNO", id_referencia="T2",
+                                       data_venda_original=date(2031, 3, 1)))
+    itens, (p,) = _checkout_com_arquivos([depois, _orbe("T2", EC_B, "100.00", "1.00")], taxas, cfg, [c])
+    assert p.valor_reportado == D("-6.00")
+    assert f"NF-CHK-{CNPJ_B}: R$ 4,00 → R$ 0,00 (comissão zero ou negativa não emite nota, R06)" in p.campos["motivo"]
+    assert f"PEN-NF-CHK-{CNPJ_B}" in _por_prefixo(itens, "PEN-")
+
+
+# ---------------------------------------------------------------- ajuste depois da aprovação (R46)
+
+def test_linha_de_mes_anterior_entra_no_mes_e_abre_pendencia_informativa(taxas, cfg):
+    itens, pend = _checkout_com_arquivos([
+        _orbe("T1", EC_B, "1000.00", "1.00"),
+        _orbe("T0", EC_B, "200.00", "1.00", dia=date(2031, 2, 27)),
+        {**_orbe("E0", EC_B, "-100.00", "1.00", tipo="ESTORNO", id_referencia="V0", dia=date(2031, 2, 28),
+                 data_venda_original=date(2031, 2, 10)), "arquivo_origem": "07_orbe_ajustes.csv"},
+    ], taxas, cfg)
+    com = _por_prefixo(itens, "COM-")[f"COM-CHK-{CNPJ_B}"]
+    assert com.valor_reportado == D("11.00")  # 10,00 + 2,00 - 1,00: nada descartado pela data
+    ids = [p.id_saida for p in pend]
+    assert ids == ["PEN-TARDIO-CHK-2031-02-07_orbe_ajustes.csv", f"PEN-TARDIO-CHK-2031-02-{ARQ}"]
+    p = pend[0]
+    assert p.valor_reportado == D("0.00") and p.campos["tipo"] == "AJUSTE_APOS_APROVACAO"
+    assert "ajuste de 2031-02 recebido depois da aprovação, entra em 2031-03 (regra 13h34" in p.campos["motivo"]
+    assert [(o.arquivo_origem, o.ref_origem, o.regra) for o in p.origens] == [("07_orbe_ajustes.csv", "E0", "R46")]
+
+
+# ---------------------------------------------------------------- bandeira (R47)
+
+def test_bandeira_nao_muda_taxa_vinculo_nem_pendencia(taxas, cfg):
+    linhas = [
+        _orbe("V1", EC_B, "1000.00", "2.00", modalidade="CREDITO A VISTA"),
+        _orbe("E1", EC_B, "-400.00", "2.00", modalidade="CREDITO A VISTA", tipo="ESTORNO", id_referencia="V1",
+              data_venda_original=date(2031, 3, 2)),
+    ]
+    sem = _checkout_com_arquivos(linhas, taxas, cfg)
+    com_bandeiras = [{**linhas[0], "bandeira": "VISA"}, {**linhas[1], "bandeira": "ELO"}]
+    trocada = _checkout_com_arquivos(com_bandeiras, taxas, cfg)
+    assert sem == trocada  # mesmos itens, valores, rastro, regra e detalhe
+    itens, pend = trocada
+    assert pend == [] and not _por_prefixo(itens, "DIV-") and not _por_prefixo(itens, "PEN-")
+
+
+def test_set_estornos_com_bandeira_diferente_da_venda_sem_pendencia_nem_divergencia(entradas, itens):
+    # R47 (Helena 14h08): a Orbe às vezes troca a bandeira no estorno; o vínculo é pela referência
+    casos = ["TX88447011", "TX88447030", "TX88447044", "TX88447057", "TX88447070", "TX88447093", "TX88447109"]
+    orbe = {l["ref_origem"]: l for l in entradas.orbe.to_dict("records")}
+    trocadas = sorted(r for r, l in orbe.items() if l["tipo_lancamento"] == "ESTORNO" and l["id_referencia"] in orbe
+                      and l["arquivo_origem"].startswith("06") and l["bandeira"] != orbe[l["id_referencia"]]["bandeira"])
+    assert trocadas == casos
+    usos = defaultdict(set)
+    for i in itens:
+        for o in i.origens:
+            usos[o.ref_origem].add(i.id_saida.split("-")[0] + "-" + i.id_saida.split("-")[1])
+    for ref in casos:
+        assert usos[ref] == {"COM-CHK", "NF-CHK"}, ref  # comissão e nota; nenhuma divergência ou pendência
+        (o,) = [o for i in itens if i.id_saida.startswith("COM-CHK-") for o in i.origens if o.ref_origem == ref]
+        assert o.regra == "R35" and f"estorno pela venda {orbe[ref]['id_referencia']} de " in o.detalhe
+
+
+# ---------------------------------------------------------------- regra e detalhe no rastro (O06)
+
+def test_set_regra_e_detalhe_de_cada_linha_da_comissao(itens):
+    com = {(i.id_saida, o.ref_origem): o for i in itens if i.id_saida.startswith(("COM-CHK-", "DIV-CHK-", "PEN-"))
+           for o in i.origens}
+    assert all(o.regra and o.detalhe for o in com.values())
+    venda = com[("COM-CHK-07752116000126", "TX88411343")]
+    assert venda.regra == "R01" and venda.detalhe == ("taxa contratada 3,19% crédito parcelado 2-6x, vigente desde "
+                                                      "2026-01-01 (linha 9 da planilha)")
+    estorno = com[("COM-CHK-00520815000100", "TX88445133")]
+    assert estorno.regra == "R35" and estorno.detalhe.startswith("estorno pela venda TX87983388 de 2026-08-21 a 1,49%")
+    isento = com[("COM-CHK-00520815000100", "TX88410932")]
+    assert isento.regra == "R32" and isento.detalhe.startswith("isenção (concessão Casa do Estudante")
+    assert " 0% - contrato: taxa contratada 2,69% crédito à vista" in isento.detalhe
+    reversao = com[("COM-CHK-23109187000161", "AN88447152")]
+    assert reversao.regra == "R05" and reversao.detalhe.startswith("reversão da antecipação AN88446397 de 2026-09-22")
+    div = com[("DIV-CHK-TX88428053", "TX88428053")]
+    assert div.regra == "R03" and "taxa aplicada pela Orbe 2,59% - contratada 2,19%" in div.detalhe
+    devol = com[("PEN-DEVOL-CHK-22224579000109", "TX88428053")]
+    assert devol.regra == "R45" and "valor_taxa descontado pela Orbe R$ 29,12" in devol.detalhe

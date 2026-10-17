@@ -11,6 +11,7 @@ from __future__ import annotations
 import os
 import re
 import shutil
+import sys
 import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -18,6 +19,7 @@ from typing import Callable, Iterable
 
 import pandas as pd
 
+from tarvo import auditoria as registro_execucao
 from tarvo import dependencias as dep
 from tarvo.bancos import bancos
 from tarvo.checkout import checkout
@@ -27,7 +29,7 @@ from tarvo.contestacao import carregar_config as carregar_config_contestacao
 from tarvo.contestacao import gerar_contestacoes, pasta_padrao
 from tarvo.leitores.aurora import ler_aurora
 from tarvo.leitores.meridiano import ler_meridiano
-from tarvo.leitores.orbe import FIM_CONFLITO, ErroArquivoOrbe, Repetida, ler_orbe_parcial
+from tarvo.leitores.orbe import Correcao, ErroArquivoOrbe, LeituraOrbe, Repetida, ler_orbe_parcial
 from tarvo.leitores.plano_contas import ler_plano
 from tarvo.leitores.ponte import ler_ponte
 from tarvo.leitores.rejeitadas import LinhaRejeitada
@@ -56,6 +58,8 @@ class Entradas:
     meridiano_meta: dict | None
     usar_ia: bool = True  # opção da execução: False com --sem-ia (fallback de IA dos extratos, P14)
     orbe_repetidas: tuple[Repetida, ...] = ()  # id_transacao igual em dois arquivos da Orbe, contado uma vez (P27)
+    orbe_correcoes: tuple[Correcao, ...] = ()  # id_transacao corrigido num arquivo posterior da Orbe (P27)
+    orbe_linhas_lidas: dict[str, int] = field(default_factory=dict)  # arquivo da Orbe -> linhas convertidas
     bloqueios: tuple[dep.Bloqueio, ...] = ()   # fontes (ou arquivos da Orbe) que não entraram (R44)
     avisos: tuple[dep.Aviso, ...] = ()         # coluna a mais ou fora de ordem; a leitura seguiu pelo nome (R44)
     # linhas que o leitor não converteu, por fonte (R44): ficam fora e viram PEN-REGRA-LINHA
@@ -86,6 +90,7 @@ class ResultadoFechamento:
     bloqueios: tuple[dep.Bloqueio, ...] = ()   # R44: fontes bloqueadas
     avisos: tuple[str, ...] = ()               # R44: diferenças de layout que não bloquearam
     regras: tuple[str, ...] = ()               # R44: pendências PEN-REGRA (itens fora por erro de dado)
+    arquivos_auditoria: dict[str, Path] = field(default_factory=dict)  # O06: registro da execução; vazio com False
 
     @property
     def completo(self) -> bool:
@@ -129,25 +134,23 @@ def _ler(fonte: str, arquivo: Path, leitor, bloqueios: list, avisos: list, rejei
     return resultado
 
 
-def _ler_orbe(arquivos: tuple[Path, ...], bloqueios: list, avisos: list, rejeitadas: dict):
+def _ler_orbe(arquivos: tuple[Path, ...], bloqueios: list, avisos: list, rejeitadas: dict) -> LeituraOrbe | None:
     """Relatório e ajustes da Orbe (O05). Arquivo de ajustes com problema fica bloqueado sozinho, e linha com dado
-    inválido fica de fora sozinha (R44)."""
+    inválido fica de fora sozinha (R44); id corrigido num arquivo posterior vale pela correção (P27)."""
     try:
         leitura = ler_orbe_parcial(arquivos)
     except ERROS_DE_LEITURA as e:  # o relatório (primeiro arquivo) ilegível bloqueia a fonte inteira
         linha = f"L{e.linha}" if isinstance(e, ErroArquivoOrbe) else "arquivo"
         bloqueios.append(dep.Bloqueio("orbe", dep.ILEGIVEL, _erro(e), ((arquivos[0].name, linha),),
                                       dep.PASSO[dep.ILEGIVEL].format(fonte="orbe")))
-        return None, ()
+        return None
     for b in leitura.bloqueados:
-        conflito = b.erro.endswith(FIM_CONFLITO)  # id repetido com dados diferentes: a pendência cita os ids
-        bloqueios.append(dep.Bloqueio(
-            "orbe", dep.ILEGIVEL, b.erro, b.origens, dep.PASSO_ORBE_CONFLITO if conflito else dep.PASSO_ORBE_LAYOUT,
-            arquivo=b.arquivo, linhas=b.linhas, refs=tuple(dict.fromkeys(r for _, r in b.origens)) if conflito else ()))
+        bloqueios.append(dep.Bloqueio("orbe", dep.ILEGIVEL, b.erro, b.origens, dep.PASSO_ORBE_LAYOUT,
+                                      arquivo=b.arquivo, linhas=b.linhas))
     avisos += [dep.Aviso("orbe", arquivos[0].name, t) for t in leitura.avisos]
     if leitura.rejeitadas:
         rejeitadas["orbe"] = tuple(leitura.rejeitadas)
-    return leitura.quadro, tuple(leitura.repetidas)
+    return leitura
 
 
 def ler_entradas(entrada, competencia: str, config=CONFIG_PADRAO, usar_ia: bool = True) -> Entradas:
@@ -167,7 +170,7 @@ def ler_entradas(entrada, competencia: str, config=CONFIG_PADRAO, usar_ia: bool 
                                           dep.PASSO[dep.AUSENTE].format(fonte=tipo, padrao=p.padrao)))
 
     rejeitadas: dict[str, tuple[LinhaRejeitada, ...]] = {}
-    orbe, repetidas = _ler_orbe(arquivos["orbe"], bloqueios, avisos, rejeitadas) if "orbe" in arquivos else (None, ())
+    leitura_orbe = _ler_orbe(arquivos["orbe"], bloqueios, avisos, rejeitadas) if "orbe" in arquivos else None
     lidos = {tipo: _ler(tipo, arquivos[tipo], leitor, bloqueios, avisos, rejeitadas) if tipo in arquivos else None
              for tipo, leitor in LEITORES.items()}
     taxas, ponte, plano, aurora, meridiano = (lidos[t] for t in LEITORES)
@@ -175,7 +178,7 @@ def ler_entradas(entrada, competencia: str, config=CONFIG_PADRAO, usar_ia: bool 
     return Entradas(
         competencia=competencia,
         arquivos=arquivos,
-        orbe=orbe,
+        orbe=leitura_orbe.quadro if leitura_orbe else None,
         taxas=taxas,
         ponte=ponte[0] if ponte else None,
         ponte_rodape=ponte[1] if ponte else None,
@@ -185,7 +188,9 @@ def ler_entradas(entrada, competencia: str, config=CONFIG_PADRAO, usar_ia: bool 
         meridiano=meridiano[0] if meridiano else None,
         meridiano_meta=meridiano[1] if meridiano else None,
         usar_ia=usar_ia,
-        orbe_repetidas=repetidas,
+        orbe_repetidas=tuple(leitura_orbe.repetidas) if leitura_orbe else (),
+        orbe_correcoes=tuple(leitura_orbe.correcoes) if leitura_orbe else (),
+        orbe_linhas_lidas=dict(leitura_orbe.linhas_lidas) if leitura_orbe else {},
         bloqueios=tuple(sorted(bloqueios, key=lambda b: (ordem.get(b.fonte, len(ordem)), b.arquivo or ""))),
         avisos=tuple(avisos),
         rejeitadas=rejeitadas,
@@ -206,9 +211,24 @@ def _publicar(preparados: dict[str, Path], destino: Path) -> dict[str, Path]:
     return publicados
 
 
+def comando_equivalente(entrada, saida, competencia: str, config, usar_ia: bool, contestacoes) -> str:
+    """A linha de comando da CLI que refaz esta execução (para o registro de execução, O06)."""
+    partes = ["python -m tarvo fechar", f"--competencia {competencia}", f'--entrada "{entrada}"', f'--saida "{saida}"']
+    if Path(config).resolve() != Path(CONFIG_PADRAO).resolve():
+        partes.append(f'--config "{config}"')
+    if not usar_ia:
+        partes.append("--sem-ia")
+    if contestacoes is False:
+        partes.append("--sem-contestacao")
+    elif contestacoes:
+        partes.append(f"(rascunhos de contestação em {contestacoes}: só pela função fechar)")
+    return " ".join(partes)
+
+
 def fechar(entrada, saida, competencia: str, *, config=CONFIG_PADRAO,
            modulos: Iterable[Modulo] | None = None, usar_ia: bool = True,
-           contestacoes: Path | str | bool | None = None) -> ResultadoFechamento:
+           contestacoes: Path | str | bool | None = None,
+           auditoria: Path | str | bool | None = None) -> ResultadoFechamento:
     """Lê as entradas, roda os módulos, valida os 6 CSVs e só então os grava em saida.
 
     Fonte bloqueada não para o fechamento (R44): o resultado traz os bloqueios, e a saída, as PEN-BLOQUEIO.
@@ -218,11 +238,14 @@ def fechar(entrada, saida, competencia: str, *, config=CONFIG_PADRAO,
     usar_ia=False força o fluxo sem IA nos extratos (P09 em vez de P14).
     Os rascunhos de contestação (R29) vão para uma pasta irmã de saida (config/contestacao.yaml);
     contestacoes=<pasta> escolhe outra, contestacoes=False não grava.
+    O registro da execução (O06: execucao.json e execucao.md) vai para outra pasta irmã (config/auditoria.yaml),
+    publicado junto com a saída; auditoria=<pasta> escolhe outra, auditoria=False não grava.
     """
     if not isinstance(competencia, str) or not RE_COMPETENCIA.fullmatch(competencia):
         raise ValueError(f"competência deve ser AAAA-MM, veio {competencia!r}")
     entradas = ler_entradas(entrada, competencia, config, usar_ia)
     ignorados = arquivos_ignorados(Path(entrada), carregar_padroes(Path(config)))
+    comando = comando_equivalente(entrada, saida, competencia, config, usar_ia, contestacoes)
     itens: list[ItemSaida] = []
     for modulo in MODULOS if modulos is None else modulos:  # cada módulo gera só os produtos com as fontes dele
         itens.extend(modulo(entradas))
@@ -241,7 +264,17 @@ def fechar(entrada, saida, competencia: str, *, config=CONFIG_PADRAO,
             cfg = carregar_config_contestacao()
             destino_contestacoes = Path(contestacoes or pasta_padrao(saida, cfg)).resolve()
             rascunhos_preparados = gerar_contestacoes(itens, entradas, preparo / "contestacoes", cfg)
+        regras = tuple(dep.regras(itens))
+        registro_preparado, destino_auditoria = {}, None
+        if auditoria is not False:  # O06: descreve os arquivos já validados, antes de publicar
+            destino_auditoria = Path(auditoria or registro_execucao.pasta_padrao(
+                saida, registro_execucao.carregar_config())).resolve()
+            registro = registro_execucao.registro(
+                entradas, Path(entrada).resolve(), saida, comando, list(sys.argv), preparo / "saida", rascunhos_preparados,
+                destino_contestacoes, ignorados, not entradas.bloqueios and not regras, regras)
+            registro_preparado = registro_execucao.gravar(registro, preparo / "auditoria")
         gravados = _publicar(preparados, saida)
         rascunhos = _publicar(rascunhos_preparados, destino_contestacoes) if destino_contestacoes else {}
+        registros = _publicar(registro_preparado, destino_auditoria) if destino_auditoria else {}
     return ResultadoFechamento(entradas.arquivos, gravados, len(itens), rascunhos, ignorados, entradas.bloqueios,
-                               tuple(a.texto for a in entradas.avisos), tuple(dep.regras(itens)))
+                               tuple(a.texto for a in entradas.avisos), regras, registros)

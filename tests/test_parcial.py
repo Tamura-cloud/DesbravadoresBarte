@@ -147,7 +147,8 @@ def test_relatorio_da_orbe_com_coluna_renomeada(completo, copia, tmp_path, capsy
     pen = _pendencias(saida)["PEN-BLOQUEIO-ORBE"]
     assert f"{relatorio.name}: colunas ausentes no cabeçalho: ['valor_taxa']" in pen["motivo"]
     assert _ler(saida, "rastro.csv")[-1] == {"id_saida": "PEN-BLOQUEIO-ORBE", "arquivo_origem": relatorio.name,
-                                             "ref_origem": "L1", "valor": "0.00"}
+                                             "ref_origem": "L1", "valor": "0.00", "regra": "R44",
+                                             "detalhe": "fonte bloqueada: orbe - ponto citado no erro, valor 0,00"}
     assert validar_saida(saida) == []
 
 

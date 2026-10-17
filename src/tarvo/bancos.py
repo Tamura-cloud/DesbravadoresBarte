@@ -361,11 +361,18 @@ def item_lancamento(l: Lancamento, cfg: ConfigBancos, sugestao: ia.Sugestao | No
         conta, metodo, confianca = cfg.conta_sem_regra, "HUMANO", cfg.confianca_sem_regra
     else:
         conta, metodo, confianca = l.regra.conta_codigo, "REGRA", l.regra.confianca
+    if l.regra is not None:
+        regra, detalhe = l.regra.fonte, (f"regra de config/bancos.yaml: padrão {l.regra.padrao.pattern!r}, sentido "
+                                         f"{l.regra.sentido} - conta {conta}")
+    elif sugestao is not None:
+        regra, detalhe = "P14", f"sem regra - conta {conta} sugerida pela IA, revisão na PEN-IA-{l.ref_origem}"
+    else:
+        regra, detalhe = "P09", f"sem regra - {conta}, classificação manual na PEN-SEMREGRA-{l.ref_origem}"
     return ItemSaida(l.id_saida, LANCAMENTOS.nome,
                      {"banco": l.banco, "ref_origem": l.ref_origem, "data": l.data,
                       "descricao": texto_saida(l.descricao),
                       "conta_codigo": conta, "metodo": metodo, "confianca": confianca},
-                     l.valor, [l.origem()])
+                     l.valor, [l.origem()], regra=regra, detalhe=texto_saida(detalhe))
 
 
 # ---------------------------------------------------------------- pendências
@@ -374,10 +381,24 @@ def _soma(valores) -> Decimal:
     return sum(valores, ZERO)
 
 
+# Regra e detalhe do rastro de cada pendência dos bancos (O06); a linha do extrato herda o detalhe.
+REGRA_PENDENCIA = {
+    "LANCAMENTO_SEM_REGRA": ("P09", "lançamento do extrato sem regra em config/bancos.yaml"),
+    "CREDITO_NAO_IDENTIFICADO": ("R20", "PIX recebido sem identificação - não é receita até identificar"),
+    "DEVOLUCAO_PIX": ("R20", "devolução de PIX - repasse que voltou, motivo a apurar (P06)"),
+    "DIVERGENCIA_TED_LIQUIDACAO": ("P11", "TED LIQ OPERACOES do dia no Meridiano, com sinal"),
+    "DIFERENCA_PIX_REMESSA": ("P12", "PIX recebido do cliente no Meridiano"),
+    "TRANSFERENCIA_EM_TRANSITO": ("R20", "transferência enviada do Aurora, ainda sem a chegada no Meridiano"),
+    "TRANSFERENCIA_SEM_PAR": ("P13", "transferência enviada do Aurora sem TED de mesma titularidade no Meridiano"),
+    "CONFERENCIA_NAO_FEITA": ("R44", "lado que existe da conferência, sem conferir (fonte do outro lado bloqueada)"),
+}
+
+
 def _pendencia(id_saida: str, tipo: str, refs, motivo: str, valor: Decimal, origens, cfg: ConfigBancos) -> ItemSaida:
+    regra, detalhe = REGRA_PENDENCIA[tipo]
     return ItemSaida(id_saida, PENDENCIAS.nome,
                      {"tipo": tipo, "ref_origem": refs, "motivo": texto_saida(motivo), "quem_decide": cfg.quem_decide},
-                     valor, origens)
+                     valor, origens, regra=regra, detalhe=detalhe)
 
 
 def pendencia_ia(l: Lancamento, s: ia.Sugestao, cfg_ia: ia.ConfigIA) -> ItemSaida:
@@ -387,7 +408,9 @@ def pendencia_ia(l: Lancamento, s: ia.Sugestao, cfg_ia: ia.ConfigIA) -> ItemSaid
     return ItemSaida(f"PEN-IA-{l.ref_origem}", PENDENCIAS.nome,
                      {"tipo": "REVISAR_SUGESTAO_IA", "ref_origem": l.ref_origem, "motivo": texto_saida(motivo),
                       "quem_decide": cfg_ia.quem_decide},
-                     l.valor, [l.origem()])
+                     l.valor, [l.origem()], regra="P14",
+                     detalhe=texto_saida(f"sugestão da IA: conta {s.conta_codigo}, confiança {s.confianca} - revisão "
+                                         "humana antes de lançar"))
 
 
 def pendencias_lancamentos(lancamentos: list[Lancamento], cfg: ConfigBancos,
@@ -421,8 +444,12 @@ def _valor_operacao(op: dict) -> Decimal:
     return dinheiro(op["valor_brl"] + op["iof_brl"])
 
 
-def _origem_op(op: dict, sinal: int) -> tuple[str, str, Decimal]:
-    return (op["arquivo_origem"], op["ref_origem"], _valor_operacao(op) * sinal)
+def _origem_op(op: dict, sinal: int) -> tuple:
+    """Operação da Ponte no rastro de uma conferência: valor_brl + iof_brl, com o sinal do lado dela; a regra é a da
+    pendência (P11, P12 ou R44)."""
+    return (op["arquivo_origem"], op["ref_origem"], _valor_operacao(op) * sinal, "",
+            f"operação da Ponte contratada em {op['data_contratacao'].isoformat()}: valor_brl + iof_brl"
+            + (" com o sinal trocado" if sinal < 0 else ""))
 
 
 def conferir_ted_liquidacao(meridiano: list[Lancamento], unicas: list[dict], inicio: date, fim: date,

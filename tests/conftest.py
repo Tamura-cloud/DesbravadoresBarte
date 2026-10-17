@@ -1,4 +1,4 @@
-"""Guarda da sessão de testes: nenhum teste grava em dados/, saida/, contestacoes/ ou cache/ do repositório.
+"""Guarda da sessão de testes: nenhum teste grava em dados/, saida/, contestacoes/, auditoria/ ou cache/ do repositório.
 
 Os testes (inclusive o outubro simulado) usam só pastas temporárias. Se algum gravar nessas pastas, a sessão
 termina com erro apontando o arquivo.
@@ -10,7 +10,7 @@ from pathlib import Path
 import pytest
 
 RAIZ = Path(__file__).resolve().parents[1]
-PROTEGIDAS = ("dados", "saida", "contestacoes", "cache")
+PROTEGIDAS = ("dados", "saida", "contestacoes", "auditoria", "cache")
 
 
 def _retrato() -> dict[str, str]:

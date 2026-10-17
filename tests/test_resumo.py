@@ -150,9 +150,9 @@ def test_rastro_fecha(saida):
 def test_rastro_que_nao_fecha_aparece_no_resumo(saida):
     caminho = saida / RASTRO.nome
     texto = caminho.read_text(encoding="utf-8")
-    assert "PEN-C;teste.csv;L1;1234567.89\n" in texto
-    caminho.write_text(texto.replace("PEN-C;teste.csv;L1;1234567.89\n", "PEN-C;teste.csv;L1;1234567.88\n")
-                       + "COM-ORFAO;teste.csv;X;1.00\n", encoding="utf-8", newline="")
+    assert "PEN-C;teste.csv;L1;1234567.89;;\n" in texto
+    caminho.write_text(texto.replace("PEN-C;teste.csv;L1;1234567.89;;\n", "PEN-C;teste.csv;L1;1234567.88;;\n")
+                       + "COM-ORFAO;teste.csv;X;1.00;;\n", encoding="utf-8", newline="")
 
     conf = conferir_rastro(ler_saida(saida))
     assert conf.divergentes == [("PEN-C", D("1234567.89"), D("1234567.88"))]

@@ -447,6 +447,27 @@ def _pendencia(id_saida: str, tipo: str, refs, motivo: str, valor: Decimal, orig
                      valor, origens)
 
 
+def _pp(v: Decimal) -> str:
+    """Spread em pontos percentuais como texto do rastro: 1.4991 vira "1,4991"."""
+    return format(v.normalize() if v != 0 else v, "f").replace(".", ",")
+
+
+def _origem_comissao(o: OperacaoRemessa, cfg: ConfigRemessa) -> tuple:
+    """Linha do rastro da comissão de uma operação: R11, a parte da Tarvo no Spread R$ realizado (O06)."""
+    return (o.arquivo_origem, o.ref_origem, o.comissao, "R11",
+            f"{_pp(cfg.participacao * 100)}% do Spread R$ {brl(o.spread_brl)} realizado (spread {_pp(o.spread_pct)}%)")
+
+
+def _origem_ajuste(a: AjusteRemessa) -> tuple:
+    return (a.arquivo_origem, a.ref_origem, a.comissao, "R31", texto_saida(f"ajuste Ponte {a.descricao}"))
+
+
+def _origem_diferenca(o: OperacaoRemessa, regra: str) -> tuple:
+    """Linha do rastro da diferença até o contrato (R15; P17, P18), com os dois spreads (O06)."""
+    return (o.arquivo_origem, o.ref_origem, o.diferenca, regra,
+            f"spread aplicado {_pp(o.spread_pct)}% - contratado {_pp(o.spread_contratado)}% sobre PTAX × valor ME")
+
+
 def _rascunho_ponte() -> str:
     """Onde fica o rascunho de contestação da Ponte (R29), como o motivo da pendência o cita: <pasta>/ponte.md."""
     from tarvo.contestacao import ARQUIVO_PONTE, carregar_config  # import tardio: contestacao importa este módulo
@@ -471,12 +492,15 @@ def gerar_itens(operacoes: list[OperacaoRemessa], descartadas: list[dict], fora:
     for cnpj in sorted(set(por_cnpj) | set(ajuste_por_cnpj)):
         doc = sorted(por_cnpj.get(cnpj, []), key=lambda o: o.ref_origem)
         com_comissao = [o for o in doc if o.comissao is not None]
-        rastro = [(o.arquivo_origem, o.ref_origem, o.comissao) for o in com_comissao]
+        rastro = [_origem_comissao(o, cfg) for o in com_comissao]
         rastro_com = list(rastro)
         for a in ajuste_por_cnpj.get(cnpj, []):  # R31, P25: o ajuste abate a participação do mês
-            rastro_com.append((a.arquivo_origem, a.ref_origem, a.comissao))
+            rastro_com.append((a.arquivo_origem, a.ref_origem, a.comissao, "R31",
+                               texto_saida(f"ajuste Ponte {a.descricao} - {_pp(cfg.ajuste_participacao * 100)}% do "
+                                           f"Spread R$ {brl(a.spread_brl)} (P25)")))
             if a.arquivo_original:  # a original, de outro relatório, vai no rastro com valor zero
-                rastro_com.append((a.arquivo_original, a.ref_original, ZERO))
+                rastro_com.append((a.arquivo_original, a.ref_original, ZERO, "R31",
+                                   f"operação original do ajuste {a.ref_origem}, valor 0,00"))
         if rastro_com:
             itens.append(ItemSaida(f"COM-REM-{cnpj}", COMISSOES.nome,
                                    {"cnpj": cnpj, "lojista": texto_saida(nomes[cnpj]), "linha_negocio": LINHA_NEGOCIO},
@@ -493,43 +517,47 @@ def gerar_itens(operacoes: list[OperacaoRemessa], descartadas: list[dict], fora:
             itens.append(ItemSaida(f"DIV-REM-{o.ref_origem}", DIVERGENCIAS.nome,
                                    {"cnpj": cnpj, "linha_negocio": LINHA_NEGOCIO, "ref_origem": o.ref_origem,
                                     "taxa_contratada_pct": o.spread_contratado, "taxa_aplicada_pct": o.spread_pct},
-                                   o.diferenca, [(o.arquivo_origem, o.ref_origem, o.diferenca)]))
+                                   o.diferenca, [_origem_diferenca(o, "R15")]))
 
         acima = [o for o in doc if o.divergente and not o.negativa and o.diferenca > 0]
         if acima:  # R16, R18
             itens.append(_pendencia(f"PEN-CONTEST-REM-{cnpj}", "CONTESTACAO_PONTE",
                                     [o.ref_origem for o in acima], MOTIVO_CONTESTACAO,
                                     _soma(o.diferenca for o in acima),
-                                    [(o.arquivo_origem, o.ref_origem, o.diferenca) for o in acima], cfg))
+                                    [_origem_diferenca(o, "R15") for o in acima], cfg))
 
         for o in (o for o in doc if o.negativa):  # R12, R18, R23, R34, P18: o valor é a diferença até o contrato
             motivo = MOTIVO_NEGATIVO.format(spread=_rs(o.spread_brl), diferenca=_rs(o.diferenca),
                                             rascunho=_rascunho_ponte())
             itens.append(_pendencia(f"PEN-NEG-REM-{o.ref_origem}", "CONTESTACAO_PONTE", o.ref_origem,
-                                    motivo, o.diferenca, [(o.arquivo_origem, o.ref_origem, o.diferenca)], cfg))
+                                    motivo, o.diferenca, [_origem_diferenca(o, "R34")], cfg))
 
     copias: dict[str, list[dict]] = defaultdict(list)
     for d in descartadas:
         copias[d["ref_origem"]].append(d)
     for ref in sorted(copias):  # R13
-        origens = [(d["arquivo_origem"], d["ref_origem"], d["spread_brl"]) for d in copias[ref]]
+        origens = [(d["arquivo_origem"], d["ref_origem"], d["spread_brl"], "R13",
+                    f"Spread R$ da cópia descartada (linha {d['linha_planilha']} do relatório) - contada uma vez")
+                   for d in copias[ref]]
         itens.append(_pendencia(f"PEN-DUP-REM-{ref}", "OPERACAO_DUPLICADA", ref, MOTIVO_DUPLICATA,
                                 _soma(o[2] for o in origens), origens, cfg))
 
     for op in sorted(fora, key=lambda o: o["ref_origem"]):  # R11
         itens.append(_pendencia(f"PEN-FORA-REM-{op['ref_origem']}", "OPERACAO_FORA_DA_COMPETENCIA", op["ref_origem"],
                                 MOTIVO_FORA_COMPETENCIA.format(competencia=competencia), op["spread_brl"],
-                                [(op["arquivo_origem"], op["ref_origem"], op["spread_brl"])], cfg))
+                                [(op["arquivo_origem"], op["ref_origem"], op["spread_brl"], "R11",
+                                  f"Spread R$ da operação contratada em {op['data_contratacao'].isoformat()}, fora "
+                                  f"da competência {competencia}")], cfg))
 
     for a in sorted(sem_lojista, key=lambda a: a.ref_origem):  # R31: sem lojista não há COM-REM; não abate
         itens.append(_pendencia(f"PEN-AJUSTE-SEMLOJISTA-{a.ref_origem}", "AJUSTE_SEM_LOJISTA", a.ref_origem,
                                 MOTIVO_AJUSTE_SEM_LOJISTA.format(original=a.ref_original),
-                                a.comissao, [(a.arquivo_origem, a.ref_origem, a.comissao)], cfg))
+                                a.comissao, [_origem_ajuste(a)], cfg))
     for a in sorted(ajustes, key=lambda a: a.ref_origem):  # R31: sem a original, abate mesmo assim e avisa a Helena
         if a.sem_original:
             itens.append(_pendencia(f"PEN-AJUSTE-SEMORIG-{a.ref_origem}", "AJUSTE_SEM_OPERACAO_ORIGINAL", a.ref_origem,
                                     MOTIVO_AJUSTE_SEM_ORIGINAL.format(original=a.ref_original, anterior=a.anterior),
-                                    a.comissao, [(a.arquivo_origem, a.ref_origem, a.comissao)], cfg))
+                                    a.comissao, [_origem_ajuste(a)], cfg))
 
     total = _soma(o[2] for o in rastro_nota)
     refs_nota = [o[1] for o in rastro_nota] or arquivo_ponte
