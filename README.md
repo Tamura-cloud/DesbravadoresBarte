@@ -60,8 +60,12 @@ o commit que ele gerou.
 
 ## Rodar do zero
 
-Requisito: Python 3.11 ou mais novo. Testado a partir de um clone limpo no Windows 11 (Python 3.14) e no
-Linux (Python 3.11): instalação, fechamento e testes. A saída gerada é idêntica, byte a byte, à de `saida/`.
+Requisito: Python 3.11 ou mais novo. Último ensaio, em 17/10/2026 às 17h22: clone limpo do GitHub no commit
+`e071606`, no Windows 11 com Python 3.13.14, seguindo só este README e sem chave de API. A instalação funcionou, o
+`fechar` terminou com FECHAMENTO COMPLETO (código 0), e os 6 CSVs de `saida/` e os rascunhos de `contestacoes/`
+saíram idênticos, byte a byte, aos do repositório; só `auditoria/` muda, porque registra a execução. No pytest,
+488 de 489 testes passaram: `tests/test_regra_dados.py::test_data_invalida_numa_linha_da_orbe` falha antes do
+Python 3.14, porque compara o texto de uma mensagem de erro do próprio Python. O cálculo não é afetado.
 
 **Windows (PowerShell)**
 
