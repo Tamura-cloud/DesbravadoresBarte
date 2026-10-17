@@ -56,7 +56,7 @@ Pela regra do CLAUDE.md, só entra no código regra de negócio que esteja aqui.
 
 ### 2.2 Premissas e achados do HIPOTESES.md do colega (Fonte 1)
 
-O conteúdo da Fonte 1 está reproduzido abaixo, sem cortes. Onde ela diz "confirmado pelo financeiro", a confirmação corresponde às respostas públicas da seção 1, e a regra correspondente está indicada. Os valores numéricos foram calculados pelo colega e **ainda não foram reconferidos pelo nosso código**.
+O conteúdo da Fonte 1 está reproduzido abaixo. Onde ela contradizia a Helena, o trecho foi ajustado à regra dela, e a versão original ficou registrada em "Conflitos resolvidos" na seção 4. Onde ela diz "confirmado pelo financeiro", a confirmação corresponde às respostas públicas da seção 1, e a regra correspondente está indicada. Os valores numéricos foram calculados pelo colega e **ainda não foram reconferidos pelo nosso código**.
 
 **Mapeamento cadastral, contratos e condições comerciais**
 
@@ -103,7 +103,7 @@ O conteúdo da Fonte 1 está reproduzido abaixo, sem cortes. Onde ela diz "confi
 - **F1-H07 — Estornos, antecipações e reversões no Checkout** (regras: R04, R05, R06)
   - **Estornos:** estornos de setembro referentes a vendas de agosto entram em setembro (agosto já está fechado). Eles abatem a comissão pela taxa contratada vigente na data_venda_original.
   - **Antecipações:** ANTECIPACAO (2,10%, exceto Casa do Estudante a 0,00%) e REVERSAO ANTECIPACAO compõem a base da mesma NF mensal de Checkout do lojista. A reversão anula a taxa da antecipação referenciada em id_referencia.
-  - **Saldo zero ou negativo:** o lojista não tem NF emitida, e o saldo negativo, se houver, vai para pendencias.csv. Ver CONFLITO C3 na seção 4.
+  - **Saldo zero ou negativo:** o lojista não tem NF emitida, e o saldo, seja zero ou negativo, vai para pendencias.csv (R06, Helena às 20h47). A Fonte 1 previa pendência só para o saldo negativo; ver C3 em "Conflitos resolvidos" na seção 4.
 - **F1-H08 — Remessas (Ponte Câmbio)** (regras: R11 a R18; premissas P01 e P02)
   - **Base:** a comissão da Tarvo e a NF única contra a Ponte Câmbio S.A. (CNPJ 75374179000146) são 50% do Spread R$ realizado, arredondado (ROUND_HALF_UP) operação por operação. É diferente do Checkout.
   - **Spread padrão:** spread em branco ou "padrão" na planilha de taxas = 1,50% sobre a PTAX de referência (PTAX Ref. × Valor ME).
@@ -119,9 +119,7 @@ O conteúdo da Fonte 1 está reproduzido abaixo, sem cortes. Onde ela diz "confi
   - **Tolerância de arredondamento da PTAX (0,01 p.p.):**
     - Oscilações abaixo de 0,01 p.p. entre o Spread % reportado e a taxa contratada não são divergência; por exemplo, 1,4984% a 1,5015% para a taxa de 1,50%.
     - Vêm do arredondamento da taxa final de câmbio em 4 casas decimais. É a mesma tolerância de P01.
-  - **Conciliação preventiva do TED da Ponte em 06/10:** ver CONFLITO C1 na seção 4.
-    - O total bruto do relatório da Ponte (R$ 78.073,59) soma a duplicata (+R$ 410,94 na cota de 50% da Tarvo) e deduz os 4 spreads negativos (-R$ 917,03 na cota da Tarvo).
-    - Por isso, o TED automático previsto pela Ponte (R$ 39.036,80) teria diferença de R$ 506,65 frente à NF da Tarvo (R$ 39.543,45). A Fonte 1 registra essa diferença preventivamente em pendencias.csv.
+  - **TED da Ponte:** não supomos valor nem desconto no repasse (R18). A única pendência é conferir o TED da Ponte quando cair; quem decide é a Helena. A projeção da Fonte 1 foi removida; ver C1 em "Conflitos resolvidos" na seção 4.
 
 **Classificação contábil dos extratos (lancamentos_classificados.csv)**
 
@@ -144,14 +142,17 @@ O conteúdo da Fonte 1 está reproduzido abaixo, sem cortes. Onde ela diz "confi
     - Google Workspace → 4.2.04.
     - Contabilidade → 4.2.06.
     - IOF → 4.3.01.
-  - **Motivo:** R19. Os códigos específicos são o mapeamento do colega para o plano de contas, e o IOF não está na lista da Helena (premissa).
+  - **Motivo:** R19. Os códigos específicos são o mapeamento do colega para o plano de contas.
+  - **IOF:** não é premissa. É aplicação de R19 (Helena às 21h14: "além desses, nada estava provisionado"). Como não estava provisionado, vai direto para a despesa 4.3.01.
   - **Nota nossa:** pelo CLAUDE.md, esse mapeamento vai para config/*.yaml, não para o código.
 - **F1-H10 — Anomalias bancárias e de conciliação** (regras: R20, R19)
   - **16/09/2026 (L042, Aurora)** — "PIX RECEBIDO 38686002000180 SEM IDENTIFICACAO" (+R$ 7.350,00): não é receita até identificar a origem. Vai para a conta transitória 1.1.09.002 (Créditos não identificados) e para pendencias.csv.
-  - **23/09/2026 (L057, Aurora)** — "DEVOLUCAO PIX - MUNDO ABERTO INTERC" (+R$ 12.400,00): a Fonte 1 descreve como "estorno bancário parcial de repasse enviado ao lojista". Vai para 2.1.01.001 (Repasses a lojistas a pagar), recompondo a obrigação de repasse, e para pendencias.csv. Ver CONFLITO C2 na seção 4.
+  - **23/09/2026 (L057, Aurora)** — "DEVOLUCAO PIX - MUNDO ABERTO INTERC" (+R$ 12.400,00): repasse que voltou, motivo desconhecido (R20, Helena às 20h49). Vai para 2.1.01.001 (Repasses a lojistas a pagar) e para pendencias.csv, com a pendência de apurar o motivo. Ver C2 em "Conflitos resolvidos" na seção 4.
   - **30/09/2026 (L084, Aurora)** — "TRANSF ENTRE CONTAS P/ BCO MERIDIANO" (-R$ 300.000,00): saída no último dia do mês, compensada no Banco Meridiano em 01/10/2026. Vai para 1.1.09.001 (Transferências entre contas próprias) e para pendencias.csv.
-  - **17/09/2026 (MRD2026090364, Meridiano)** — "PIX RECEB PONTE AÉREA ESTUDANTIL L" (+R$ 18.240,00): recurso recebido na conta de câmbio sem operação correspondente no relatório de setembro da Ponte Câmbio. Vai para 2.1.02.001 (Recursos de lojistas para remessas a liquidar) e para pendencias.csv.
-  - **Motivo:** para os três primeiros casos, R20 dá o fato e R19 manda escrever a premissa quando o extrato não é claro. O quarto caso é achado do colega, sem resposta da Helena.
+  - **17/09/2026 (MRD2026090425, Meridiano)** — "PIX RECEB PONTE AEREA ESTUDANTIL L" (+R$ 18.240,00): recurso recebido na conta de câmbio sem operação correspondente no relatório de setembro da Ponte Câmbio. Vai para 2.1.02.001 (Recursos de lojistas para remessas a liquidar) e para pendencias.csv.
+    - **Verificado:** é o único dos 64 PIX recebidos no Meridiano sem remessa correspondente na Ponte. Continua pendência, aguardando resposta da Helena.
+    - **FITID corrigido:** a Fonte 1 citava MRD2026090364, que não existe no OFX. O lançamento de 17/09 de R$ 18.240,00 tem FITID MRD2026090425, e o MEMO no arquivo é "PONTE AEREA", sem acento.
+  - **Motivo:** para os três primeiros casos, R20 dá o fato e R19 manda escrever a premissa quando o extrato não é claro. O quarto caso é achado do colega, verificado por nós, ainda sem resposta da Helena.
 
 ---
 
@@ -166,27 +167,36 @@ A Fonte 1 não registra nenhuma pergunta feita pelo nosso time. As confirmaçõe
 
 ## 4. Pendências em aberto
 
-### Conflitos entre a Fonte 1 e a Fonte 2 (não resolvidos)
+### Pendências abertas
 
-- **CONFLITO C1 — TED da Ponte de outubro**
-  - **Fonte 1 (F1-H08):** supõe que o TED automático da Ponte será 50% do total do relatório (R$ 39.036,80). Registra preventivamente uma diferença de R$ 506,65 frente à NF (R$ 39.543,45), com data de 06/10. A Fonte 1 não diz de onde vem essa data.
-  - **Fonte 2 (R18, 22h33/22h34):** "Não supor desconto no repasse; conferir o TED de outubro é pendência da Helena."
-  - **Ponto a decidir:** a pendência registra o valor de R$ 506,65 previsto pela Fonte 1, ou só a conferência do TED pela Helena, sem valor suposto?
-- **CONFLITO C2 — Devolução de PIX da Mundo Aberto (L057, +R$ 12.400,00)**
-  - **Fonte 1 (F1-H10):** "estorno bancário parcial de repasse enviado ao lojista". Classifica em 2.1.01.001, recompondo a obrigação de repasse (supõe que o valor volta a ser devido ao lojista).
-  - **Fonte 2 (R20, 20h49):** "repasse que voltou, motivo desconhecido".
-  - **Ponto a decidir:** com o motivo desconhecido, cabe afirmar "estorno parcial" e recompor a obrigação com o lojista?
-- **CONFLITO C3 — Saldo zero de comissão de checkout**
-  - **Fonte 1 (F1-H07):** saldo zero ou negativo não emite NF, mas só o saldo negativo vai para pendencias.csv.
-  - **Fonte 2 (R06, 20h47):** "Zero ou negativo não emite nota e vira pendência da Helena". O saldo zero também vira pendência.
-  - **Ponto a decidir:** o saldo zero também vai para pendencias.csv?
-
-### Outras pendências
-
+- **TED da Ponte:** conferir o TED da Ponte quando cair. Quem decide é a Helena (R18, 22h33/22h34).
+- **Devolução de PIX da Mundo Aberto (L057, +R$ 12.400,00):** o motivo é desconhecido. Classificada em 2.1.01.001, com a pendência de apurar o motivo (R20, 20h49).
+- **MRD2026090425 (+R$ 18.240,00, PONTE AEREA ESTUDANTIL):** verificado, é o único dos 64 PIX recebidos no Meridiano sem remessa correspondente na Ponte. Aguarda resposta da Helena.
 - **Valores da Fonte 1:** contagens e totais (por exemplo, 228 operações, R$ 39.543,45, R$ 1.546,28 e R$ 1.418,85) ainda precisam ser reconferidos pelo nosso código antes de virar valor de referência nos testes.
-  - Exemplo de ponto a checar: 917,03 − 410,94 = 506,09, enquanto a Fonte 1 reporta 506,65. A diferença de R$ 0,56 pode vir do arredondamento por operação (R11), mas não foi verificada.
-- **MRD2026090364 (+R$ 18.240,00, PONTE AÉREA ESTUDANTIL):** a ausência de operação correspondente no relatório da Ponte é achado da Fonte 1 e ainda não foi verificada por nós. O mesmo pagador aparece em outros 4 lançamentos do OFX.
-- **IOF (4.3.01):** a classificação direta em despesa é premissa da Fonte 1. O IOF não está na lista de R19.
+
+### Conflitos resolvidos
+
+Em todos, vale a regra da Helena: ela é a fonte, e a Fonte 1 é a interpretação do colega.
+
+- **C1 — TED da Ponte de outubro**
+  - **Fonte 1 (F1-H08):** supunha que o TED automático da Ponte seria 50% do total do relatório (R$ 78.073,59 → R$ 39.036,80). Registrava preventivamente uma diferença de R$ 506,65 frente à NF (R$ 39.543,45), com data de 06/10 sem origem indicada. Também havia uma discrepância não explicada: 917,03 − 410,94 = 506,09, não 506,65.
+  - **Fonte 2 (R18, 22h33/22h34):** "Não supor desconto no repasse; conferir o TED de outubro é pendência da Helena."
+  - **Decisão:** a projeção, a diferença de R$ 506,65 e a discrepância 506,65 × 506,09 saíram da seção 2. Fica só a pendência "conferir o TED da Ponte quando cair", e quem decide é a Helena.
+  - **Motivo:** a Helena proibiu supor desconto no repasse; a projeção era exatamente essa suposição.
+- **C2 — Devolução de PIX da Mundo Aberto (L057, +R$ 12.400,00)**
+  - **Fonte 1 (F1-H10):** descrevia como "estorno bancário parcial de repasse enviado ao lojista", recompondo a obrigação de repasse.
+  - **Fonte 2 (R20, 20h49):** "repasse que voltou, motivo desconhecido".
+  - **Decisão:** a descrição passa a ser "repasse que voltou, motivo desconhecido". A classificação continua 2.1.01.001, com a pendência do motivo.
+  - **Motivo:** "estorno parcial" afirmava uma causa que a Helena disse não conhecer.
+- **C3 — Saldo zero de comissão de checkout**
+  - **Fonte 1 (F1-H07):** saldo zero ou negativo não emitia NF, mas só o negativo ia para pendencias.csv.
+  - **Fonte 2 (R06, 20h47):** "Zero ou negativo não emite nota e vira pendência da Helena."
+  - **Decisão:** saldo de comissão de checkout zero OU negativo não emite nota e vira pendência.
+  - **Motivo:** é a regra literal da Helena.
+
+### Pendências resolvidas
+
+- **IOF (4.3.01):** deixou de ser premissa do colega. É aplicação de R19 (Helena às 21h14: "além desses, nada estava provisionado") e vai direto para a despesa 4.3.01.
 
 ---
 

@@ -32,7 +32,7 @@ São localizados por padrão de nome (definidos em `config/entradas.yaml`), nunc
 | ponte_eml | `*.eml` | e-mail da Ponte Câmbio com XLSX anexo em base64 |
 | plano_de_contas | `*plano_de_contas*.csv` | Windows-1252 |
 | aurora | `*aurora*.csv` | 6 linhas de cabeçalho e rodapé |
-| meridiano | `*.ofx` | SGML; declara CHARSET 1252, mas os bytes são UTF-8 com caracteres já corrompidos |
+| meridiano | `*.ofx` | SGML; cp1252 válido, coerente com o cabeçalho `CHARSET:1252` (não é UTF-8 corrompido) |
 
 ## Estrutura
 
