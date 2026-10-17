@@ -1,0 +1,48 @@
+# Regras da linha CHECKOUT (Orbe). Cada item cita a regra de origem no HIPOTESES.md.
+# CNPJ e EC sempre entre aspas (zeros à esquerda). Taxas em pontos percentuais, como texto (viram Decimal).
+
+# R07: ECs da Orbe que a aba vigente não traz na coluna "EC Orbe". EC -> CNPJ da linha da planilha.
+ec_sem_codigo:
+  "1043300981": "66564512000199"  # Novo Horizonte Intercâmbio
+  "1043396662": "78576234000179"  # Horizonte Viagens e Turismo
+  "1038867654": "07752116000126"  # Kiwi Experience
+
+# R10: condição especial que sobrepõe a planilha na data de referência da taxa. Só CHECKOUT.
+condicoes_especiais:
+  - regra: R10
+    cnpj: "00520815000100"  # Casa do Estudante
+    linha_negocio: CHECKOUT
+    vigencia_inicio: 2026-09-01
+    vigencia_fim: 2026-12-31
+    taxas:
+      taxa_debito: "0"
+      taxa_credito_vista: "0"
+      taxa_parc_2_6: "0"
+      taxa_parc_7_12: "0"
+      taxa_pix: "0"
+      taxa_antecipacao: "0"
+
+# R01, R04, R05: coluna da planilha com a taxa contratada de cada lançamento.
+# tipos_lancamento vale antes da modalidade (antecipação e reversão não têm modalidade).
+taxa_por_tipo_lancamento:
+  ANTECIPACAO: taxa_antecipacao
+  REVERSAO ANTECIPACAO: taxa_antecipacao
+taxa_por_modalidade:
+  DEBITO: taxa_debito
+  CREDITO A VISTA: taxa_credito_vista
+  PIX: taxa_pix
+# Parcelado: faixa de parcelas -> coluna. Parcelas fora de todas as faixas são erro.
+taxa_parcelado:
+  modalidade: CREDITO PARCELADO
+  faixas:
+    - {de: 2, ate: 6, taxa: taxa_parc_2_6}
+    - {de: 7, ate: 12, taxa: taxa_parc_7_12}
+
+# R06: discriminação simples, serviço + competência (AAAA-MM).
+discriminacao_nota: "Intermediação de pagamentos - MDR e antecipação - competência {competencia}"
+
+# Quem decide cada pendência gerada pelo checkout.
+quem_decide:
+  nota_nao_emitida: "Financeiro (Helena)"   # R06
+  lojista_sem_contrato: "Comercial"         # R08
+  devolucao_lojista: "Financeiro (Helena)"  # R03, R10

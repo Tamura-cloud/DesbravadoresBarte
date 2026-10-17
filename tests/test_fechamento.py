@@ -5,6 +5,7 @@ from pathlib import Path
 
 import pytest
 
+from tarvo.checkout import checkout
 from tarvo.fechamento import MODULOS, Entradas, fechar
 from tarvo.saida import ARQUIVOS, PENDENCIAS, ErroSaida, ItemSaida, validar_saida
 
@@ -12,12 +13,15 @@ ENTRADA = Path(__file__).resolve().parents[1] / "dados" / "2026-09"
 
 
 def test_sem_modulos_grava_os_6_arquivos_validos(tmp_path):
-    assert MODULOS == []
-    resultado = fechar(ENTRADA, tmp_path, "2026-09")
+    resultado = fechar(ENTRADA, tmp_path, "2026-09", modulos=[])
     assert resultado.itens == 0
     assert set(resultado.arquivos_saida) == {e.nome for e in ARQUIVOS}
     assert len(resultado.arquivos_entrada) == 6
     assert validar_saida(tmp_path) == []
+
+
+def test_modulos_registrados():
+    assert MODULOS == [checkout]
 
 
 def test_modulo_recebe_entradas_e_seus_itens_sao_gravados(tmp_path):

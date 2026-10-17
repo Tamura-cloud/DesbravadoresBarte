@@ -9,6 +9,7 @@ from typing import Callable, Iterable
 
 import pandas as pd
 
+from tarvo.checkout import checkout
 from tarvo.cli import CONFIG_PADRAO, carregar_padroes, localizar_arquivos
 from tarvo.leitores.aurora import ler_aurora
 from tarvo.leitores.meridiano import ler_meridiano
@@ -40,8 +41,8 @@ class Entradas:
 
 Modulo = Callable[[Entradas], Iterable[ItemSaida]]
 
-# Módulos que geram itens de saída. Cada um recebe as Entradas e devolve ItemSaida. Por enquanto nenhum.
-MODULOS: list[Modulo] = []
+# Módulos que geram itens de saída. Cada um recebe as Entradas e devolve ItemSaida.
+MODULOS: list[Modulo] = [checkout]
 
 
 class ErroFechamento(Exception):
