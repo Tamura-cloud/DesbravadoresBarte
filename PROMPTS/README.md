@@ -22,11 +22,13 @@ Nos `.jsonl` a única alteração é a troca de e-mails pessoais e chaves por `[
 
 | Pessoa | Papel no dia 17/10 | Ferramentas | Arquivos |
 |---|---|---|---|
-| Pessoa 1 (Pedro Berlato) | Integração, README, configuração do repositório e checkpoints | Claude Code | 1 sessão `*_pessoa-1_claude_6a4fd205` (17/10 00h42–13h36); `ef2a5f84` é uma cópia anterior da mesma conversa, até 11h17 |
-| Pessoa 2 (Antonio Miguel) | Código do fechamento (branch `pix`) e regras da Helena | Claude Code (extensão do VS Code) + chat do claude.ai como arquiteto | 18 sessões `*_pessoa-2_claude_*` + link em `sessoes/links.md` |
-| Pessoa 3 (Erick Tamura) | Preparação, revisão dos documentos, histórico de IA e pitch | Antigravity + Claude Code (app desktop) | 2 sessões `*_pessoa-3_antigravity_*` + 2 sessões `*_pessoa-3_claude_*` |
+| Pessoa 1 (Pedro Berlato) | Integração, README, configuração do repositório e checkpoints | Claude Code | `*_pessoa-1_claude_6a4fd205` (17/10 00h42–17h25, a sessão principal); `ef2a5f84` é uma cópia anterior da mesma conversa, até 11h17; `79de05b7` (15h12) é uma sessão separada que avaliou o projeto a partir de um resumo preparado pela principal |
+| Pessoa 2 (Antonio Miguel) | Código do fechamento (branch `pix`) e regras da Helena | Claude Code (extensão do VS Code) + chat do claude.ai como consultor, que escrevia os prompts do Claude Code | 22 sessões `*_pessoa-2_claude_*` + o chat (link em `sessoes/links.md` e extrato em `sessoes/*_pessoa-2_claudeai_ab9fb32b.md`) |
+| Pessoa 3 (Erick Tamura) | Preparação, revisão dos documentos, histórico de IA e pitch | Antigravity + Claude Code (app desktop) | 2 sessões `*_pessoa-3_antigravity_*` + 3 sessões `*_pessoa-3_claude_*` (`be5d287e`; `82f695ad`, a do histórico de IA; `d93929da`, a do pitch). Quatro conversas paralelas curtas, que repetem o histórico da `82f695ad`, ficaram de fora |
 
-> **Sobre os horários:** cada transcript usa o relógio do computador de quem o gerou. Nas sessões da Pessoa 2 de 17/10, os horários estão cerca de 3 horas atrás do real (o commit `db29cf0`, que aplica uma resposta da Helena das 9h45, aparece às 7h15). A ordem dos acontecimentos vale pelos commits e PRs no GitHub.
+> **Sobre os horários:** cada transcript usa o relógio do computador de quem o gerou. Nas sessões da Pessoa 2 de 17/10, até o começo da tarde, os horários estão cerca de 2h40 atrás do real (o commit `db29cf0`, que aplica uma resposta da Helena das 9h45, aparece às 7h15). As sessões do fim da tarde já estão no horário certo. A ordem dos acontecimentos vale pelos commits e PRs no GitHub.
+>
+> **Sobre o chat da Pessoa 2:** a Pessoa 2 contou que nenhum prompt da tarde foi escrito só por ela: os prompts vieram do chat de consultoria. O que foi dela foram as decisões sobre o que verificar e quando parar, e essas estão no `MOMENTOS.md`. As 4 últimas sessões vieram rotuladas como "pessoa-1" por engano na exportação e foram renomeadas para pessoa-2; só a linha "Autor" do `.md` mudou.
 
 ### Pessoa 2: o que cada sessão fez (horário do computador dela)
 
@@ -49,7 +51,11 @@ Nos `.jsonl` a única alteração é a troca de e-mails pessoais e chaves por `[
 | `c9db715a` | 17/10 01:20 | `RESULTADOS.md` comparando a saída com os testes | `966ecf5` |
 | `7c85056d` | 17/10 07:08 | Respostas da Helena: R22 (PIX acima das remessas é adiantamento) e conferência "Ponte Aérea × Ponte Câmbio" | `db29cf0` |
 | `2646ca62` | 17/10 07:53 | R23: spread negativo sai das divergências e fica como contestação | `292a3eb` |
-| `56449fe8` | 17/10 08:12 | R32–R40: o contrato decide a divergência, a Casa do Estudante é concessão, alerta de antecipação | `2b679b3` |
+| `56449fe8` | 17/10 08:12 | R25–R40: rascunhos de contestação (lidos antes do B2), ajuste da Ponte, o contrato decide a divergência, a Casa do Estudante é concessão, alerta de antecipação | `fd0db20`, `721c788`, `2b679b3` |
+| `85712a91` | 17/10 09:54 | Prompts F e G+H: respostas da Organização, gravação atômica, mensagens de erro; o arquivo 06 da Orbe lido junto com o relatório | `4e6e3ef`, `b3562cb`, `9d0db60` |
+| `a5b26d34` | 17/10 10:58 | Prompts K e I+L: fechamento parcial (R41–R45) e erro de dado tirando só o item (R44) | `4305609`, `4f34456` |
+| `56513f87` | 17/10 15:01 | Prompt M: R46–R48, regra no rastro e registro de execução (`auditoria/`); caminho absoluto trocado por relativo a pedido dele | `91af1fc`, `873e0df`, `d62f927` |
+| `07f02e73` | 17/10 15:45 | Revisão independente final, refazendo os números a partir dos dados, e correções até 17h15 | `7e4f53f`, `bea61a2` |
 
 ### Pessoa 1: principais pedidos (sessão `6a4fd205`)
 
@@ -67,6 +73,12 @@ Nos `.jsonl` a única alteração é a troca de e-mails pessoais e chaves por `[
 | 17/10 13:12 | Ajustes 6–9 da revisão do Erick, só com aprovação explícita | PR #10 |
 | 17/10 13:22 | Testar a branch que inclui o arquivo novo da Orbe (13h10) antes de juntar no `main` | Mostrou que o fechamento parava e os testes quebravam; simulou as notas corretas (R$ 243.284,29) |
 | 17/10 13:35 | Destacar momentos e exportar a conversa | Candidatos A–D e esta exportação |
+| 17/10 14:30 | Conferir o prompt K do Antonio e propor o README com diff para aprovação | PR #13 |
+| 17/10 14:52 | "Você esqueceu de colocar os nomes de cada um no README" | PR #14 |
+| 17/10 15:05 | Redigir o contexto do projeto para uma sessão avaliadora separada (`79de05b7`) | Avaliação por critério da banca |
+| 17/10 15:37 | Rascunho do checkpoint 2, corrigido pela mensagem da Organização | Checkpoint 2 enviado |
+| 17/10 16:05 | Comparar o README com o código atual (o Antonio já estava no prompt N) | 10 divergências corrigidas, com diff antes de publicar; PR #17 |
+| 17/10 17:22 | "A partir de agora não iremos mais tocar no código"; clone limpo e última conferência do README | PR #19 |
 
 ## Exportar os transcripts
 
@@ -120,6 +132,13 @@ Todos os pedidos da Pessoa 3, na ordem. Pedidos curtos de execução (commit, pu
 | 17/10 ~12:00 | Claude Code | Conferir o link público do chat da Pessoa 2 |
 | 17/10 ~12:20 | Claude Code | Conferir as sessões da Pessoa 2 com o R22 e o R23 |
 | 17/10 ~12:45 | Claude Code | Auditar o `PROMPTS/` e o README contra as instruções do case |
+| 17/10 ~13:30 | Claude Code (sessão `d93929da`) | Montar o pitch no estilo do deck da Barte, com os números conferidos na saída |
+| 17/10 ~14:00 | Claude Code | Conferir os números do pitch, os checkpoints e as mensagens do Pedro e do Antonio |
+| 17/10 ~14:40 | Claude Code | Conferir o "token do GitHub" no log original do Antigravity: era falso positivo |
+| 17/10 ~15:20 | Claude Code | Conferir o checkpoint 2 contra o `main` e rodar os testes num clone limpo |
+| 17/10 ~16:00 | Claude Code | Tirar o e-mail nominal de um organizador dos transcripts (PR #16) |
+| 17/10 ~16:15 | Claude Code | Extrair o chat da Pessoa 2 e destacar as decisões dela |
+| 17/10 ~17:20 | Claude Code | Juntar as sessões finais e montar o `MOMENTOS.md` centrado nas decisões do time |
 
 ## Prompts-chave (o que mudou o projeto)
 
@@ -147,10 +166,19 @@ Entra aqui todo prompt que mudou uma regra de negócio, um número, a arquitetur
 | 17/10 ~08:10 | Pessoa 1 (Claude Code) | Conferir a autoria de cada commit no horário de Brasília | A cronologia anterior, em UTC, sugeria que a `pix` tinha sido descartada; no horário certo, as branches foram feitas ao mesmo tempo | Corrigida a mensagem ao grupo: era trabalho paralelo que ninguém juntou, não descarte | — |
 | 17/10 08:12* | Pessoa 2 (Claude Code) | Respostas da Helena (R32–R40): "o que decide é o contrato, não o aviso" | Mediu a divergência contra a planilha; a Casa do Estudante virou concessão do comercial | Divergências: 233 → 115; devolução da Casa como pendência própria; alerta de antecipação da Atlas | `2b679b3` |
 | 17/10 08:15 | Pessoa 1 (Claude Code) | Conferir no `.docx` oficial o "erro de schema" apontado pela IA na saída da `pix` | O alerta vinha do `CLAUDE.md` do `main`, não da instrução oficial | Alerta rebaixado, código mantido; a Organização confirmou depois | — |
-| 17/10 08:33 | Pessoa 3 (Claude Code) | "Anotei os prompts do Antigravity, veja se importa para o histórico" | Achou o transcript original do Antigravity, um token do GitHub escrito nele e 4 erros no resumo | Exportar o original com token e e-mails removidos; resumo como índice com errata | `2ba7f84` |
+| 17/10 08:33 | Pessoa 3 (Claude Code) | "Anotei os prompts do Antigravity, veja se importa para o histórico" | Achou o transcript original do Antigravity, o que parecia um token do GitHub escrito nele e 4 erros no resumo | Exportar o original com e-mails e possíveis chaves removidos; resumo como índice com errata. Em 17/10 à tarde, conferimos o log original: o "token" era um trecho aleatório de um link de busca do Google que casou com o padrão `ghs_`, ou seja, um falso positivo, e não havia chave nenhuma | `2ba7f84` |
 | 17/10 ~09:25 | Pessoa 3 (Claude Code) | "O MOMENTOS.md está falando nada com nada" | Conferiu cada momento no transcript: o antigo Momento 1 dizia que a IA sugeriu nome aproximado, mas foi a própria IA que alertou contra | Momentos reescritos só com o que o transcript prova, cada um com a fonte | `a9328d9` |
 | 17/10 11:11 | Pessoa 1 (Claude Code) | "Atualize o README com os dados da saída real" | Regerou a saída e leu dela em vez de copiar do chat; achou números desatualizados fora da lista | Todo PR do README passa a sair da `saida/` regerada, com diff antes de publicar | PR #4, #9, #10 |
+| 17/10 ~11:20 | Pessoa 2 (chat do claude.ai + Claude Code) | "Ainda não mandei o B2": leu os rascunhos de e-mail para a Orbe e a Ponte antes de rodar o prompt seguinte | A IA admitiu que dois itens do prompt que ela escreveu estavam errados (R$ 821,88 e spreads negativos) e achou notas internas no corpo dos e-mails | B2 reescrito para conferir cada número nos dados antes de mudar o texto | `fd0db20` |
+| 17/10 ~12:20 | Pessoa 1 → Organização; Pessoa 2 (chat) | Pergunta à Organização sobre como a solução seria avaliada nos meses seguintes | Com a resposta (não haverá pacote de outubro), a IA recomendou deixar de lado a cobrança retroativa da Atlas | Atlas retroativa registrada (R30) e não implementada; prioridade para a solução não quebrar na mão de outra pessoa | — |
 | 17/10 13:22 | Pessoa 1 (Claude Code) | Testar a branch com o arquivo novo da Orbe antes de juntar no `main` | Rodou numa cópia isolada: o fechamento parava, 17 falhas e 170 erros; conferiu as 14 linhas e simulou as notas corretas | A Pessoa 2 usou essa simulação como gabarito da correção | — |
+| 17/10 13:31 | Pessoa 2 (chat + Claude Code) | "Vou usar teus números como gabarito… Se a minha saída não bater, não subo"; id repetido tratado pela Helena das 12h31 ("prefiro que avise a que quebre") | O prompt J leu todos os arquivos da Orbe e bateu com o gabarito: notas R$ 243.284,29 (−3.304,39) | Arquivo 06 aceito só depois de bater ao centavo | `9dd06b6`, `9d0db60` |
+| 17/10 ~14:50 | Pessoa 2 (chat + Claude Code) | R44 no nível do item: erro de dado (planilha com duas vigências, faixa sem taxa, linha inválida) vira pendência só daquele lojista ou linha, em vez de parar o mês | Listou 15 pontos de parada e achou 2 bugs no caminho (ajuste da Ponte sem data e pendência duplicada) | Aprovado; nenhum número de setembro mudou | `4f34456` |
+| 17/10 ~15:34 | Pessoa 2 (chat + Claude Code) | R46–R48, P27 por linha, O06 | Correção da Orbe vira PEN-CORRECAO-ORBE; ajuste sem original vale o efeito; PEN-TARDIO; rastro com regra e detalhe; registro de execução em `auditoria/` | Aprovado; nenhum número de setembro mudou | `91af1fc`, `873e0df` |
+| 17/10 15:38 | Pessoa 2 (Claude Code, prompt escrito por ele) | "O auditoria/execucao.json e o .md trazem caminhos absolutos (o repositório vai ser público…). Troque por caminhos relativos" | Trocou todos os caminhos pelos relativos à raiz do repositório | O registro de execução funciona na máquina da banca | `d62f927` |
+| 17/10 15:45 | Pessoa 2 (Claude Code) | "Você é um revisor independente que NÃO escreveu este código… recalcule a partir dos dados brutos" | Refez os números do zero, com o arquivo 06, e não achou erro de número; apontou ajustes de texto | Correções feitas até o corte das 17h15 | `bea61a2` |
+| 17/10 16:05 | Pessoa 1 (Claude Code) | "Confira as divergências entre o código atual do repositório e o README oficial" | Achou 10 pontos do README desatualizados em relação ao código | Corrigidos numa branch local e publicados só depois do diff aprovado | PR #17 |
+| 17/10 17:22 | Pessoa 1 (Claude Code) | "Combinamos que a partir de agora não iremos mais tocar no código… faça o clone limpo e a última conferência do README" | Rodou a entrega num clone limpo, como a banca vai rodar | Código congelado; README final publicado | PR #19 |
 
 
 \* Horário do computador da Pessoa 2 (ver a nota sobre os horários acima).
@@ -169,5 +197,5 @@ O `.txt` foi mantido como a IA escreveu. Os números certos estão no `HIPOTESES
 ## O que ainda falta juntar
 
 - ~~Sessões da Pessoa 1 até 13h36~~: exportadas.
-- Sessões da Pessoa 2 depois de `56449fe8` (respostas da Helena da tarde e o arquivo novo da Orbe).
-- Reexportação final das três pessoas antes das 18h15, porque as sessões continuam crescendo.
+- ~~Sessões da Pessoa 2 depois de `56449fe8`~~ e o chat final: incluídos.
+- ~~Sessões da Pessoa 1 depois de 13h36~~: incluídas.
