@@ -24,7 +24,7 @@ lojistas:
   "17217888000111": {secao: comunicacao, aviso: nao_avisada}      # Mundo Aberto
 padrao_lojista: {secao: contrato, aviso: sem_registro}
 textos_aviso:
-  nao_avisada: "nunca foi avisada: o Comercial não avisou a {contraparte} desta condição."
+  nao_avisada: "nunca foi avisada (o Comercial não comunicou a condição)."
   avisada_depois: "foi avisada só alguns dias depois do início da vigência ({inicio})."
   sem_registro: "não há registro de que a {contraparte} tenha sido avisada."
 

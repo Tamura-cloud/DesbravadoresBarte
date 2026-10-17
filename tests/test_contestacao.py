@@ -122,11 +122,24 @@ def test_orbe_totais_de_cada_secao_saem_do_csv(cont):
     contrato = _secao(corpo, "## 2. Taxas aplicadas acima do contrato")
     assert "Casa do Estudante" in comunicacao and "Bridge" not in comunicacao and "Rota" not in comunicacao
     assert "Bridge" in contrato and "Rota" in contrato and "Casa do Estudante" not in contrato
-    assert f"que soma {_rs(por_cnpj[CASA][1])}" in comunicacao
+    # Casa: o pedido usa o valor efetivamente descontado (valor_taxa), a tabela usa taxa × bruto
+    assert ("todo o valor descontado pela Orbe deve ser regularizado: R$ 15.396,77 (soma do valor_taxa das 118 transações)") in comunicacao
+    assert brl(por_cnpj[CASA][1]) in comunicacao and "R$ 15.397,42" in comunicacao
+    assert "a Orbe trunca o valor_taxa no centavo, por isso o valor efetivamente descontado é R$ 0,65 menor" in comunicacao
     assert f"O total desta parte é {_rs(por_cnpj[BRIDGE][1] + por_cnpj[ROTA][1])}" in contrato
     for cnpj, secao in ((CASA, comunicacao), (BRIDGE, contrato), (ROTA, contrato)):
         linha = next(l for l in secao.splitlines() if l.startswith("|") and cnpj in l)
         assert f"| {por_cnpj[cnpj][0]} |" in linha and brl(por_cnpj[cnpj][1]) in linha
+
+
+def test_corpo_cita_a_condicao_contratada_sem_linha_da_planilha_e_as_notas_trazem_a_referencia(cont):
+    notas, corpo = _partes(cont, "orbe.md")
+    assert "condição contratada vigente desde 2026-09-15" in corpo and "condição contratada vigente desde 2026-01-01" in corpo
+    assert not re.search(r"planilha de taxas|linha \d", corpo)
+    assert 'Escola Bridge de Idiomas Ltda: planilha de taxas, linha 7, observação "só mudou o crédito à vista"' in notas
+    assert "Rota Global Intercâmbio Ltda: planilha de taxas, linha 10" in notas
+    ponte_notas, ponte_corpo = _partes(cont, "ponte.md")
+    assert "planilha de taxas, linha 15" in ponte_notas and not re.search(r"planilha de taxas|linha \d+\)", ponte_corpo.split("## 3.")[0])
 
 
 def test_orbe_estornos_reduzem_o_total_sem_sinal_negativo_no_texto(cont):
@@ -162,7 +175,7 @@ def test_orbe_rota_taxa_contratada_ate_11_09_e_mais_0_50_depois_so_no_credito(co
 
 def test_orbe_notas_avisos_e_valor_a_devolver_vindo_das_pendencias(saida, cont):
     notas = _partes(cont, "orbe.md")[0]
-    assert "Casa do Estudante Viagens Ltda: nunca foi avisada" in notas
+    assert "Casa do Estudante Viagens Ltda: nunca foi avisada (o Comercial não comunicou a condição)." in notas
     assert "Escola Bridge de Idiomas Ltda: foi avisada só alguns dias depois do início da vigência (2026-09-15)" in notas
     pen = {l["id_saida"]: D(l["valor_brl"]) for l in _ler(saida, "pendencias.csv")}
     assert pen[f"PEN-DEVOL-CHK-{BRIDGE}"] == D("29.95") and f"Bridge de Idiomas Ltda: {_rs(D('29.95'))}." in notas
@@ -247,7 +260,7 @@ def test_ponte_totais_de_cada_secao_saem_do_csv(cont):
 
 def test_ponte_notas_aviso_e_ressalva_da_vigencia_da_mundo_aberto(cont):
     notas = _partes(cont, "ponte.md")[0]
-    assert "Mundo Aberto: nunca foi avisada" in notas
+    assert "Mundo Aberto: nunca foi avisada (o Comercial não comunicou a condição)." in notas
     assert 'a planilha registra a condição como vigente desde 2026-01-01 e a observação "spread negociado em jul/26"' in notas
     assert "confirme a data da condição antes de enviar" in notas
     assert "PEN-NEG" in notas and "não a parte da Tarvo" in notas

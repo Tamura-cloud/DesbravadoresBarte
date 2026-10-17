@@ -162,6 +162,8 @@ class Condicao:
     descricao: str
     inicio: date | None
     fim: date | None
+    ref: str = ""   # linha da planilha ou regra: só nas notas internas
+    obs: str = ""   # observação da planilha: só nas notas internas
 
     def vigencia(self) -> str:
         if self.inicio and self.fim:
@@ -173,7 +175,7 @@ class Condicao:
         return "sem data de início na planilha"
 
     def texto(self) -> str:
-        return f"{self.descricao}, {self.vigencia()}"
+        return f"{self.descricao} {self.vigencia()}"
 
 
 def _aviso(cnpj: str, condicoes: list[Condicao], contraparte: str, cfg: ConfigContestacao) -> str:
@@ -227,13 +229,11 @@ def _condicoes_checkout(cnpj: str, datas: Iterable[date], contratos, cfg_ck) -> 
         if especial is not None:
             taxas = " e ".join(sorted({f"{v.quantize(Decimal('0.01'))}".replace(".", ",") + "%" for v in especial.taxas.values()}))
             achadas[especial.regra] = Condicao(f"condição especial (taxa contratada de {taxas} nas tarifas de checkout)",
-                                               especial.inicio, especial.fim)
+                                               especial.inicio, especial.fim, ref=f"condição especial {especial.regra} do config/checkout.yaml")
             continue
         linha = contratos.vigente(cnpj, d)
-        descricao = f"contrato da planilha de taxas ({linha['ref_origem']})"
-        if linha["obs"]:
-            descricao += f", observação: {linha['obs']}"
-        achadas[linha["ref_origem"]] = Condicao(descricao, linha["vigencia_inicio"], linha["vigencia_fim"])
+        achadas[linha["ref_origem"]] = Condicao("condição contratada", linha["vigencia_inicio"], linha["vigencia_fim"],
+                                                ref=f"planilha de taxas, {linha['ref_origem']}", obs=linha["obs"] or "")
     return sorted(achadas.values(), key=lambda c: (c.inicio or date.min, c.descricao))
 
 
@@ -280,6 +280,10 @@ def _md_orbe(linhas, todas_orbe, entradas, contratos, cfg, cfg_ck, devolucoes) -
              "Avisos da condição à contraparte (resposta da Helena às 9h53):"]
     for cnpj, ls in grupos.items():
         notas.append(f"- {ls[0]['lojista']}: {_aviso(cnpj, condicoes[cnpj], nome, cfg)}")
+    notas += ["", "Condição usada no texto (referências da planilha, que não vão no e-mail):"]
+    for cnpj, ls in grupos.items():
+        for c in condicoes[cnpj]:
+            notas.append(f"- {ls[0]['lojista']}: {c.ref}" + (f", observação \"{c.obs}\"" if c.obs else "") + f", {c.vigencia()}.")
     notas += ["", "Valor a devolver a cada lojista (R25, pendências PEN-DEVOL-CHK):"]
     for cnpj, ls in grupos.items():
         formula = sum((Decimal(l["diferenca_brl"]) for l in ls), ZERO)
@@ -314,16 +318,28 @@ def _md_orbe(linhas, todas_orbe, entradas, contratos, cfg, cfg_ck, devolucoes) -
     contrato = [c for c in grupos if cfg.secao(c) != COMUNICACAO]
     n = 1
     if comunicacao:
-        soma = sum((Decimal(l["diferenca_brl"]) for c in comunicacao for l in grupos[c]), ZERO)
         texto += [f"## {n}. Comunicação de condição comercial", ""]
         n += 1
         for c in comunicacao:
             ls = grupos[c]
             texto += [f"- {ls[0]['lojista']} (CNPJ {c}): {condicoes[c][0].texto()}."] + \
                      [f"  - {x.texto()}." for x in condicoes[c][1:]]
-        texto += ["", tabela(comunicacao), "",
-                  f"Comunicamos a condição acima e pedimos (1) a parametrização das taxas conforme a condição e (2) a "
-                  f"regularização do período já processado, que soma {_rs(soma)} sobre as transações do anexo.", ""]
+        texto += ["", tabela(comunicacao), ""]
+        frases, rodape = [], []
+        for c in comunicacao:
+            ls = grupos[c]
+            formula = sum((Decimal(l["diferenca_brl"]) for l in ls), ZERO)
+            descontado = devolucoes.get(c)
+            if descontado is not None and all(Decimal(l["taxa_contratada_pct"]) == 0 for l in ls):
+                frases.append(f"Para {ls[0]['lojista']}, com taxa contratada de 0,00%, todo o valor descontado pela {nome} deve ser "
+                              f"regularizado: {_rs(descontado)} (soma do valor_taxa das {len(ls)} transações).")
+                if descontado != formula:
+                    rodape.append(f"Nota: a tabela mostra valor bruto × taxa aplicada, arredondado ({_rs(formula)}); a {nome} trunca o "
+                                  f"valor_taxa no centavo, por isso o valor efetivamente descontado é {_rs(formula - descontado)} menor.")
+            else:
+                frases.append(f"Para {ls[0]['lojista']}, o período soma {_rs(formula)} sobre as transações do anexo.")
+        texto += [f"Comunicamos a condição acima e pedimos (1) a parametrização das taxas conforme a condição e (2) a "
+                  f"regularização do período já processado. {' '.join(frases)}", ""] + [r for x in rodape for r in (x, "")]
     if contrato:
         soma = sum((Decimal(l["diferenca_brl"]) for c in contrato for l in grupos[c]), ZERO)
         texto += [f"## {n}. Taxas aplicadas acima do contrato", ""]
@@ -429,7 +445,7 @@ def _md_ponte(linhas, entradas, contratos, cfg, participacao) -> list[str]:
     for cnpj, ls in grupos.items():
         rows = condicoes_remessa(cnpj, ls)
         conds = [Condicao("", r["vigencia_inicio"], r["vigencia_fim"]) for r in rows]
-        notas.append(f"- {ls[0]['lojista']}: {_aviso(cnpj, conds, nome, cfg)}")
+        notas.append(f"- {ls[0]['lojista']}: {_aviso(cnpj, conds, nome, cfg)} (planilha de taxas, {', '.join(r['ref_origem'] for r in rows)})")
     for cnpj, ls in grupos.items():
         if cfg.secao(cnpj) == COMUNICACAO:
             for r in condicoes_remessa(cnpj, ls):

@@ -3,10 +3,10 @@
 | | |
 |---|---|
 | Data | 2026-10-17 |
-| Commit do código | branch `regras-helena-2`, sobre `6f28288` (R29). Em relação a `6f28288`, os 6 CSVs de `saida/` estão idênticos byte a byte; mudou só `contestacoes/` (estrutura dos .md e colunas novas no ponte_operacoes.csv) |
+| Commit do código | branch `regras-helena-2`, sobre `fd0db20` (R29). Em relação a `fd0db20`, os 6 CSVs de `saida/` estão idênticos byte a byte; mudou só `contestacoes/` (estrutura dos .md e colunas novas no ponte_operacoes.csv) |
 | Fechamento | `python -m tarvo fechar --competencia 2026-09 --entrada dados/2026-09 --saida saida/` (IA conforme `config/ia.yaml`; em setembro todo lançamento casa uma regra, então a IA não é chamada nenhuma vez, P14) |
 | Resumo | `python -m tarvo resumo --saida saida` |
-| pytest | **346 passed** (`python -m pytest -q`, 20,2 s) |
+| pytest | **347 passed** (`python -m pytest -q`, 23,4 s) |
 | `validar_saida(saida/)` | `[]`, **sem problemas** |
 | Rastro | 488 de 488 itens com soma do rastro por id_saida = valor reportado |
 

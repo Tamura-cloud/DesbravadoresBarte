@@ -5,7 +5,7 @@ NOTAS PARA A HELENA — apagar antes de enviar
 Contexto interno. Nada deste bloco vai para a Ponte.
 
 Avisos da condição à contraparte (resposta da Helena às 9h53):
-- Mundo Aberto: nunca foi avisada: o Comercial não avisou a Ponte Câmbio S.A. desta condição.
+- Mundo Aberto: nunca foi avisada (o Comercial não comunicou a condição). (planilha de taxas, linha 15)
 - Ressalva (Mundo Aberto): a planilha registra a condição como vigente desde 2026-01-01 e a observação "spread negociado em jul/26". O e-mail não cita data de início; confirme a data da condição antes de enviar.
 
 Valor a devolver ao lojista (R15, PEN-CONTEST-REM): R$ 1.418,85, o spread inteiro pago a mais pelo cliente. A Tarvo já recebeu 50% do spread realizado dessas operações na comissão e na nota (R16), ou seja, R$ 709,46 do excesso, a ajustar quando a Ponte devolver (R27).
