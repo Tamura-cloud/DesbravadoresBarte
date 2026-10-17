@@ -3,10 +3,10 @@
 | | |
 |---|---|
 | Data | 2026-10-17 |
-| Commit do código | branch `regras-helena-2`, sobre `fd0db20` (R29). Em relação a `fd0db20`, os 6 CSVs de `saida/` estão idênticos byte a byte; mudou só `contestacoes/` (estrutura dos .md e colunas novas no ponte_operacoes.csv) |
+| Commit do código | branch `regras-helena-2`, sobre `3dce1b1` (frase da Bridge no orbe.md). Em relação a ele, os 6 CSVs de `saida/` e os 4 arquivos de `contestacoes/` de setembro estão idênticos byte a byte. A novidade é o ajuste da Ponte (R31, P25), que só atua a partir de outubro |
 | Fechamento | `python -m tarvo fechar --competencia 2026-09 --entrada dados/2026-09 --saida saida/` (IA conforme `config/ia.yaml`; em setembro todo lançamento casa uma regra, então a IA não é chamada nenhuma vez, P14) |
 | Resumo | `python -m tarvo resumo --saida saida` |
-| pytest | **347 passed** (`python -m pytest -q`, 23,4 s) |
+| pytest | **368 passed** (`python -m pytest -q`, 22,1 s) |
 | `validar_saida(saida/)` | `[]`, **sem problemas** |
 | Rastro | 488 de 488 itens com soma do rastro por id_saida = valor reportado |
 
@@ -21,7 +21,7 @@ Auditoria das regras novas contra este fechamento:
 |---|---|---|
 | R25 | notas pela taxa contratada, sem somar divergência; nenhuma taxa aplicada abaixo da contratada (as 5 diferenças negativas são estornos, -107,53) | OK; texto da PEN-DEVOL-CHK corrigido |
 | R26 | os 44 repasses (PIX ENVIADO, Aurora) estão em 2.1.01.001 e saíram entre os dias 08 e 10 ou 22 e 24; o Meridiano não tem repasse a lojista | OK |
-| R27 | o relatório de setembro não tem linha de ajuste de agosto; um ajuste em outubro vira PEN-FORA-REM, sem comissão nem nota, com a referência da operação original (`test_ajuste_ponte.py`) | OK; texto da PEN-CONTEST-REM ajustado |
+| R27, R31 | o relatório de setembro não tem linha de ajuste (Helena, 11h33). Um ajuste em outubro, como linha nova com Nº próprio e observação "AJUSTE REF PC-...", abate a COM-REM do lojista e a NF-REM, sem PEN-NEG, divergência nem nota complementar (`test_ajuste_ponte.py`) | OK; texto da PEN-CONTEST-REM ajustado |
 | R28 | campo "Aprovado por" em R01 a R30; P01 a P23 aguardando aprovação | registrado no HIPOTESES.md |
 | R29 | o fechamento não gera o rascunho de e-mail por contraparte | **CONFLITO, não corrigido** (ver HIPOTESES.md, seção 4) |
 | R30 | 57 linhas no rastro da PEN-SEMCONTRATO-1076801732, primeira transação em 2026-09-10 | OK; texto corrigido |
@@ -46,6 +46,32 @@ Colunas novas no ponte_operacoes.csv (P24, exibição, aguardando aprovação):
 | OPERACAO_DUPLICADA | parte_tarvo_brl · valor_operacao_brl | 410,94 · 55.811,47 | 410,94 · 55.811,47 | idem | ✓ |
 
 O `fechar` pelo CLI lista os 4 arquivos gravados e aceita `--sem-contestacao` (`test_contestacao.py::test_cli_lista_os_rascunhos_e_grava_na_pasta_irma`, `::test_cli_sem_contestacao_nao_grava_a_pasta`).
+
+**R31 — ajuste da Ponte (a partir de outubro).** Setembro não tem ajuste, então a saída de setembro não mudou. Testes: 347 → 368 (+21).
+
+| arquivo de teste | antes | depois |
+|---|---:|---:|
+| `test_ajuste_ponte.py` | 2 testes, que supunham a linha de ajuste com o mesmo Nº de Operação e a mesma data da original | 23 testes: 7 com o pack de outubro (Mundo Aberto, original em setembro, original inexistente) e 16 sintéticos (nota zerada ou negativa, regressão da R23, sem CNPJ, percentual configurável, pasta anterior) |
+| demais (`test_remessa.py`, `test_outubro.py`, ...) | 345 | 345, todos verdes |
+
+Exemplo, caso (a): ajuste "AJUSTE REF PC-0926-0434", Spread R$ -235,74, sem CNPJ, no outubro simulado (PC-1026-9101); mais um ajuste B de -20,00 do Canguru com original inexistente (PC-1026-9102). Sem os ajustes: 506 itens.
+
+| arquivo | linha | sem ajuste | com ajuste |
+|---|---|---:|---:|
+| comissoes_por_lojista.csv | COM-REM-17217888000111 (Mundo Aberto) | 3.547,69 | 3.429,82 (-117,87) |
+| comissoes_por_lojista.csv | COM-REM-53857560000123 (Canguru) | 3.764,05 | 3.754,05 (-10,00) |
+| notas_a_emitir.csv | NF-REM-75374179000146 | 39.664,95 | 39.537,08 (-127,87) |
+| pendencias.csv | PEN-AJUSTE-SEMORIG-PC-1026-9102 (original inexistente) | não existe | -10,00 |
+| (itens) | | 506 | 507 |
+
+Rastro da COM-REM da Mundo Aberto (e da NF-REM, que repete as mesmas linhas):
+
+```
+COM-REM-17217888000111;...out2026.eml#...102026.xlsx;PC-1026-9101;-117.87
+COM-REM-17217888000111;...set2026.eml#...092026.xlsx;PC-0926-0434;0.00
+```
+
+A NF-REM traz na discriminação: "... competência 2026-10 - líquida de ajuste da Ponte: AJUSTE REF PC-0926-0434 (operação de 2026-09, contestada em 2026-09) - AJUSTE REF PC-0926-9999 (operação original não encontrada em 2026-09)". O rastro.csv não tem coluna de descrição; por isso a descrição vai na discriminação da nota e no motivo da PEN-AJUSTE-SEMORIG.
 
 A mudança anterior (R23, 9h48: spread negativo só como contestação, fora das divergências) está no commit `292a3eb`.
 

@@ -25,3 +25,11 @@ discriminacao_nota: "Intermediação de câmbio - participação no spread - com
 
 # Quem decide as pendências da remessa (R12, R13, R16, R18).
 quem_decide: "Financeiro (Helena)"
+
+# R31: a Ponte manda o ajuste como linha nova, com Nº de Operação próprio e Spread R$ negativo; a observação traz
+# "AJUSTE REF PC-..." (o grupo é o Nº da operação original). Sem diferenciar maiúsculas. A linha de ajuste é checada
+# antes da R23: nunca é spread negativo, divergência nem operação nova.
+ajuste:
+  padrao_observacao: 'AJUSTE REF (PC-\S+)'
+  # P25 (aguardando aprovação): o ajuste abate a participação da Tarvo como as operações, 50% do Spread R$ da linha.
+  participacao_tarvo: "0.5"

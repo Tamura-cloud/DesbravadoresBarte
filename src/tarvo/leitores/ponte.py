@@ -142,7 +142,7 @@ def _converter(bruto: dict, onde: str) -> dict:
         reg[c] = num_br(bruto[c])
     reg["spread_pct"] = pct(bruto["spread_pct"])
     reg["cnpj"] = cnpj14(bruto["cnpj"])
-    if reg["cnpj"] is None:
+    if reg["cnpj"] is None and _texto(bruto["cnpj"]) != "":  # vazio fica None: o ajuste da Ponte pode vir sem CNPJ
         raise ValueError(f"{onde}: CNPJ inválido: {bruto['cnpj']!r}")
     reg["cliente"] = None if bruto["cliente"] is None else str(bruto["cliente"])
     for c in TEXTOS:
