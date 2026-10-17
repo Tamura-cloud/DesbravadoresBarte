@@ -14,3 +14,13 @@ PIX ANOTA*/
 .env
 .env.*
 !.env.example
+
+# ambientes, caches e editores (união com o .gitignore do main)
+venv/
+*$py.class
+.mypy_cache/
+.ruff_cache/
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
