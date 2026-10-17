@@ -154,17 +154,32 @@ As colunas abaixo, nesta ordem, são **obrigatórias** (correção automática).
 
 ---
 
-## 5. Estrutura do Repositório e Comandos
+## 5. Estrutura do Repositório, Donos e Comandos
 ```text
 ├── CLAUDE.md                  # Este guia mestre com as regras oficiais da Helena
+├── PLANO_17-10.md             # Divisão do trabalho, cronograma e checklist de entrega
 ├── README.md                  # Instruções de execução passo a passo
 ├── HIPOTESES.md               # Premissas e decisões auditadas
-├── PROMPTS/
-│   └── MOMENTOS.md            # Registro dos momentos decisivos de uso de IA
+├── PROMPTS/                   # Transcripts das sessões + MOMENTOS.md
+├── config/                    # Regras que mudam de mês para mês (checkout/remessa/bancos.toml)
 ├── dados/                     # Arquivos brutos originais do case (SOMENTE LEITURA)
-├── saida/                     # Os 6 CSVs finais gerados pelo pipeline (inclui rastro.csv)
-├── src/                       # Motor determinístico + Agente IA + Dashboard
-└── tests/                     # Testes automatizados de integridade dos 6 CSVs e do rastro
+├── saida/                     # Os 6 CSVs gerados pelo pipeline (inclui rastro.csv)
+├── src/
+│   ├── main.py                # Orquestrador: lê, roda os 3 módulos, grava saida/   (C)
+│   ├── core/                  # Dinheiro (Decimal), contrato de saída, escrita + rastro (C, compartilhado)
+│   ├── leitores/              # As 6 fontes como chegam, prontas e testadas          (C, compartilhado)
+│   ├── checkout/motor.py      # Comissão, divergências e notas do checkout          (Pessoa A)
+│   ├── remessa/motor.py       # Comissão, divergências e nota da Ponte               (Pessoa B)
+│   └── bancos/motor.py        # Classificação dos extratos + pendências bancárias    (Pessoa C)
+└── tests/                     # test_<módulo>.py = critério de aceite de cada pessoa
 ```
-* **Executar pipeline completo:** `python -m src.main`
+* **Executar pipeline completo:** `python -m src.main --entrada dados --saida saida --competencia 2026-09`
 * **Executar testes de auditoria:** `python -m unittest discover -s tests`
+
+### Regras de trabalho em equipe (valem para toda sessão do Claude Code)
+1. **Cada pessoa edita só o próprio módulo**, o próprio `config/<módulo>.toml` e o próprio `tests/test_<módulo>.py`. Pergunte qual pessoa está usando a sessão antes de editar.
+2. **`src/core/` e `src/leitores/` são compartilhados:** só mude com pedido explícito, num commit separado.
+3. **Módulos não importam uns aos outros.** Eles recebem `Dados` (de `src/leitores`) e devolvem `ResultadoModulo` (de `src/core/modelos.py`). Ninguém escreve CSV direto.
+4. **Todo número leva `rastro`** (`ItemRastro` por linha de origem) e a soma do rastro tem que ser o número reportado; `core/saida.py` quebra se não for.
+5. **Nenhum valor de setembro fixo no código:** regras e exceções vão em `config/*.toml`, com a fonte (Slack) citada.
+6. **Pronto = teste do módulo verde** com os valores de aceite (seção 3).

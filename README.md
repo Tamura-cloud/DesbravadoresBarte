@@ -28,10 +28,17 @@ O pipeline consome os **6 arquivos brutos originais** exportados pelos sistemas 
 ├── PROMPTS/
 │   ├── MOMENTOS.md            # Registro dos momentos decisivos no uso de IA (acertos e correções)
 │   └── ...                    # Histórico completo das sessões de IA
+├── config/                    # Regras que mudam de mês para mês (sem valores fixos no código)
 ├── dados/                     # Arquivos brutos do Tarvo_Data_Pack_set2026 (intactos)
 ├── saida/                     # Os 6 arquivos CSV gerados pelo fechamento
-├── src/                       # Código-fonte modular do pipeline
-└── tests/                     # Testes automatizados de integridade contábil e de rastro
+├── src/
+│   ├── main.py                # Orquestrador do fechamento
+│   ├── leitores/              # Leitura das 6 fontes como elas chegam
+│   ├── core/                  # Arredondamento, contrato de saída e rastro
+│   ├── checkout/              # Linha de negócio Checkout (Orbe)
+│   ├── remessa/               # Linha de negócio Remessa (Ponte Câmbio)
+│   └── bancos/                # Classificação dos extratos Aurora e Meridiano
+└── tests/                     # Testes de leitura, regras e rastro
 ```
 
 ---
@@ -40,10 +47,10 @@ O pipeline consome os **6 arquivos brutos originais** exportados pelos sistemas 
 
 ### Pré-requisitos
 * **Python 3.11+**
-* Dependências listadas em `requirements.txt` (ou via `uv`):
+* Dependências em `requirements.txt` (só `openpyxl`; o resto é biblioteca padrão):
 
 ```powershell
-python -m pip install pandas openpyxl pypdf pydantic anthropic python-dotenv pytest
+python -m pip install -r requirements.txt
 ```
 
 ### Configuração de Variáveis de Ambiente (Opcional para etapa de IA)
@@ -56,15 +63,14 @@ $env:ANTHROPIC_API_KEY="sua_chave_aqui"
 *(O pipeline possui fallback determinístico e registro em `pendencias.csv` caso nenhuma chave de API seja fornecida).*
 
 ### Executando o Fechamento de Setembro/2026
-*(Comando será habilitado assim que o módulo principal em `src/` for gerado)*:
-
 ```powershell
-python -m src.cli --entrada ./dados --saida ./saida --competencia 2026-09
+python -m src.main --entrada dados --saida saida --competencia 2026-09
 ```
+Os arquivos de entrada são achados por padrão de nome (`*orbe*.csv`, `*taxas*.xlsx`, `*.eml`, `*plano*contas*.csv`, `*aurora*.csv`, `*.ofx`), então outubro roda com o mesmo comando e `--competencia 2026-10`.
 
 ### Executando a Suíte de Testes e Auditoria de Rastro
 ```powershell
-pytest tests/
+python -m unittest discover -s tests
 ```
 
 ---
