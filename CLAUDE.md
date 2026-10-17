@@ -12,3 +12,10 @@
 - Datas são datetime.date.
 - Todo arquivo é aberto com encoding explícito. Nunca use o encoding padrão do sistema (estamos no Windows).
 - Cada pessoa trabalha na própria branch e só mexe nos próprios arquivos. Arquivos compartilhados (comum.py, cli.py, CLAUDE.md) só mudam com o time avisado.
+- Prompt que muda regra de negócio, número ou arquitetura, ou que corrige a IA, ganha uma linha na tabela "Prompts-chave" de PROMPTS/README.md (quando, quem, prompt, o que a IA fez, o que decidimos, commit).
+- Transcripts: python scripts/exportar_transcript.py --autor "pessoa-x" (remove e-mails pessoais e chaves).
+- Nunca use LLM para somar valores, calcular percentuais ou arredondar centavos: toda conta é feita em Python com Decimal, arredondando cada linha (ROUND_HALF_UP) antes de somar (R02).
+- Formato da saída, em detalhe: UTF-8 sem BOM; valores com 2 casas, sem separador de milhar e sem "R$"; colunas *_pct em pontos percentuais com ponto decimal e sem "%" (spread de remessa com até 4 casas); colunas obrigatórias na ordem oficial e colunas extras só no fim.
+- dados/ é somente leitura: nunca edite um arquivo de entrada nem o abra e salve no Excel. Armadilhas conhecidas: plano de contas e OFX em cp1252; planilha de taxas na aba "Taxas vigentes" (ignore "ANTIGO 2025 - nao usar"), com taxa ora em fração (0.0259), ora em texto ("2,59%"); o relatório da Ponte é o .xlsx anexo ao .eml.
+- Donos por arquivo (plano de 17/10): Pessoa 1 edita .gitignore, .claudeignore, README.md, CLAUDE.md, dados/2026-10/ e a saída de outubro; Pessoa 2 edita src/, config/, tests/, cache/, HIPOTESES.md, RESULTADOS.md e a saida/ de setembro; Pessoa 3 edita PROMPTS/ e scripts/. Antes de editar, pergunte qual pessoa está usando a sessão.
+- Merge no main só por PR com merge commit, sem squash nem rebase. Nunca use push --force no main.

@@ -3,3 +3,24 @@ __pycache__/
 *.py[cod]
 *.egg-info/
 .pytest_cache/
+
+# materiais internos (não publicar)
+_referencias_internas/
+slack_tarvo*
+PIX ANOTA*/
+*.zip
+
+# chaves de API (nunca publicar)
+.env
+.env.*
+!.env.example
+
+# ambientes, caches e editores (união com o .gitignore do main)
+venv/
+*$py.class
+.mypy_cache/
+.ruff_cache/
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
