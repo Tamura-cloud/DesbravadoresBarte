@@ -1,9 +1,9 @@
 {
-  "data_hora": "2026-10-17T15:39:27-03:00",
+  "data_hora": "2026-10-17T16:25:38-03:00",
   "codigo": {
-    "commit": "873e0df",
+    "commit": "7e4f53f",
     "branch": "regras-helena-2",
-    "alteracoes_locais_em_src_config": true
+    "alteracoes_locais_em_src_config": false
   },
   "competencia": "2026-09",
   "comando": "python -m tarvo fechar --competencia 2026-09 --entrada \"dados/2026-09\" --saida \"saida\"",
@@ -130,7 +130,7 @@
       "linhas": 16,
       "coluna_total": "valor_brl",
       "total": "382811.32",
-      "sha256": "f2aaefad7486213e2c6d88503602d23869c34dbc97cedbd703934e41ec72b953"
+      "sha256": "378b5e76ff76bf92c56201ad71c51dddc93017e917622bf1915d3fd18b034b14"
     },
     {
       "arquivo": "rastro.csv",

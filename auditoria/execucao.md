@@ -4,8 +4,8 @@
 
 | campo | valor |
 |---|---|
-| data e hora | 2026-10-17T15:39:27-03:00 |
-| commit do código | 873e0df (regras-helena-2) - com alterações não commitadas em src/ ou config/ |
+| data e hora | 2026-10-17T16:25:38-03:00 |
+| commit do código | 7e4f53f (regras-helena-2) |
 | competência | 2026-09 |
 | comando | `python -m tarvo fechar --competencia 2026-09 --entrada "dados/2026-09" --saida "saida"` |
 | pasta de entrada | dados/2026-09 |
@@ -45,7 +45,7 @@ Nenhuma.
 | divergencias_taxa.csv | 115 | 2995.08 | diferenca_brl | `d10b45e1616293b4dcf4258fbb4c936e77a02d140a49bb8356b5a04e93e85843` |
 | notas_a_emitir.csv | 21 | 243284.29 | valor_brl | `5b8ae84a9d40d2ebf3899e448ccfbdcee84a668f21c544eeab1c614d2e299c35` |
 | lancamentos_classificados.csv | 184 | -1416088.18 | valor | `0d291a9e3b99646a245fdd7570238dfad70c931624171382c5f2e65a06ab32d3` |
-| pendencias.csv | 16 | 382811.32 | valor_brl | `f2aaefad7486213e2c6d88503602d23869c34dbc97cedbd703934e41ec72b953` |
+| pendencias.csv | 16 | 382811.32 | valor_brl | `378b5e76ff76bf92c56201ad71c51dddc93017e917622bf1915d3fd18b034b14` |
 | rastro.csv | 5086 | -543718.70 | valor | `30fa238104fc63aae496c4d03ddd79f877e51843bcf4d6d7175b9ab78b8cc5c7` |
 
 ## Rascunhos de contestação
@@ -60,5 +60,5 @@ Nenhuma.
 ## Como refazer qualquer número
 
 1. Confira o SHA-256 de cada arquivo de entrada (`certutil -hashfile <arquivo> SHA256` no Windows, `sha256sum <arquivo>` no Linux): igual ao da tabela, é o mesmo arquivo.
-2. Faça checkout do commit `873e0df` e rode o comando acima.
+2. Faça checkout do commit `7e4f53f` e rode o comando acima.
 3. Cada número da saída tem as linhas de origem no rastro.csv (id_saida; arquivo_origem; ref_origem; valor; regra; detalhe): a soma de valor por id_saida é o número reportado, e a regra e o detalhe dizem a taxa, a isenção ou a venda original usada em cada linha (HIPOTESES.md).
