@@ -68,7 +68,7 @@ só se a validação não achar problema; sai com 1 ou 2 se a saída ou uma entr
 python -m pytest
 ```
 
-São 318 testes, sem acesso à rede. Incluem o fechamento de um outubro simulado (ver "Como rodar outubro").
+São 374 testes, sem acesso à rede. Incluem o fechamento de um outubro simulado (ver "Como rodar outubro").
 
 ## Chaves
 
@@ -100,26 +100,32 @@ Os totais abaixo foram lidos dos CSVs gerados para setembro/2026 (contagem de li
 | arquivo | conteúdo | linhas | soma da coluna de valor |
 |---------|----------|-------:|------------------------:|
 | `comissoes_por_lojista.csv` | comissão do mês por lojista e linha de negócio | 35 | `comissao_brl` = 246583.18 |
-| `divergencias_taxa.csv` | transação ou operação com taxa aplicada ≠ contratada | 233 | `diferenca_brl` = 18392.50 |
+| `divergencias_taxa.csv` | transação ou operação com taxa aplicada ≠ contratada | 115 | `diferenca_brl` = 2995.08 |
 | `notas_a_emitir.csv` | notas fiscais a emitir: uma por lojista (checkout) e uma para a Ponte (remessa) | 21 | `valor_brl` = 246588.68 |
 | `lancamentos_classificados.csv` | cada lançamento dos dois extratos com a conta contábil (contrapartida) | 184 | `valor` = -1416088.18 |
-| `pendencias.csv` | o que precisa de decisão humana, com valor, origem e quem decide | 15 | `valor_brl` = 382811.75 |
-| `rastro.csv` | as linhas de origem de cada id_saida dos 5 arquivos acima | 5171 | `valor` = -521712.07 |
+| `pendencias.csv` | o que precisa de decisão humana, com valor, origem e quem decide | 16 | `valor_brl` = 382811.75 |
+| `rastro.csv` | as linhas de origem de cada id_saida dos 5 arquivos acima | 5058 | `valor` = -537109.49 |
 
 Por linha de negócio:
 
 | arquivo | CHECKOUT | REMESSA |
 |---------|----------|---------|
 | `comissoes_por_lojista.csv` | 21 linhas, 207039.73 | 14 linhas, 39543.45 |
-| `divergencias_taxa.csv` | 210 linhas, 16973.65 | 23 linhas, 1418.85 |
+| `divergencias_taxa.csv` | 92 linhas, 1576.23 | 23 linhas, 1418.85 |
 | `notas_a_emitir.csv` | 20 notas, 207045.23 | 1 nota, 39543.45 |
 
 - A comissão de checkout (207039.73) é 5.50 menor que as notas de checkout (207045.23) porque a Casa do
   Estudante fechou o mês em -5.50: comissão zero ou negativa não emite nota e vira pendência (R06).
+- A devolução da Casa do Estudante (15396.77, concessão comercial: custo da Tarvo, não se cobra da Orbe) fica
+  fora das divergências, como pendência `DEVOLUCAO_CONCESSAO` (R10, R32, R38).
 - Lançamentos: 84 do Aurora e 100 do Meridiano, todos com `metodo` REGRA.
+- **Rascunhos de contestação (R29):** além dos 6 CSVs, o fechamento grava em `contestacoes/`, pasta irmã de
+  `saida/`, um rascunho de e-mail por contraparte (`orbe.md`, `ponte.md`) com as operações anexadas
+  (`orbe_operacoes.csv`, 92 linhas; `ponte_operacoes.csv`, 28 linhas). A Helena revisa e envia.
+  `--sem-contestacao` desliga os rascunhos.
 - **Como o rastro fecha:** o `rastro.csv` tem uma ou mais linhas por id_saida (`arquivo_origem`, `ref_origem`,
   `valor`). Para cada id_saida, a soma do `valor` no rastro é igual ao valor reportado. Por isso a soma do
-  rastro inteiro (-521712.07) é a soma das cinco colunas de valor acima. São 488 id_saida.
+  rastro inteiro (-537109.49) é a soma das cinco colunas de valor acima. São 371 id_saida.
 - **ref_origem:** `id_transacao` (Orbe), Nº Operação (Ponte), `L<n>` = número da linha física no arquivo (Aurora),
   FITID (Meridiano).
 
@@ -130,7 +136,9 @@ pipeline, e bateram ao centavo. A prova está em três lugares:
 
 - **Commit `d588ad9`** (16/10, 23h43), no histórico do `main`: os testes daquele commit guardam os valores do
   recálculo, feito direto de `dados/`. São 20 notas de checkout = 207045.23, nota da Ponte = 39543.45,
-  210 divergências de checkout e 184 lançamentos, os mesmos quatro números da `saida/` atual.
+  210 divergências de checkout e 184 lançamentos. Notas e lançamentos continuam iguais na `saida/` atual; as
+  divergências de checkout caíram para 92 porque a Helena separou a devolução da Casa do Estudante (118 linhas)
+  das divergências (R38).
 - **Transcript `be5d287e`**, em `PROMPTS/sessoes/`: a sessão em que esse recálculo foi feito.
 - **Revisão adversarial:** uma sessão só de leitura, sem importar `src/`, recalculou tudo e questionou 7
   premissas (P15–P21). A decisão sobre cada uma, com o número alternativo, está no `HIPOTESES.md`.
@@ -218,11 +226,15 @@ O gerador só lê `dados/2026-09`: nada é gravado no repositório. O mesmo ensa
    | tipo | regra | quem decide | o que fazer | set/2026 |
    |------|-------|-------------|-------------|---------:|
    | `NOTA_NAO_EMITIDA` | R06 | Financeiro (Helena) | comissão do mês zero ou negativa: decidir o tratamento (não passa para o mês seguinte) | 1 |
-   | `DEVOLUCAO_LOJISTA` | R03, R10, P23 | Financeiro (Helena) | devolver ao lojista o que foi cobrado acima do contrato | 3 |
+   | `DEVOLUCAO_LOJISTA` | R03, R25, R32 | Financeiro (Helena) | devolver ao lojista o que foi cobrado acima do contrato | 2 |
+   | `DEVOLUCAO_CONCESSAO` | R10, R32, R38 | Financeiro (Helena) | devolver ao lojista a taxa cobrada numa concessão comercial: custo da Tarvo, não se cobra da Orbe | 1 |
+   | `ALERTA_ANTECIPACAO` | R33, P26 | Financeiro (Helena) e Comercial | lojista sem histórico antecipou mais do que vendeu no mês: avaliar o risco (não muda nenhum valor) | 1 |
    | `LOJISTA_SEM_CONTRATO` | R08 | Comercial | EC da Orbe sem taxa contratada: confirmar o contrato antes de faturar | 1 |
    | `LOJISTA_NAO_CADASTRADO` | P04 | Financeiro (Helena) | CNPJ da Ponte fora da planilha: cadastrar (a comissão já entrou na nota) | 0 |
-   | `CONTESTACAO_PONTE` | R12, R15, R16, R18, R23 | Financeiro (Helena) | contestar com a Ponte o spread acima do contrato ou negativo | 5 |
+   | `CONTESTACAO_PONTE` | R12, R15, R16, R18, R23, R34 | Financeiro (Helena) | contestar com a Ponte o spread acima do contrato ou negativo | 5 |
    | `OPERACAO_DUPLICADA` | R13, P19 | Financeiro (Helena) | pedir à Ponte a correção do relatório | 1 |
+   | `AJUSTE_SEM_OPERACAO_ORIGINAL` | R31, P25 | Financeiro (Helena) | ajuste da Ponte cuja operação original não está no relatório: conferir (já abatido da participação) | 0 |
+   | `AJUSTE_SEM_LOJISTA` | R31 | Financeiro (Helena) | ajuste da Ponte sem CNPJ nem operação original: identificar o lojista (não foi abatido) | 0 |
    | `OPERACAO_FORA_DA_COMPETENCIA` | R11 | Financeiro (Helena) | operação contratada em outro mês: conferir | 0 |
    | `CONFERENCIA_REPASSE` | R18, P22 | Financeiro (Helena) | conferir o TED de repasse da Ponte contra a nota de remessa quando cair | 1 |
    | `CREDITO_NAO_IDENTIFICADO` | R20 | Financeiro (Helena) | identificar o PIX recebido; não é receita até lá | 1 |
@@ -294,6 +306,7 @@ O gerador só lê `dados/2026-09`: nada é gravado no repositório. O mesmo ensa
 │   ├── bancos.yaml           regras de classificação dos extratos, em ordem
 │   ├── favorecidos.yaml      PIX enviados do Aurora que são repasse a lojista (P07)
 │   ├── pagadores_meridiano.yaml  PIX recebidos no Meridiano de clientes da remessa (P08)
+│   ├── contestacao.yaml      pasta e textos dos rascunhos de contestação (R29)
 │   └── ia.yaml               modelo, limiar e cache da IA (P14)
 ├── src/tarvo/
 │   ├── cli.py, __main__.py   comando `python -m tarvo fechar`
@@ -303,9 +316,11 @@ O gerador só lê `dados/2026-09`: nada é gravado no repositório. O mesmo ensa
 │   ├── remessa.py            linha REMESSA (Ponte Câmbio)
 │   ├── bancos.py             classificação dos extratos e conferências cruzadas
 │   ├── ia.py                 sugestão de conta para lançamento sem regra
+│   ├── contestacao.py        rascunhos de contestação por contraparte (R29)
 │   └── saida.py              ItemSaida, escrita e validação dos 6 CSVs
-├── tests/                    318 testes + gerar_outubro.py (outubro simulado)
+├── tests/                    374 testes + gerar_outubro.py (outubro simulado)
 ├── dados/2026-09/            data pack de setembro, como recebido
 ├── cache/ia_sugestoes.json   respostas da IA já obtidas (vazio em setembro)
-└── saida/                    os 6 CSVs de setembro
+├── saida/                    os 6 CSVs de setembro
+└── contestacoes/             rascunhos de contestação para a Helena revisar (R29)
 ```
