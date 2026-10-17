@@ -1009,3 +1009,4 @@
 {"type":"pr-link","sessionId":"ef2a5f84-7a08-4a0e-b47d-699426d22d18","prNumber":4,"prUrl":"https://github.com/Tamura-cloud/DesbravadoresBarte/pull/4","prRepository":"Tamura-cloud/DesbravadoresBarte","timestamp":"2026-10-17T14:40:50.018Z"}
 {"type":"mode","mode":"normal","sessionId":"ef2a5f84-7a08-4a0e-b47d-699426d22d18"}
 {"type":"cost-state","sessionId":"ef2a5f84-7a08-4a0e-b47d-699426d22d18","totalCostUSD":0,"totalAPIDuration":0,"totalAPIDurationWithoutRetries":0,"totalToolDuration":0,"totalLinesAdded":0,"totalLinesRemoved":0,"totalDuration":2627251,"startTime":1792248048854,"modelUsage":{},"hasUnknownModelCost":false}
+{"type":"cost-state","sessionId":"ef2a5f84-7a08-4a0e-b47d-699426d22d18","totalCostUSD":0,"totalAPIDuration":0,"totalAPIDurationWithoutRetries":0,"totalToolDuration":0,"totalLinesAdded":0,"totalLinesRemoved":0,"totalDuration":2591729,"startTime":1792264507074,"modelUsage":{},"hasUnknownModelCost":false}

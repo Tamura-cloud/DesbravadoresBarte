@@ -2032,3 +2032,181 @@ Todos os números, caminhos de arquivo, regras contábeis e papéis de cada inte
 2. **Estratégia de Git e comandos de merge** para a Pessoa 1;
 3. **Respostas e contrapropostas contábeis para a Helena** para a Pessoa 2;
 4. **Narrativa, slides e justificativas do pitch para o CFO** para a Pessoa 3.
+
+## Pedido — 17/10 09:33
+
+quem é helena ?
+
+<ADDITIONAL_METADATA>
+The current local time is: 2026-10-17T09:33:46-03:00.
+</ADDITIONAL_METADATA>
+
+**IA:** **Helena** é a **analista responsável pelo financeiro da Tarvo Pagamentos** (a persona oficial da cliente no Hackathon).
+
+Ela é a figura central de todo o desafio — tanto que o subtítulo oficial do case é justamente:  
+> **"Tarvo: o mês que só fecha na cabeça de quem fecha."**
+
+---
+
+### Por que o case gira em torno dela?
+
+1. **A regra mora na cabeça dela, não nos sistemas:**  
+   A Tarvo triplicou de tamanho em poucos meses, mas os processos continuaram manuais. Quase todas as exceções contratuais e financeiras não estavam documentadas em nenhum ERP — estavam guardadas na memória da Helena e em anotações soltas de planilha. Exemplos que só ela sabia e revelou no Slack:
+   * Que a **Casa do Estudante** tinha tarifa zerada (0%) no Checkout negociada pelo comercial para não perder o cliente (e a adquirente Orbe cobrou R$ 15,4k indevidos porque ninguém a avisou).
+   * Que a **Atlas Idiomas** começou a transacionar sem contrato assinado e **não pode ser faturada** até o comercial confirmar.
+   * Que os 4 **spreads negativos da Ponte Câmbio** violaram o prazo de trava de 2 horas e devem ser contestados.
+   * Que a adquirente Orbe trunca centavos, enquanto a Tarvo calcula com arredondamento padrão linha a linha.
+
+2. **Ela é o canal oficial de validação no Slack:**  
+   No canal `#tarvo-financeiro` do hackathon, ela responde como a cliente real (`— Helena, financeiro da Tarvo`). Toda resposta dela virou lei no nosso projeto (as regras `R01` a `R22` do nosso `HIPOTESES.md`).
+
+3. **Para quem construímos o produto (Persona do Pitch):**  
+   O nosso software existe para **libertar a Helena**. Em vez de ela passar dias batendo 6 arquivos na mão, conferindo linha por linha e apagando incêndios, ela roda um comando único no início do mês e atua apenas como tomadora de decisão sobre as **16 pendências** que o sistema já entrega mastigadas para ela.
+
+## Pedido — 17/10 11:09
+
+Orbe e aPonte aplicam tabela velha e ninguém confere transação a transação;cresceram 3×, o time não
+
+explique isso aqui do pdf da pessoa 3
+
+<ADDITIONAL_METADATA>
+The current local time is: 2026-10-17T11:09:45-03:00.
+</ADDITIONAL_METADATA>
+
+**IA:** Essa frase resume com precisão cirúrgica a **causa-raiz de todo o problema financeiro da Tarvo**. 
+
+Ela foi desenhada para o **Slide 1 do Pitch para o CFO** (*"O que está quebrado e por quê"*). Vamos dissecar cada uma das 4 partes dessa frase com base nos dados reais do case:
+
+---
+
+### 1. "A regra mora na cabeça da Helena e numa planilha manual"
+* **O que acontece:** A Tarvo não tem um sistema ou ERP automatizado que sincroniza as condições comerciais com o faturamento.
+* **O sintoma real:** Quando o Comercial (Diego) faz um acordo ou uma concessão para um cliente, isso é anotado como um comentário solto numa célula de Excel (como o famoso comentário oculto na célula `A13`: *"conversar com Diego sobre condição especial"*) ou fica apenas na memória da Helena. Não existe parametrização sistêmica.
+
+---
+
+### 2. "A Orbe e a Ponte aplicam tabela velha"
+Os dois maiores parceiros operacionais da Tarvo continuam cobrando taxas desatualizadas porque **ninguém os parametrizou**:
+* **Na Orbe (Checkout de Cartão/Pix):**
+  * **Casa do Estudante:** O Comercial combinou tarifa **0,00%** de setembro a dezembro para segurar o cliente. Ninguém avisou a adquirente Orbe. A Orbe continuou aplicando a taxa padrão e cobrou **R$ 15.397,42 indevidamente** do lojista em 118 transações!
+  * **Rota Global:** A Orbe passou a cobrar `+0,50 p.p.` a mais do nada a partir de 12/09, gerando **R$ 1.546,28** de cobrança errada.
+  * **Bridge Idiomas:** Renegociou crédito à vista para `2,19%` a partir de 15/09, mas a Orbe continuou cobrando os `2,59%` velhos por quase uma semana (mais R$ 29,95 de erro).
+* **Na Ponte Câmbio (Remessas Internacionais):**
+  * **Mundo Aberto:** O lojista renegociou o spread de câmbio de 1,50% para **1,20% em julho de 2026**. Em setembro (dois meses depois!), a Ponte continuava aplicando a taxa velha de 1,50% em todas as 23 remessas, cobrando **R$ 1.418,85 a mais** do lojista.
+
+---
+
+### 3. "E ninguém confere transação a transação"
+* **O volume:** O mês de setembro teve **1.943 transações na Orbe** e **233 operações na Ponte Câmbio**.
+* **A limitação humana:** Nenhum ser humano consegue abrir uma planilha com mais de 2.000 linhas e recalcular, uma a uma, `valor_bruto × taxa_específica_da_modalidade_e_faixa_de_parcelas` para comparar com o centavo cobrado pelo parceiro.
+* **O resultado:** A Helena só olhava os totais no final do mês. Como ninguém auditava no nível de transação, as cobranças indevidas dos parceiros passavam direto, lesando os clientes da Tarvo e gerando risco de processos e perda de contas.
+
+---
+
+### 4. "Cresceram 3×, o time não"
+* A Tarvo triplicou o volume de dinheiro processado (TPV) e a base de agências de intercâmbio clientes.
+* Mas o time financeiro continuou sendo **a mesma Helena operando a mesma planilha manual**.
+* O processo artesanal que funcionava quando a Tarvo era pequeninha **colapsou na escala**: o fechamento atrasa dias, o dinheiro da comissão de câmbio fica travado na Ponte esperando a nota fiscal, e a empresa vive sob risco contínuo de vazamento de receita e churn de clientes estratégicos.
+
+---
+
+> 💡 **No Pitch:** Ao falar essa frase para a banca/CFO, você demonstra que seu time não criou apenas um script de código, mas entendeu a **dor de escala de uma fintech**: *"Crescer em volume sem automatizar a conciliação transacional é receita para queimar dinheiro e sobrecarregar pessoas."*
+
+## Pedido — 17/10 11:14
+
+@[Quote] mas isso aqui quem saiu no prejuizo ?
+
+<ADDITIONAL_METADATA>
+The current local time is: 2026-10-17T11:14:10-03:00.
+
+The user has mentioned some items in the form @[ITEM]. Here is extra information about the items that were mentioned by the user, in the order that they appear:
+
+@[Quote] is a [Text Block]:
+asa do Estudante: O Comercial combinou tarifa 0,00% de setembro a dezembro para segurar o cliente. Ninguém avisou a adquirente Orbe. A Orbe continuou aplicando a taxa padrão e cobrou R$ 15.397,42 indevidamente do lojista em 118 transações!
+Rota Global: A Orbe passou a cobrar +0,50 p.p. a mais do nada a partir de 12/09, gerando R$ 1.546,28 de cobrança errada.
+Bridge Idiomas: Renegociou crédito à vista para 2,19% a partir de 15/09, mas a Orbe continuou cobrando os 2,59% velhos por quase uma semana (mais R$ 29,95 de erro).
+</ADDITIONAL_METADATA>
+
+**IA:** No primeiro momento, quem tomou o prejuízo direto no bolso foi o **LOJISTA (o cliente da Tarvo)**. Mas se a Tarvo não corrigir, **o prejuízo vira da própria TARVO**.
+
+Veja exatamente como o dinheiro flui e quem assume a conta:
+
+---
+
+### 1. No dia a dia (Impacto imediato no lojista)
+Como a Orbe é quem processa as maquininhas e o checkout, ela desconta a taxa na fonte antes de repassar o dinheiro líquido:
+* A **Casa do Estudante** achava que teria taxa zero, mas **recebeu R$ 15.397,42 a menos** do que vendeu.
+* A **Rota Global** recebeu **R$ 1.546,28 a menos**.
+* A **Bridge Idiomas** recebeu **R$ 29,95 a menos**.
+
+👉 **Quem ficou com esse dinheiro inicialmente?** A adquirente **Orbe**. Ela reteve esse valor a mais na conta dela.
+
+---
+
+### 2. No fechamento (A decisão oficial da Helena)
+A Helena explicou exatamente o que a Tarvo faz no Slack:
+> *"Se a Orbe cobrou a mais, a diferença volta para o lojista e eu cobro a Orbe."*  
+> *(E sobre a Casa do Estudante): "Ninguém avisou a Orbe, então ela cobrou. O que foi cobrado eu devolvo ao lojista, junto com o comercial."*
+
+Ou seja, no fechamento do mês:
+1. **A Tarvo assume o compromisso de devolver esse dinheiro para o lojista** (gerando uma linha em `pendencias.csv` para ressarcir o cliente).
+2. **A Tarvo abre uma contestação contra a Orbe** para exigir que a Orbe devolva esses valores cobrados a mais.
+
+---
+
+### 3. Então, qual é o prejuízo real para a Tarvo?
+
+Se o pipeline não pegasse esse erro transação por transação:
+1. **Prejuízo de Churn (Perda de Cliente):** A Casa do Estudante é um cliente estratégico que já estava insatisfeito (o comercial deu taxa zero justamente *"para segurar o cliente"*). Se o lojista visse que a Tarvo cobrou R$ 15,4 mil na surdina, ele cancelaria o contrato na hora.
+2. **Prejuízo de Capital de Giro (Fluxo de Caixa):** A Tarvo precisa tirar dinheiro do próprio caixa para reembolsar o lojista imediatamente, e depois tem que esperar semanas na burocracia para conseguir receber de volta da Orbe.
+
+> 🎯 **Resumo para o Pitch:**  
+> *"No dia da venda, quem sangra é o **lojista**, que recebe menos repasse. No fechamento, quem sangra o caixa é a **Tarvo**, que precisa devolver o dinheiro do próprio bolso e ir brigar com a **Orbe** para recuperar os quase R$ 17 mil retidos indevidamente."*
+
+## Pedido — 17/10 11:19
+
+o que é a orbe para a tarvo
+
+<ADDITIONAL_METADATA>
+The current local time is: 2026-10-17T11:19:06-03:00.
+</ADDITIONAL_METADATA>
+
+**IA:** A **Orbe** é a **ADQUIRENTE** parceira da Tarvo (como se fosse a *Stone, Cielo ou Rede* do case), enquanto a **Tarvo** é uma **SUBADQUIRENTE** (fintech vertical focada em agências de intercâmbio).
+
+---
+
+### Como funciona essa relação na prática?
+
+A Tarvo não tem conexão direta com as bandeiras de cartão (Visa, Mastercard, etc.). Ela contrata a infraestrutura da **Orbe** para rodar os pagamentos das suas agências clientes.
+
+O fluxo do dinheiro funciona assim:
+
+```text
+[ Aluno de Intercâmbio ]
+          │ Paga curso/viagem (Cartão ou Pix)
+          ▼
+    ┌───────────┐
+    │   ORBE    │  (Adquirente / Infraestrutura)
+    └─────┬─────┘  • Processa as vendas
+          │        • Desconta as taxas
+          │        • Deposita o líquido no Banco Aurora da Tarvo
+          ▼
+    ┌───────────┐
+    │   TARVO   │  (Subadquirente / Fintech)
+    └─────┬─────┘  • Apura as comissões contratadas
+          │        • Emite as Notas Fiscais
+          │        • Repassa o dinheiro líquido aos lojistas
+          ▼
+[ Lojistas / Agências ]  (Casa do Estudante, Rota Global, Oxford Prep...)
+```
+
+---
+
+### Por que a Orbe é o centro das dores de cabeça da Helena?
+
+1. **A Orbe opera em escala industrial e não perdoa falta de aviso:**  
+   A Orbe não quer saber se o comercial da Tarvo prometeu "tarifa zero" para um cliente num almoço. Se ninguém foi lá no portal da Orbe parametrizar a taxa nova, a Orbe cobra a tabela padrão dela. Foi exatamente isso que aconteceu com a **Casa do Estudante**.
+2. **A Orbe trunca centavos:**  
+   O sistema da Orbe corta as casas decimais na segunda casa (truncamento), enquanto o financeiro da Tarvo calcula com arredondamento contábil comum (`ROUND_HALF_UP`). Isso gerava divergências de R$ 0,01 em quase todas as linhas que enlouqueciam a Helena antes do nosso pipeline.
+3. **Ela controla a torneira do dinheiro:**  
+   É a Orbe que manda o dinheiro das vendas em lotes de TED para a conta da Tarvo no Banco Aurora (foram 19 TEDs somando R$ 3,55 milhões em setembro). Se a Orbe reteve taxas a mais na fonte, o dinheiro já ficou com ela, e a Tarvo tem que ir atrás para cobrar de volta.
